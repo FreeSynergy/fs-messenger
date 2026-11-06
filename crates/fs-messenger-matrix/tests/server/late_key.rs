@@ -31,6 +31,7 @@ async fn undecrypted_then_the_key_arrives() {
         "never megolm without decryption"
     );
     assert!(!held.summary.encryption.is_end_to_end());
+    assert!(held.undecrypted, "and the core is told, in its typed field");
     assert!(phone.find(&text).await.is_empty(), "the text is not here");
     let original: Value = serde_json::from_slice(&held.original.as_ref().unwrap().bytes).unwrap();
     assert_eq!(original["type"], "m.room.encrypted", "the original is kept");
@@ -64,6 +65,7 @@ async fn undecrypted_then_the_key_arrives() {
         "decryption really happened now"
     );
     assert_eq!(late.body_text, text);
+    assert!(!late.undecrypted);
     assert_eq!(
         late.summary.envelope.in_reply_to,
         Some(held.id().to_string()),

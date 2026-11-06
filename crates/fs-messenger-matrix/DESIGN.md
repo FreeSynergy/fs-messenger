@@ -9,7 +9,7 @@ Version 0.1.0, not tagged. Tested against the pinned tuwunel 1.9.4 only; see "No
 | Area | State |
 |---|---|
 | Login with password, session restore, same device and identity after a restart | done, against the server |
-| Stores: `CryptoStore` and `StateStore` over an encrypted `fs-store`, pure Rust, no SQLite | done: the SDK's own suites pass (35 and 28 tests), restart against the server |
+| Stores: `CryptoStore` and `StateStore` over an encrypted `fs-store`, pure Rust, no SQLite | done: the SDK's own suites pass (35 and 28 tests; one more is `#[ignore]`d by the suite itself), restart against the server |
 | Sync into the core: rooms are conversations, `m.room.message` are messages, event id is the alias, `m.in_reply_to` threads, cursor persists in the core, replay does not duplicate, own copy recognised | done, against the server |
 | Gaps: a limited `/sync` and a newly joined room are read through `/messages` | done, against the server; at most 5000 events per room per gap |
 | Original: the event JSON as received; see "Originals" | done |
@@ -59,7 +59,7 @@ Version 0.1.0, not tagged. Tested against the pinned tuwunel 1.9.4 only; see "No
 
 ## Stores: pure Rust, and how
 
-`matrix-sdk` 0.19.1 with default features brings `matrix-sdk-sqlite` (rusqlite, libsqlite3-sys: C) and aws-lc (C). Both are off. Choice (a) of the assignment holds: its `StateStore` and `CryptoStore` traits are implemented over `fs-store`, in about 900 lines, against the 6100 of the SDK's SQLite versions of those two.
+`matrix-sdk` 0.19.1 with default features brings `matrix-sdk-sqlite` (rusqlite, libsqlite3-sys: C) and aws-lc (C). Both are off. Choice (a) of the assignment holds: its `StateStore` and `CryptoStore` traits are implemented over `fs-store`, in about 1500 lines, inline tests included, against the 6100 of the SDK's SQLite versions of those two.
 
 **Decorator over the SDK's own memory stores.** Reads come from `MemoryStore`, so all its query logic is the SDK's. Every write goes first to a journal, then to memory. Opening replays the journal into a new memory store.
 
@@ -79,7 +79,9 @@ Version 0.1.0, not tagged. Tested against the pinned tuwunel 1.9.4 only; see "No
 |---|---|---|
 | `ring` | C and assembly | `rustls`, the TLS of `reqwest` (also in `fs-messenger-mail`) |
 | `blake3` | C and assembly, on x86-64 unless its `pure` feature is on | `matrix-sdk-store-encryption`, a dependency of `matrix-sdk-base` |
-| `aegis` | C | `turso_core`, so already in `fs-store` and in the core |
+| `simsimd` | C | `turso_core`, so already in `fs-store` and in the core |
+
+`aegis` (through `turso_core`) is built with its `pure-rust` feature (`cargo tree -e features`), so its C is not compiled, though `cc` is listed for it. No `libsqlite3-sys`, `rusqlite`, `aws-lc`, `openssl-sys` or `native-tls` in `cargo tree -e normal`.
 
 ## Originals (ADR 0030)
 
@@ -102,7 +104,7 @@ A recipient is a room (`!...`) or a person (`@...`). A person without a room get
 
 The SDK allows trying again: `Room::decrypt_event`. The core does not allow replacing: an alias it knows is `Duplicate`, and only aliases merge. So:
 
-1. A message without a key is stored with body `UNDECRYPTED_MARK`, encryption `unknown`, its original kept. **`unknown` and not `none`** as in `fs-messenger-mail`: it is known to be encrypted, and not known to whom it was readable. Neither reads as protected.
+1. A message without a key is stored with body `UNDECRYPTED_MARK`, `undecrypted` set, encryption `unknown`, its original kept. **`unknown` and not `none`** as in `fs-messenger-mail`: it is known to be encrypted, and not known to whom it was readable. Neither reads as protected.
 2. The event waits in the cursor, so the list moves with the batch. At most 256; an older one stays a placeholder for good.
 3. Every fetch tries again, without the network. What opens arrives as **a second message**, alias `matrix-decrypted:<event id>`, `megolm`, the same original, answering the placeholder.
 
@@ -115,7 +117,7 @@ The events of type other than `m.room.message` that were encrypted also leave a 
 What the SDK does by default, unchanged:
 
 * **Outgoing:** `CollectStrategy::AllDevices`. Keys go to **every device of every member that is not blacklisted, unverified ones included**, as in Element X's legacy mode. MSC4153 advises against this. A malicious homeserver that adds a device to a member gets the keys. The plan says `megolm` for this.
-* **Incoming:** `TrustRequirement::Untrusted`: an unverified sender decrypts and is `megolm`. **`megolm` means "decrypted", not "the sender is who it says".** The core has no field for the difference. `EncryptionInfo.verification_state` is thrown away here.
+* **Incoming:** `TrustRequirement::Untrusted`: an unverified sender decrypts and is `megolm`. **`megolm` means "decrypted", not "the sender is who it says".** `RawMessage.signature` stays at `not verified`, and `EncryptionInfo.verification_state` is not used.
 * Cross-signing is not set up. Nobody here can be verified: `key.verify` and `device.list` are `Unsupported`.
 
 ## Decisions
@@ -136,11 +138,10 @@ Worked around here, nothing changed there:
 1. **Replacing a message in place** (`RawMessage.replaces`, or an `Ingest` method). Without it: "Late keys", edits and redactions.
 2. **`fs-store` v0.3.0.** The core pins v0.2.0; `UnloggedObjects` is in v0.3.0. This crate depends on both, renamed, so `fs-store` is built twice, and the two stores are of different types. Both use turso `=0.8.3`.
 3. **`encryption_plan` should get the conversation.** It only sees recipients: see "Sending and the two checks". Today a reply into a plain room can pass the plan and end in `failed`.
-4. **A field for "encrypted, not readable"**, also wanted by the mail crate: the mark is body text and `unknown`.
-5. **A second original or a cleartext field**, so that what was decrypted can be derived anew.
-6. **A field for the sender's verification state**, so `megolm` need not stand for both.
-7. **Rooms in the model:** invitations, joining.
-8. **`Outgoing` could carry the client's own id** (transaction id), which would close the echo race for all providers.
+4. **A second original or a cleartext field**, so that what was decrypted can be derived anew.
+5. **The sender's verification state.** `RawMessage.signature` now exists, and stays unset here: `not verified`. It speaks of signatures, and whether a verified Megolm sender is `Valid` is for the core to say.
+6. **Rooms in the model:** invitations, joining.
+7. **`Outgoing` could carry the client's own id** (transaction id), which would close the echo race for all providers.
 
 ## Not verified
 
@@ -151,7 +152,7 @@ Worked around here, nothing changed there:
 * **Key forwarding between own devices** (`automatic-room-key-forwarding` is on): not seen working. The SDK only answers verified devices, and nothing here can verify. The late-key test brings its key by export file.
 * **An expired or revoked access token:** not tried. It should show as a `matrix:` error; there is no flow to log in again over a stored session. Refresh tokens are not requested.
 * **Concurrent send and sync:** the exclusion is by a lock and the test does them in turn; no test forces the race.
-* **Scale:** rooms of two or three, tens of messages. Each journal write took about 15 ms here (measured from the fold test, on this machine), and a sync can make several.
+* **Scale:** rooms of two or three, tens of messages. Each journal write took about 20 ms here (900 writes in 18 s in the fold test, on this machine), and a sync can make several.
 * **Edits and files** are tested only on hand-written JSON.
 * **MPL-2.0** comes along with the SDK: `as_variant`, `eyeball`, `eyeball-im`, `imbl`, `imbl-sized-chunks`, `readlock`, `readlock-tokio`. File-level copyleft, not our code; not an ADR 0015 question I can settle.
 

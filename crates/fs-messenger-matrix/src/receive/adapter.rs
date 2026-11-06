@@ -74,14 +74,16 @@ pub(crate) fn message(
 pub(crate) fn placeholder(room: &RoomContext, event: &ParsedEvent, original: &str) -> RawMessage {
     let alias = event_alias(&event.event_id);
     let body = UNDECRYPTED_MARK.to_owned();
-    build(
+    let mut raw = build(
         room,
         event,
         alias,
         body,
         Encryption::Unknown,
         Some(original),
-    )
+    );
+    raw.undecrypted = true;
+    raw
 }
 
 /// The text of an event stored earlier as a placeholder. The core cannot replace a message, so this
@@ -144,12 +146,14 @@ mod tests {
         assert_eq!(raw.encryption, Encryption::Unknown);
         assert!(!raw.encryption.is_end_to_end());
         assert_eq!(raw.body_text, UNDECRYPTED_MARK);
+        assert!(raw.undecrypted);
     }
 
     #[test]
     fn late_text_has_its_own_alias_and_answers_the_placeholder() {
         let raw = late_message(&room(), &event("@a:x"), Encryption::Megolm, "{}").unwrap();
         assert_eq!(raw.aliases, [ExternalId::new(SCHEME_LATE, "$e")]);
+        assert!(!raw.undecrypted);
         assert_eq!(raw.in_reply_to, Some(ExternalId::new(SCHEME_EVENT, "$e")));
     }
 }
