@@ -24,6 +24,8 @@ pub struct OutgoingAttachment {
 /// What goes out, before it is approved.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct OutgoingBody {
+    pub(crate) subject: String,
+    pub(crate) references: Vec<ExternalId>,
     pub(crate) to: Vec<String>,
     pub(crate) cc: Vec<String>,
     pub(crate) bcc: Vec<String>,
@@ -69,6 +71,15 @@ impl Outgoing {
     /// Hidden recipients.
     pub fn bcc(&self) -> &[String] {
         &self.body.bcc
+    }
+    /// The subject; empty if the person gave none, and a provider without subjects ignores it.
+    pub fn subject(&self) -> &str {
+        &self.body.subject
+    }
+    /// The chain of ancestors of the parent, oldest first, without the parent itself, which is in
+    /// [`Outgoing::in_reply_to`]. Empty if this is no reply.
+    pub fn references(&self) -> &[ExternalId] {
+        &self.body.references
     }
     /// The text.
     pub fn text(&self) -> &str {

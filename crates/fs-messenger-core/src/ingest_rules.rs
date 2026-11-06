@@ -7,6 +7,9 @@ use crate::error::{Error, Result};
 use crate::model::ExternalId;
 use crate::provider::RawMessage;
 
+/// A chain longer than this keeps its newest entries; a sender decides how long it is.
+const MAX_REFERENCES: usize = 64;
+
 fn bad_part(alias: &ExternalId) -> bool {
     let bad = |s: &str| s.is_empty() || s.contains(['|', '\0']);
     bad(&alias.scheme) || bad(&alias.id)
@@ -54,6 +57,9 @@ pub(crate) fn accepted(mut raw: RawMessage, limit: usize) -> Result<RawMessage> 
     }
     // The sender writes these. A bad one loses the claim, never the mail.
     raw.links.retain(|l| !bad_part(l));
+    raw.references.retain(|r| !bad_part(r));
+    let extra = raw.references.len().saturating_sub(MAX_REFERENCES);
+    raw.references.drain(..extra);
     raw.in_reply_to = raw.in_reply_to.filter(|p| !bad_part(p));
     // The original keeps every byte; these are what is indexed and shown.
     scrub(&mut raw.body_text);

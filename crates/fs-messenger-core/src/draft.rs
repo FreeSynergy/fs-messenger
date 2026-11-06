@@ -35,6 +35,8 @@ pub trait Draft: Send + Sync {
     async fn set_account(&mut self, account: ObjectId) -> Result<()>;
     /// The text: `text/plain` or `text/markdown`.
     async fn set_text(&mut self, text: String, media_type: String) -> Result<()>;
+    /// The subject. A provider without subjects ignores it.
+    async fn set_subject(&mut self, subject: String) -> Result<()>;
     /// Add a file; it is stored at once and the draft with it.
     async fn attach(&mut self, name: String, media_type: String, data: Vec<u8>) -> Result<()>;
     /// How it would go out, and who stands in the way (ADR 0018: find a way).

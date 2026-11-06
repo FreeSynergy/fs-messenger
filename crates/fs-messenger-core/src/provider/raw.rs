@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use fs_store::Blob;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Encryption, ExternalId, Kind, ToolCall};
+use crate::model::{Encryption, ExternalId, Kind, SignatureCheck, ToolCall};
 
 /// Where a provider stands in its own stream. Opaque to the core.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,6 +75,12 @@ pub struct RawMessage {
     pub published: Option<DateTime<Utc>>,
     /// The parent, in the provider's terms.
     pub in_reply_to: Option<ExternalId>,
+    /// The chain of ancestors the sender named, oldest first. These only link.
+    pub references: Vec<ExternalId>,
+    /// The content could not be decrypted: `body_text` is not the message.
+    pub undecrypted: bool,
+    /// What the signature check found. Unset is not verified.
+    pub signature: SignatureCheck,
     /// Normalised text.
     pub body_text: String,
     /// Media type of the text; empty is `text/plain`.
@@ -117,6 +123,9 @@ impl RawMessage {
             subject: None,
             published: None,
             in_reply_to: None,
+            references: vec![],
+            undecrypted: false,
+            signature: SignatureCheck::default(),
             body_text: body_text.into(),
             body_media_type: String::new(),
             attachments: vec![],

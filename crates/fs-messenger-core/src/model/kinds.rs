@@ -96,6 +96,21 @@ pub enum SenderKind {
     Unknown,
 }
 
+/// What a provider's signature check found. Not in the contract. Only `Valid` says anything for a
+/// sender, and unset or unrecognised reads as not verified.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SignatureCheck {
+    /// It carries no signature.
+    NotSigned,
+    /// It verifies with a key known for the sender.
+    Valid,
+    /// Not checked, or it could not be verified.
+    #[default]
+    #[serde(other)]
+    NotVerified,
+}
+
 /// Where an outgoing message is, stored locally (ADR 0037).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

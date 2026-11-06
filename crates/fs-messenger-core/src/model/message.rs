@@ -10,7 +10,8 @@ use fs_store::{Blob, Envelope, ObjectId};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    Attachment, DeliveryState, Encryption, ExternalId, Kind, Reaction, SenderKind, ToolCall,
+    Attachment, DeliveryState, Encryption, ExternalId, Kind, Reaction, SenderKind, SignatureCheck,
+    ToolCall,
 };
 
 /// What a message list shows.
@@ -78,6 +79,13 @@ pub struct Message {
     pub outgoing: bool,
     /// The parent, while it has not arrived yet. Not in the contract.
     pub pending_reply: Option<ExternalId>,
+    /// The chain of ancestors the sender named, oldest first; these only link. Not in the contract.
+    pub references: Vec<ExternalId>,
+    /// Whether the content could not be decrypted, so the text is not the message. Not in the
+    /// contract.
+    pub undecrypted: bool,
+    /// What the provider's signature check found. Not in the contract.
+    pub signature: SignatureCheck,
     /// Local arrival sequence, never from a sender. "Read up to" runs over it. Not in the contract.
     pub arrival: u64,
     /// When to sort it instead of `published`, if the sender dated it in the future. Not in the

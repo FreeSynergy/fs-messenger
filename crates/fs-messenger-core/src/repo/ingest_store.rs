@@ -98,6 +98,9 @@ impl Inner {
             account: Some(account),
             outgoing,
             pending_reply,
+            references: raw.references,
+            undecrypted: raw.undecrypted,
+            signature: raw.signature,
             arrival: self.next_arrival(),
             sort_at,
         };
