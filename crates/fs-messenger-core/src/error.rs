@@ -74,4 +74,7 @@ pub enum Error {
     /// A provider failed.
     #[error("provider: {0}")]
     Provider(String),
+    /// The guard refused it (ADR 0054). Nothing changed, unless the text says otherwise.
+    #[error("guard: {0}")]
+    GuardRefused(String),
 }

@@ -16,7 +16,7 @@ use super::message_codec::message_to;
 use super::text::{body_media_type, display_name, preview};
 use super::tool_calls;
 use crate::error::Result;
-use crate::model::{DeliveryState, Message, MessageSummary, SenderKind, StoredForm};
+use crate::model::{DeliveryState, Message, MessageSummary, StoredForm};
 use crate::provider::RawMessage;
 
 impl Inner {
@@ -33,6 +33,7 @@ impl Inner {
             .unwrap_or(raw.sender.as_str());
         let (_, owner) = self.load_account(account).await?;
         let scope = owner.scope();
+        let sender_kind = self.admitted_sender(&owner.kind, &raw.sender).await?;
         let conversation = self
             .ensure_conversation(account, &scope, &raw.conversation, name, raw.kind)
             .await?;
@@ -82,8 +83,8 @@ impl Inner {
                 unread: !outgoing,
                 flagged: false,
                 preview,
-                // Nothing here can look at the sender's card yet, and a remote must not claim `person`.
-                sender_kind: SenderKind::Unknown,
+                // From the lookup, never from the message: a remote must not claim `person`.
+                sender_kind,
                 job_ref: raw.job_ref,
                 arrival: self.next_arrival(),
                 undecrypted: raw.undecrypted,

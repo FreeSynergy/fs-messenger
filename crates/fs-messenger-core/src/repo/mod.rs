@@ -15,6 +15,9 @@ mod draft_data;
 mod draft_handle;
 mod feed;
 mod forward;
+mod guard_note;
+mod guard_port;
+mod guard_turns;
 mod handle;
 mod ingest;
 mod ingest_store;
@@ -35,4 +38,6 @@ mod subscription;
 mod text;
 mod tool_calls;
 
+pub use guard_port::{GuardPort, PlacedCall, SettledCalls};
+pub use guard_turns::{TurnStop, TurnStopOutcome};
 pub use handle::{MessengerConfig, MessengerRepo};

@@ -3,8 +3,10 @@
 mod outgoing;
 mod raw;
 mod traits;
+mod turn;
 
 pub(crate) use outgoing::OutgoingBody;
 pub use outgoing::{Outgoing, OutgoingAttachment, SendReceipt};
 pub use raw::{FetchBatch, ProviderCursor, RawAttachment, RawMessage, RawToolCall};
 pub use traits::Provider;
+pub use turn::TurnScope;

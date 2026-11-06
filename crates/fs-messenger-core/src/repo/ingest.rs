@@ -143,7 +143,8 @@ impl Inner {
                 match self.ingest_flow(account, raw).await {
                     Ok(Ingested::Stored(_)) => report.stored += 1,
                     Ok(Ingested::Duplicate(_)) => report.duplicates += 1,
-                    Ok(Ingested::TooLarge { .. }) | Err(Error::Invalid(_) | Error::Json(_)) => {
+                    Ok(Ingested::TooLarge { .. })
+                    | Err(Error::Invalid(_) | Error::Json(_) | Error::GuardRefused(_)) => {
                         report.rejected += 1;
                     }
                     Err(e) => return Err(e),

@@ -7,12 +7,13 @@
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex as Mutex2, PoisonError, RwLock};
+use std::sync::{Arc, Mutex as Mutex2, OnceLock, PoisonError, RwLock};
 
 use fs_store::{ObjectId, Query, Store, StoredObject, TursoStore};
 use tokio::sync::Mutex;
 
 use super::consts::IDX_ARRIVAL_DESC;
+use super::guard_port::Wiring;
 use super::keys::arrival_of_desc_key;
 use super::store_check;
 use crate::error::{Error, Result};
@@ -61,6 +62,8 @@ pub(super) struct Inner {
     arrival: AtomicU64,
     _handle: StoreHandle,
     providers: RwLock<HashMap<ObjectId, Arc<dyn Provider>>>,
+    /// Set once, by `install_guard`.
+    pub(super) wiring: OnceLock<Wiring>,
 }
 
 impl MessengerRepo {
@@ -96,6 +99,7 @@ impl MessengerRepo {
                 arrival,
                 _handle: handle,
                 providers: RwLock::new(HashMap::new()),
+                wiring: OnceLock::new(),
             }),
         })
     }
@@ -163,6 +167,16 @@ impl Inner {
             .unwrap_or_else(PoisonError::into_inner)
             .get(&account)
             .cloned()
+    }
+
+    /// All providers, with their accounts.
+    pub(super) fn all_providers(&self) -> Vec<(ObjectId, Arc<dyn Provider>)> {
+        self.providers
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .map(|(id, p)| (*id, p.clone()))
+            .collect()
     }
 
     pub(super) fn unregister(&self, account: ObjectId) {

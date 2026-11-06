@@ -8,7 +8,7 @@
 use async_trait::async_trait;
 use fs_interfaces::provider::{Capabilities, Unsupported};
 
-use super::{FetchBatch, Outgoing, ProviderCursor, SendReceipt};
+use super::{FetchBatch, Outgoing, ProviderCursor, SendReceipt, TurnScope};
 use crate::error::Result;
 use crate::model::EncryptionPlan;
 
@@ -30,6 +30,7 @@ pub trait Provider: Send + Sync {
             "message.fetch",
             "message.send",
             "encryption.plan",
+            "turn.stop",
         ] {
             caps.unsupported(id, NOT_OFFERED);
         }
@@ -49,5 +50,12 @@ pub trait Provider: Send + Sync {
     /// Look for an encrypted way to all of `recipients`, and name who stands in the way.
     async fn encryption_plan(&self, _recipients: &[String]) -> Result<EncryptionPlan> {
         Err(Unsupported::new("encryption.plan", NOT_OFFERED).into())
+    }
+
+    /// End running agent turns. Called by the guard only; it gets nothing back from here but the
+    /// answer, and whoever cannot end a turn says so instead of pretending. Must not wait on a model:
+    /// the guard gives up on it after a short time and reports that.
+    async fn stop_turns(&self, _scope: &TurnScope) -> Result<()> {
+        Err(Unsupported::new("turn.stop", NOT_OFFERED).into())
     }
 }

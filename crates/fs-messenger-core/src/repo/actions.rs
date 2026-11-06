@@ -23,11 +23,10 @@ impl Inner {
     ) -> Result<()> {
         match action {
             MessageAction::None => Err(Error::Invalid("no action given; nothing was done".into())),
-            MessageAction::Decide(_) => Err(Unsupported::new(
-                "toolcall.decide",
-                "the guard that checks a person's decision is not built yet",
-            )
-            .into()),
+            MessageAction::Decide(decision) => match self.guard() {
+                Some(guard) => guard.decide(conversation, id, decision).await,
+                None => Err(Unsupported::new("toolcall.decide", "no guard is installed").into()),
+            },
             MessageAction::Edit(_) => Err(Unsupported::new("message.edit", NOT_CARRIED).into()),
             MessageAction::React(_) => Err(Unsupported::new("message.react", NOT_CARRIED).into()),
             MessageAction::Delete => self.delete_message(conversation, id).await,
