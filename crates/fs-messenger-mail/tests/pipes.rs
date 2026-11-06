@@ -3,7 +3,7 @@
 mod common;
 
 use common::{core_with, person, wire_in};
-use fs_messenger_core::{Ingest, Messenger};
+use fs_messenger_core::{Ingest, Messenger, SearchFilter};
 use fs_messenger_mail::openpgp::generate_key;
 
 const BOB: &str = "b@example.org";
@@ -28,7 +28,7 @@ References: <r|oot@e>\r\n\r\nsecond\r\n"
     assert_eq!((report.stored, report.rejected), (2, 0), "{report:?}");
 
     let page = repo
-        .search("second", &Default::default(), None)
+        .search("second", &SearchFilter::default(), None)
         .await
         .unwrap();
     let summary = &page.items[0];
@@ -44,7 +44,7 @@ References: <r|oot@e>\r\n\r\nsecond\r\n"
         .await
         .unwrap();
     let first = repo
-        .search("first", &Default::default(), None)
+        .search("first", &SearchFilter::default(), None)
         .await
         .unwrap();
     assert_eq!(

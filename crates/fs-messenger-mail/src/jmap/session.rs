@@ -110,7 +110,7 @@ mod tests {
 "downloadUrl":"https://mail.example.org/d/","primaryAccounts":{"urn:ietf:params:jmap:mail":"c"}}"#;
     const URL: &str = "https://mail.example.org/jmap/session";
 
-    fn origins<'a>(rebase: bool, others: &'a [String]) -> Origins<'a> {
+    fn origins(rebase: bool, others: &[String]) -> Origins<'_> {
         Origins {
             session_url: URL,
             rebase,

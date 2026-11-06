@@ -13,7 +13,7 @@ Version 0.1.0, not tagged. Tested against Stalwart 1.0.3 from `scripts/test-serv
 | Parse and build: `mail-parser`, `mail-builder`; original byte for byte; JMAP-style fields; threading; attachments; `bodyHtml` empty | done |
 | OpenPGP (rPGP): RFC 3156 section 6.2 combined form, v6 keys, SEIPDv2 AES-256 OCB, RFC 9788 Header Protection, to all recipients and the sender | done, between our own two ends only |
 | Autocrypt, own: send the header, learn from incoming, the rule below | done, **provisional** |
-| Incoming: decrypt, verify (combined, or `multipart/signed` at the root or just inside), `openpgp` only if really decrypted | done |
+| Incoming: decrypt, verify (combined, or `multipart/signed` at the root or just inside), `openpgp` only if really decrypted; `raw.undecrypted`, `raw.signature` | done |
 | Keys: `KeyStore`, `FsKeyStore` over `fs-store` as sensitive objects | done |
 
 ### `Unsupported`, or not built
@@ -37,7 +37,8 @@ Version 0.1.0, not tagged. Tested against Stalwart 1.0.3 from `scripts/test-serv
 |---|---|---|
 | `provider/facade.rs` | Facade + Strategy | the core sees `Provider`; behind it two small strategies and keys |
 | `provider/send.rs` | Template method | check again, build, encrypt, submit, keep the copy |
-| `provider/read.rs` | Template method | classify, open, verify; writes nothing, so `inspect` can use it too |
+| `provider/read.rs` | Template method | classify, open, verify; writes nothing; all of it on one blocking thread |
+| `provider/ids.rs` | Adapter | reversible encoding, because the core refuses `\|` and a mail may legally hold it |
 | `provider/receive.rs` | Adapter | mail to `RawMessage`; alias and link decided here |
 | `fetch/*`, `jmap/fetch.rs` | Strategy, value object for the cursor | bytes only, so that both behave the same |
 | `submit/*`, `jmap/submit.rs` | Strategy | finished bytes only: a strategy never sees a plaintext |
@@ -55,9 +56,9 @@ Who may change which key we encrypt to. Stated here because Autocrypt 1.1 itself
 A header counts only if its `addr` is the sender, it is the only one for that sender, the certificate parses, its self-signatures verify, and it is usable now.
 
 1. **Nobody known: first seen wins** (trust on first use, `AutocryptFirstSeen`). Nobody checked it. **This is a real limit:** a forger who writes first is believed, and the real key then shows up as the conflict. DKIM is not checked, and it would only narrow this.
-2. **Same key: it only refreshes.** The offered form is taken if it is newer, or if it adds a revocation; a forger can only replay older forms, since he cannot add self-signatures. A revocation is never given up.
-3. **Another key: replaced only with proof** (`AutocryptRotated`). The proof is that the new key was offered in an `Autocrypt` header **inside** an encrypted payload, whose signature verifies with the **currently known** key. An outer header proves nothing, even on a mail with a good signature, because the signature does not cover it; the server test takes a real signed mail and puts a forged outer header on it.
-4. **Without proof: the known key stays**, the offer is remembered as `candidate`, never encrypted to, readable through `MailProvider::peer`. Only a person replaces it: `accept_candidate`, or `import_peer_key`.
+2. **Same key: it only refreshes.** The offered form is taken if it carries more revocations (of the key or of a subkey), or if it is newer, counting subkey bindings, so a new subkey is learned. A forger can only replay or strip, since he cannot add self-signatures: so a form with fewer revocations is never taken.
+3. **Another key: replaced only with proof** (`AutocryptRotated`). The proof is that the new key was offered in an `Autocrypt` header **inside** an encrypted payload, whose signature **covers that header** and verifies with the **currently known** key, and that key is neither revoked nor expired. An outer header proves nothing, even on a mail with a good signature, and neither do the headers around a `multipart/signed`: the signature covers the signed part only. Both attacks are tests, the second on the real server.
+4. **Without proof: the known key stays**, the offer is remembered as `candidate`, never encrypted to, readable through `MailProvider::peer`. Only a person replaces it: `accept_candidate` with the fingerprint she compared, refused if the candidate has changed since, or `import_peer_key`.
 
 Consequences to decide on: a peer who lost his key cannot prove anything, so he stays in conflict until a person acts. A known key that expired is refused in the plan, and its successor is only a candidate unless the old one signed it first. A rebuilt device replays old mail and reaches the same state only if the mail arrives in order.
 
@@ -69,19 +70,28 @@ The first contact: nothing leaves unencrypted, so asking for a key by mail is no
 * **Withholding the link.** The core matches a link against our own receipts if the sender is the account's address, and a `From` proves nothing. So a mail in the inbox claiming to be from us only links if our own key signed it; otherwise a stranger could hide his mail, or claim one of ours, with a known `Message-ID`. Tested on the server. The core's rule alone does not close this.
 * **The sent copy.** SMTP keeps none, so the provider stores it through the fetch strategy (`APPEND`, `Email/import`). JMAP imports it in the same request and destroys it if the submission is refused. If the copy fails after the mail left, the send still counts and a warning is logged: failing would make a retry send twice.
 * **Only the root decides.** `multipart/encrypted` inside something else is plain. Otherwise a sender could put readable text around a real ciphertext and have it marked `openpgp`. A literal packet in an encrypted envelope is not decrypted either.
-* **Undecryptable:** `none`, body = `UNDECRYPTED_MARK`, outer subject, original kept. A key store failure fails the fetch instead, so the cursor stays: otherwise a passing failure would mark readable mail as unreadable for good.
+* **What a signature vouches for (PROVISIONAL).** Only what it covers. `SignatureCheck::Valid` needs three things: the signature verifies, with a key known **before** this mail, over a part that names the sender in its own `From`. So a key offered in the same mail reads `NotVerified` on first contact, and **a signature over a bare body, which is what plain gpg writes without protected headers, reads `NotVerified`**: anyone can put a bare signed body under any `From` (surreptitious forwarding). Headers next to `Valid` are the covered ones. Without `Valid` or a declared `hp`, inner headers are not believed. `hp` counts only as `cipher` or `clear` (RFC 9788 section 4.1). A revoked or broken key (DSA, Elgamal, RSA under 2048) verifies nothing; an expired one still does, for what it signed while it lived, and rPGP does not say when that was.
+* **Undecryptable:** `none`, `raw.undecrypted`, empty body, outer subject, original kept. That includes a plaintext over the limit: compression can expand 1.4 MB to 1 GiB, so the reader stops at the core's limit (`with_max_message_bytes`). A key store failure fails the fetch instead, so the cursor stays: otherwise a passing failure would mark readable mail as unreadable for good.
 * **`transport-only` is never claimed.** We measure TLS on our own leg to the server, not the way the mail travelled. Plain mail is `none`.
 * **Header Protection, baseline.** The outer `Subject` is `[...]`; `From`, `To`, `Cc`, `Date`, `Message-ID`, `In-Reply-To`, `References` stay outside. **So who writes to whom, and which mail answers which, is visible to servers.** The attachment names and the subject are not. Each sender's own `Autocrypt` is written on both levels: the inner one is the proof, the outer one reaches a reader who cannot open the mail.
-* **Hidden recipients** get an anonymous session key packet, so that the others cannot read their key id; they are in no header, inner or outer. Every reader's client tries its key on such a packet: a small cost.
+* **Hidden recipients** get an anonymous session key packet, so that the others cannot read their key id; they are in no header, inner or outer. **The packets can be counted, so every reader sees THAT someone is hidden, and how many.** One ciphertext per hidden recipient would close that; not built. Every reader's client tries its key on such a packet: a small cost.
 * **Provisional: v6 certificates in Autocrypt v1 headers.** The v2 draft is not final. What other OpenPGP programs do with them: "Interoperability" below.
-* **Provisional: a subject from the first text line**, because `Outgoing` has none. It is encrypted like the rest.
-* **`jmap-client` is not used.** It builds its HTTP client inside and has only a general "accept invalid certificates" switch for a self-signed server, and it follows the session document's URLs. Ours refuses a session that advertises anything but `https`; `rebase_on_session_origin` moves them onto the configured origin. The test server needs this: it advertises `http://` even when asked over HTTPS.
+* **No subject is no subject.** `Outgoing::subject()` empty means no `Subject` inside; outside it stays `[...]`.
+* **Ids with `|`** are `%`-encoded on the way to the core and decoded on the way out, because the core refuses `|` in alias parts and RFC 5322 allows it. Without this a legal mail and every reply to it were rejected. The ids the core shows are the encoded ones.
+* **Which `Message-ID` links:** the inner one if inside is believed. The outer one is covered by nothing, so a replay of a signed ciphertext can carry any.
+* **JMAP paging by `anchor`.** A position skips a mail when an earlier one is deleted between pages. If the anchor itself is deleted, the walk starts over from 0, which re-downloads and dedupes.
+* **A failure in the sent mailbox** does not cost what the inbox delivered: a warning, and the sent cursor stays. Shared by both strategies; tested over IMAP only, because no real server fails on request and there is no fake JMAP server here.
+* **Limits at the strategies.** A mail over the limit is not downloaded (`RFC822.SIZE`, JMAP `size`), logged, and passed. So the core's `rejected` count does not see it. **It stays only on the server, unstored.** JSON from a JMAP server is cut at 32 MiB. IMAP calls run under `ImapConfig::timeout`; lettre and reqwest have their own.
+* **`jmap-client` is not used.** It builds its HTTP client inside and has only a general "accept invalid certificates" switch for a self-signed server, and it follows the session document's URLs. Ours refuses a session that advertises anything but `https`, or another origin than the configured one: the document decides where the password goes next. `rebase_on_session_origin` moves the URLs onto the configured origin; the test server needs this, it advertises `http://` even when asked over HTTPS. `other_credential_origins` names further origins for one account, empty by default.
 * **Keys in a store of their own.** `FsKeyStore` works on any `Store`, but a store that synchronises to a hub would carry the secret there, and `fs-store`'s log keeps old versions until compaction. A program should open one encrypted store for keys. Behind `dyn Store`, a store opted out of the sensitive-data rule cannot be told apart; `open_turso` refuses it. The secret has no passphrase: it relies on the encrypted store.
+* **What is wiped, exactly.** Wiped on drop: `Password` (`Zeroizing<String>`), the secret packets inside `SecretCert` (rPGP's `ZeroizeOnDrop`), and the binary buffers `FsKeyStore` decodes into or encodes from. **Not wiped:** the base64 `String` and the `serde_json::Value` the key passes through in `FsKeyStore`; the copy `lettre`'s `Credentials` takes and the header `reqwest` builds, for every login; whatever the allocator kept from moved buffers; everything in fs-store. **The secret key sits in plain JSON in the activity log of its store** (encrypted at rest with the store), because fs-store logs before and after images of every `put` and offers no way around it. `Debug` of an `Activity` prints it, and `Store::subscribe` hands it to every listener. `known_limit_the_own_key_is_in_the_activity_log_of_its_store` pins this. `Debug` of `Password`, `SecretCert` and `PublicCert` shows no secret.
 * **The certificate of a test server** can only be trusted under the `test-trust` feature, which only the dev-dependency turns on. Exactly that certificate, host name still checked.
 
 ## Interoperability (measured 2026-11-06)
 
-Facts only. "Mail" is what `Draft.send` handed the strategy, or a hand-written RFC 3156 wrapper read through `fetch` and `inspect`; the transport was replaced, no mail travelled over a network.
+Facts only. "Mail" is what `Draft.send` handed the strategy, or a hand-written RFC 3156 wrapper read through `fetch`; the transport was replaced, no mail travelled over a network.
+
+**Changed since this was measured.** The rule of "What a signature vouches for" came after 9179bea, and `inspect` is gone: the state is now `raw.signature`. The GnuPG cases in `tests/interop_gnupg.rs` were adapted and run again (see below). `Valid` in the tables below means the old rule, where a bare body counted. **Under the current rule a signature from gpg over a bare body reads `NotVerified`, and only a body naming its `From` reads `Valid`; a first mail offering its own key reads `NotVerified`.** `UNDECRYPTED_MARK` no longer exists: the body is empty and `undecrypted` is set. The RNP cases were a one-off and were **not** run again.
 
 **GnuPG cases:** `tests/interop_gnupg.rs`, `#[ignore]`, run on 2026-11-06 at commit 9179bea plus that file, 3 of 3 passed. **RNP cases:** a one-off test with the same helpers, not in the repository (the file limit of 300 lines); it ran against the extracted packages named below, from an empty directory.
 
@@ -178,17 +188,20 @@ Thunderbird itself; Mozilla's own builds; RNP built with `ENABLE_CRYPTO_REFRESH`
 
 Wanted from `fs-messenger-core`, worked around here:
 
-1. `RawMessage` has no field for the signature state or for "encrypted, not readable": `MailProvider::inspect(original)` derives both, with the keys held now, and the mark is body text.
-2. No field or event for a key conflict: `MailProvider::peer(address).candidate`.
-3. `Outgoing` has no subject: the first text line.
-4. `Outgoing` gives the conversation and the parent, not the parent's `References`: we write `References: <root> <parent>`, which keeps the thread and loses the chain between.
+1. No field or event for a key conflict: `MailProvider::peer(address).candidate`.
+
+Wanted from `fs-store`:
+
+1. A way to store an object without its images in the activity log, or a log that keeps sensitive payloads out, for secret keys. See "What is wiped".
 
 Code:
 
-1. A mail is held in memory whole, up to 50 per mailbox per fetch; a very large one is downloaded before the core refuses it (25 MiB). Such a refused mail is **not stored** and stays only on the server.
-2. A signature does not expire the trust in it: an expired or revoked signer's old signatures read `Valid`.
+1. A mail under the limit is held in memory whole, up to 50 per mailbox per fetch. `async-imap` buffers a literal before we can stop it, so a server that lies about `RFC822.SIZE` is not bounded.
+2. A signature does not expire the trust in it: an expired signer's old signatures read `Valid`.
 3. A flag change on an old mail makes JMAP download it again; nothing is stored twice.
 4. Stalwart drops a second delivery with the same `Message-ID` and the same subject (observed on 1.0.3, not read in its source): the mail never reaches us, on any fetch.
+5. Weak keys: DSA, Elgamal and RSA under 2048 are refused. Other curves and algorithms rPGP parses pass. The RSA path has no test: rPGP will not generate such a key.
+6. `ImapConfig::timeout` covers one whole call: a large mailbox on a slow line can run into it, and the next call starts from the same cursor.
 
 ## Crates
 

@@ -37,7 +37,7 @@ async fn round_trip(submit: Submit, fetch: Fetch) {
         "{submit:?}/{fetch:?}"
     );
     assert_eq!(got.body_text, text);
-    assert!(got.body_html.is_empty());
+    assert_eq!(got.body_html, "");
     assert_eq!(got.summary.envelope.name, format!("Subject-{t}"));
     assert_eq!(
         got.summary.envelope.attributed_to.as_deref(),
@@ -157,6 +157,6 @@ async fn bcc_can_read_and_is_named_nowhere() {
     let delivered = &got.original.as_ref().unwrap().bytes;
     let outer = MailFields::read(delivered).unwrap();
     assert_eq!(outer.to, [Who::Alice.address()]);
-    assert!(outer.cc.is_empty());
+    assert_eq!(outer.cc, Vec::<String>::new());
     assert_eq!(got.summary.envelope.to, [Who::Alice.address()]);
 }

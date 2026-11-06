@@ -95,9 +95,9 @@ async fn a_forged_header_does_not_replace_a_known_key() {
     bob.send(None, &[Who::Alice.address()], &[], &answer, &[])
         .await
         .expect("send");
-    let read = alice.wait_for(&answer).await;
+    let opened = alice.wait_for(&answer).await;
     assert_eq!(
-        read.summary.encryption,
+        opened.summary.encryption,
         Encryption::Openpgp,
         "alice can read it"
     );
@@ -189,9 +189,9 @@ async fn the_root_of_a_multipart_signed_cannot_rotate_a_key() {
 
     let got = bob.wait_for(&format!("Signed-{t}")).await;
     assert_eq!(got.summary.encryption, Encryption::Openpgp);
-    let held = bob.provider.peer(&from).await.unwrap().unwrap();
+    let peer = bob.provider.peer(&from).await.unwrap().unwrap();
     assert_eq!(
-        held.fingerprint,
+        peer.fingerprint,
         alice.fingerprint(),
         "the key must not rotate"
     );

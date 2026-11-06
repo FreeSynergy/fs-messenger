@@ -50,11 +50,11 @@ async fn the_root_of_a_multipart_signed_proves_nothing() {
     let reader = bob.provider.ensure_own_key().await.unwrap().public();
     let evil = generate_key(ALICE).unwrap();
     let content = genuine(true);
-    let head = format!(
+    let around = format!(
         "From: {ALICE}\r\n{EVIL_SUBJECT}Autocrypt: {}\r\n",
         format_header(ALICE, &evil.public()).unwrap()
     );
-    let payload = multipart_signed(&head, &content, &detached(&alice_rpgp, &content));
+    let payload = multipart_signed(&around, &content, &detached(&alice_rpgp, &content));
     let raw = encrypted(&outer(ALICE, "root@e"), payload.as_bytes(), &evil, &reader);
 
     let got = deliver(&bob, &raw).await;
@@ -247,7 +247,7 @@ async fn a_compression_bomb_stays_undecrypted_and_the_next_mail_arrives() {
     let got = deliver(&bob, &raw).await;
     assert!(got.undecrypted);
     assert_eq!(got.encryption, Encryption::None);
-    assert!(got.body_text.is_empty());
+    assert_eq!(got.body_text, "");
     assert_eq!(got.original.unwrap().bytes, raw);
     let next = format!("{}\r\nnext\r\n", outer(ALICE, "next@e"));
     assert_eq!(

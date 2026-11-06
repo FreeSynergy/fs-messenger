@@ -1,10 +1,10 @@
-//! Interoperability with GnuPG: real round trips through the real provider; only the wire is replaced.
+//! Interoperability with `GnuPG`: real round trips through the real provider; only the wire is replaced.
 //! The results, and how RNP was measured the same way: `DESIGN.md`, "Interoperability".
 //! Pattern: none (tests). Every gpg gets a new throwaway home (`--homedir`, `GNUPGHOME`), whose agent is
 //! killed and whose directory is deleted on drop; the real `~/.gnupg` is never read.
 //!
 //! Run: `TMPDIR=<short dir> cargo test -p fs-messenger-mail --test interop_gnupg -- --ignored --nocapture
-//! --test-threads=1`. Skips with a message if gpg is missing. The assertions pin GnuPG 2.4.9 of Fedora 45:
+//! --test-threads=1`. Skips with a message if gpg is missing. The assertions pin `GnuPG` 2.4.9 of Fedora 45:
 //! failing with another build means `DESIGN.md` is out of date, not that the code broke.
 
 mod common;
@@ -274,8 +274,8 @@ async fn d_e_gpg_mail_to_a_key_of_ours() {
             assert_eq!(got.0, Encryption::Openpgp);
             assert_eq!(got.1 == SignatureCheck::Valid, !sha1);
             // A signature over a bare body does not vouch for the sender.
-            let bare = g.run(&format!("{base}{extra}"), BODY.as_bytes()).1;
-            let got = read(&known, "bare body", &wrapped(&bare, "")).await;
+            let unnamed = g.run(&format!("{base}{extra}"), BODY.as_bytes()).1;
+            let got = read(&known, "bare body", &wrapped(&unnamed, "")).await;
             assert_eq!(got, (Encryption::Openpgp, SignatureCheck::NotVerified));
             let got = read(&unknown, "unknown", &raw).await;
             assert_eq!(got.1, SignatureCheck::NotVerified);
@@ -293,8 +293,8 @@ async fn d_e_gpg_mail_to_a_key_of_ours() {
         let head = format!("From: {PEER}\r\nTo: {US}\r\nMessage-ID: <s@e>\r\n");
         let got = read(&known, "RFC 3156 5", &signed(&signature, &head, NAMED)).await;
         assert_eq!(got, (Encryption::None, SignatureCheck::Valid));
-        let bare = g.run(&detach, BODY.as_bytes()).1;
-        let got = read(&known, "RFC 3156 5, bare", &signed(&bare, &head, BODY)).await;
+        let unnamed = g.run(&detach, BODY.as_bytes()).1;
+        let got = read(&known, "RFC 3156 5, bare", &signed(&unnamed, &head, BODY)).await;
         assert_eq!(got, (Encryption::None, SignatureCheck::NotVerified));
     }
     let g = Gpg::new().unwrap();

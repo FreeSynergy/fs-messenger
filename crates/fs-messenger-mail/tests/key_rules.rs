@@ -29,7 +29,7 @@ async fn the_plan_names_exactly_who_lacks_a_key_also_hidden_ones() {
         .await
         .unwrap();
     assert_eq!(plan.encryption, Encryption::Openpgp);
-    assert!(plan.missing_keys.is_empty());
+    assert_eq!(plan.missing_keys, Vec::<String>::new());
     let who = [
         "PEER@example.org".to_string(),
         "gap@example.org".to_string(),
