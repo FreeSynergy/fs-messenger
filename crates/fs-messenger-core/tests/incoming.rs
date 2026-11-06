@@ -10,18 +10,17 @@ async fn delivered(encryption: Option<Encryption>) -> (Encryption, Encryption, b
     let (repo, _) = setup().await;
     let me = account(&repo, "me@example.org").await;
     let mut m: RawMessage = raw("m1", "t", "plain text");
-    match encryption {
-        Some(e) => m.encryption = e,
-        None => {
-            let silent = RawMessage::new(
-                common::alias("a"),
-                common::alias("c"),
-                fs_messenger_core::Kind::Mail,
-                "s",
-                "t",
-            );
-            m.encryption = silent.encryption;
-        }
+    if let Some(e) = encryption {
+        m.encryption = e;
+    } else {
+        let silent = RawMessage::new(
+            common::alias("a"),
+            common::alias("c"),
+            fs_messenger_core::Kind::Mail,
+            "s",
+            "t",
+        );
+        m.encryption = silent.encryption;
     }
     let Ingested::Stored(id) = repo.ingest(me.id, m).await.unwrap() else {
         panic!();
