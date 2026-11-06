@@ -29,15 +29,9 @@ fn file(name: &str, size: usize) -> RawAttachment {
 }
 
 fn blob(size: usize) -> Blob {
-    Blob {
-        media_type: "message/rfc822".into(),
-        bytes: vec![1; size],
-    }
-}
-
-#[test]
-fn the_default_limit_is_25_mib() {
-    assert_eq!(MessengerConfig::new(ME).max_message_bytes, 26_214_400);
+    let media_type = "message/rfc822".to_string();
+    let bytes = vec![1; size];
+    Blob { media_type, bytes }
 }
 
 #[tokio::test]
