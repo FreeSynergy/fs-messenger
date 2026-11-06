@@ -122,3 +122,52 @@ pub fn bomb(head: &str, size: usize, reader: &PublicCert) -> Vec<u8> {
         .unwrap();
     wrapper(head, &armored)
 }
+
+/// Every form a secret key could be found in, for needle checks: the bare scalar, as bytes and hex, in
+/// base64 at all three alignments, and the whole secret key in base64 as it is stored.
+pub fn secret_needles(key: &SignedSecretKey) -> Vec<Vec<u8>> {
+    use base64::Engine as _;
+    use base64::engine::general_purpose::STANDARD;
+    let whole = key.to_bytes().unwrap();
+    let public = key.primary_key.public_params().to_bytes().unwrap();
+    let at = whole
+        .windows(public.len())
+        .position(|w| w == public)
+        .expect("the public part");
+    // A v6 Ed25519 secret key packet: the public part, one byte for "no S2K", the 32 bytes of the scalar.
+    let scalar = &whole[at + public.len() + 1..at + public.len() + 33];
+    let hex = scalar.iter().fold(String::new(), |mut out, b| {
+        use std::fmt::Write as _;
+        let _ = write!(out, "{b:02x}");
+        out
+    });
+    let mut needles = vec![
+        scalar.to_vec(),
+        hex.into_bytes(),
+        STANDARD.encode(&whole).into_bytes(),
+    ];
+    for skip in 0..3 {
+        let text = STANDARD.encode(&scalar[skip..]);
+        needles.push(text.as_bytes()[..text.len() - 4].to_vec());
+    }
+    needles
+}
+
+/// Whether any needle is in `haystack`.
+pub fn holds_any(haystack: &[u8], needles: &[Vec<u8>]) -> bool {
+    needles
+        .iter()
+        .any(|n| haystack.windows(n.len()).any(|w| w == n.as_slice()))
+}
+
+/// All bytes of all files in `dir`: the database, and its log files if there are any.
+pub fn files_of(dir: &std::path::Path) -> Vec<u8> {
+    let mut all = vec![];
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_file() {
+            all.extend(std::fs::read(path).unwrap());
+        }
+    }
+    all
+}

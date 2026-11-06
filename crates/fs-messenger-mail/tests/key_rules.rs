@@ -9,12 +9,12 @@ use fs_messenger_core::{Encryption, Provider};
 use fs_messenger_mail::autocrypt::{Decision, KeyLearner, Offer};
 use fs_messenger_mail::keys::{FsKeyStore, KeySource, KeyStore};
 use fs_messenger_mail::openpgp::generate_key;
-use fs_store::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, Store, TursoStore};
+use fs_store::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
 
 const PEER: &str = "peer@example.org";
 
 async fn store() -> Arc<dyn KeyStore> {
-    let store: Arc<dyn Store> = Arc::new(TursoStore::open_in_memory().await.unwrap());
+    let store = Arc::new(TursoStore::open_in_memory().await.unwrap());
     Arc::new(FsKeyStore::open(store, "https://local.invalid/me"))
 }
 
@@ -186,24 +186,5 @@ async fn keys_do_not_go_into_a_plain_store_and_survive_a_restart_in_an_encrypted
             .unwrap()
             .fingerprint(),
         other.fingerprint()
-    );
-}
-
-/// fs-store logs before and after images and offers no way around it, so an own key ends up in the
-/// activity log and in `Debug` of an activity, encrypted at rest with the store. Pinned here, because
-/// DESIGN.md states it: when fs-store changes this, this test says so. Wanted from fs-store.
-#[tokio::test]
-async fn known_limit_the_own_key_is_in_the_activity_log_of_its_store() {
-    let store = Arc::new(TursoStore::open_in_memory().await.unwrap());
-    let keys = FsKeyStore::open(store.clone(), "me");
-    keys.put_own_key("me@example.org", &generate_key("me@example.org").unwrap())
-        .await
-        .unwrap();
-    let log = Store::activities(store.as_ref(), &fs_store::ActivityFilter::default())
-        .await
-        .unwrap();
-    assert!(
-        format!("{log:?}").contains("secret"),
-        "the limit is gone: update DESIGN.md"
     );
 }

@@ -1,16 +1,22 @@
 //! [`FsKeyStore`]: the [`KeyStore`] over `fs-store`.
 //!
-//! Pattern: Adapter + Repository. Every object carries the sensitive category, so `fs-store` refuses
-//! it on a plain store (ADR 0029). Provisional object types `freesynergy.net:OwnKey` and
-//! `freesynergy.net:PeerKey`, keyed by the index field `address`. A store that synchronises to a hub
-//! must not hold these: give the keys a store of their own (`DESIGN.md`).
+//! Pattern: Adapter + Repository, two paths. A SECRET key goes through `UnloggedObjects` only: no
+//! activity, no event, no undo, nothing towards the hub, and so nothing that could hold it in a log or
+//! print it in `Debug`. Peers are public and go through the logged `Store`. Why not a `KeyProvider`-style
+//! path: that needs a key vault outside the store, which does not exist yet (ADR 0024). Every object
+//! carries the sensitive category, so a plain store refuses both paths (ADR 0029). All own keys share one
+//! object under a fixed id: the unlogged path has no query, and a fresh UUIDv7 would date each key.
+//! Provisional object types `freesynergy.net:OwnKeys` and `freesynergy.net:PeerKey`.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use fs_store::{Envelope, Query, Store, StoredObject, TursoStore};
+use std::collections::BTreeMap;
+
+use fs_store::traits::UnloggedObjects;
+use fs_store::{Envelope, ObjectId, Query, Store, StoredObject, TursoStore};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use zeroize::Zeroizing;
@@ -20,31 +26,45 @@ use crate::address::normalise_address;
 use crate::error::{MailError, Result};
 use crate::openpgp::SecretCert;
 
-const OWN_KEY: &str = "freesynergy.net:OwnKey";
+const OWN_KEYS: &str = "freesynergy.net:OwnKeys";
+/// The one object with the own keys. Fixed, and never touched by a logged call.
+const OWN_KEYS_ID: &str = "00000000-0000-7000-8000-00000000f5ee";
 const PEER_KEY: &str = "freesynergy.net:PeerKey";
 const IDX_ADDRESS: &str = "address";
 const CONTENT_TYPE: &str = "application/json";
 /// Same category as the messages (`fs-messenger-core`), provisional there and here.
 const SENSITIVE: &str = "pd:Communication";
 
-#[derive(Serialize, Deserialize)]
+/// By normalised address, the secret key in its binary form, base64.
+#[derive(Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct OwnKeyContent {
-    secret: String,
+struct OwnKeysContent {
+    secrets: BTreeMap<String, String>,
 }
 
 /// Keys in a `fs-store`. Sensitive objects: a plain store refuses every write.
 pub struct FsKeyStore {
     store: Arc<dyn Store>,
+    secrets: Arc<dyn UnloggedObjects>,
     actor: String,
     writes: Mutex<()>,
 }
 
+fn own_keys_id() -> Result<ObjectId> {
+    OWN_KEYS_ID
+        .parse()
+        .map_err(|_| MailError::Keys("the id of the own keys does not parse".into()))
+}
+
 impl FsKeyStore {
-    /// Over any store. Behind `dyn Store`, a store told to accept sensitive objects unencrypted cannot
-    /// be told apart; a program binary should use [`FsKeyStore::open_turso`].
-    pub fn open(store: Arc<dyn Store>, actor: impl Into<String>) -> Self {
+    /// Over any store with the unlogged path. Behind a trait, a store told to accept sensitive objects
+    /// unencrypted cannot be told apart; a program binary should use [`FsKeyStore::open_turso`].
+    pub fn open<S>(store: Arc<S>, actor: impl Into<String>) -> Self
+    where
+        S: Store + UnloggedObjects + 'static,
+    {
         Self {
+            secrets: store.clone(),
             store,
             actor: actor.into(),
             writes: Mutex::new(()),
@@ -59,6 +79,13 @@ impl FsKeyStore {
             ));
         }
         Ok(Self::open(store, actor))
+    }
+
+    async fn read_secrets(&self) -> Result<OwnKeysContent> {
+        match self.secrets.read_unlogged(own_keys_id()?).await? {
+            Some(object) => Ok(serde_json::from_value(object.content)?),
+            None => Ok(OwnKeysContent::default()),
+        }
     }
 
     async fn find(&self, kind: &str, address: &str) -> Result<Option<StoredObject>> {
@@ -87,24 +114,32 @@ impl FsKeyStore {
 #[async_trait]
 impl KeyStore for FsKeyStore {
     async fn own_key(&self, address: &str) -> Result<Option<SecretCert>, MailError> {
-        let Some(object) = self.find(OWN_KEY, address).await? else {
+        let content = self.read_secrets().await?;
+        let Some(secret) = content.secrets.get(&normalise_address(address)) else {
             return Ok(None);
         };
-        let content: OwnKeyContent = serde_json::from_value(object.content)?;
         let bytes = Zeroizing::new(
             STANDARD
-                .decode(&content.secret)
-                .map_err(|e| MailError::Keys(e.to_string()))?,
+                .decode(secret)
+                .map_err(|_| MailError::Keys("an own key is not base64".into()))?,
         );
         SecretCert::from_binary(&bytes).map(Some)
     }
 
     async fn put_own_key(&self, address: &str, key: &SecretCert) -> Result<(), MailError> {
+        let _writes = self.writes.lock().await;
+        let mut content = self.read_secrets().await?;
         let bytes = Zeroizing::new(key.to_binary()?);
-        let content = serde_json::to_value(OwnKeyContent {
-            secret: STANDARD.encode(bytes.as_slice()),
-        })?;
-        self.upsert(OWN_KEY, address, content).await
+        content.secrets.insert(
+            normalise_address(address),
+            STANDARD.encode(bytes.as_slice()),
+        );
+        let mut env = Envelope::new(OWN_KEYS, "own keys");
+        env.id = own_keys_id()?;
+        env.sensitive = vec![SENSITIVE.to_string()];
+        let object = StoredObject::new(env, CONTENT_TYPE, serde_json::to_value(content)?);
+        self.secrets.put_unlogged(object).await?;
+        Ok(())
     }
 
     async fn peer(&self, address: &str) -> Result<Option<PeerKey>, MailError> {

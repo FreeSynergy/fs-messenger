@@ -2,7 +2,7 @@
 //! batches, each on a fresh server (`down.sh`, then `up.sh`):
 //!
 //!     cargo test -j 4 -p fs-messenger-mail --test server -- --ignored encrypted needles plain refused autocrypt
-//!     cargo test -j 4 -p fs-messenger-mail --test server -- --ignored replay paging
+//!     cargo test -j 4 -p fs-messenger-mail --test server -- --ignored replay paging secrets
 //!
 //! Two, because Stalwart's default throttle allows 25 mails per hour per sender domain and recipient, and
 //! all of them together send more. Past it, SMTP answers 452 and JMAP submissions wait: that is the
@@ -22,4 +22,5 @@ mod paging;
 mod plain;
 mod refused;
 mod replay;
+mod secrets;
 mod wire;

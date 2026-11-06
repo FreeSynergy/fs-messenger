@@ -41,6 +41,26 @@ async fn replay_and_restart(fetch: Fetch) {
     assert!(replayed >= 1);
     assert_eq!(bob.find(&text).await.len(), 1);
 
+    // Alice's sent copy comes back by receipt only, and the core learns no alias from that: it has to
+    // match again on every replay, and again after a sync.
+    alice.repo.sync(alice.account).await.expect("sync");
+    let mut since = None;
+    loop {
+        let batch = alice.provider.fetch(since.as_ref()).await.expect("fetch");
+        for raw in batch.messages {
+            let result = alice.repo.ingest(alice.account, raw).await.expect("ingest");
+            assert!(
+                matches!(result, Ingested::Duplicate(_)),
+                "a sent copy stored twice"
+            );
+        }
+        since = batch.next;
+        if !batch.more {
+            break;
+        }
+    }
+    assert_eq!(alice.find(&text).await.len(), 1);
+
     // Restart: a new core and provider on the same disk.
     let dir = bob.dir.clone();
     drop(bob);

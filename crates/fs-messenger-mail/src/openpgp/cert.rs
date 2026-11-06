@@ -1,7 +1,7 @@
 //! [`PublicCert`] and [`SecretCert`]: certificates as this crate passes them around.
 //!
-//! Pattern: Newtype (Adapter over rPGP's types). A [`SecretCert`] cannot be printed: its `Debug` shows
-//! the fingerprint only, and it has no `Display`.
+//! Pattern: Newtype (Adapter over rPGP's types). A [`SecretCert`] cannot be printed: its `Debug` and
+//! `Display` show the fingerprint only.
 
 use std::fmt;
 use std::io::Cursor;
@@ -68,6 +68,12 @@ impl SecretCert {
 impl fmt::Debug for SecretCert {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "SecretCert({}, <redacted>)", self.fingerprint())
+    }
+}
+
+impl fmt::Display for SecretCert {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "secret key {}, <redacted>", self.fingerprint())
     }
 }
 

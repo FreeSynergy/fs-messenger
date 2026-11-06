@@ -73,6 +73,9 @@ pub struct Person {
     pub provider: Arc<MailProvider>,
     pub counting: Arc<Counting>,
     pub dir: PathBuf,
+    pub keys: Arc<FsKeyStore>,
+    pub message_store: Arc<TursoStore>,
+    pub key_store: Arc<TursoStore>,
 }
 
 impl Person {
@@ -88,20 +91,24 @@ impl Person {
         submit: Submit,
         limit: usize,
     ) -> Self {
-        let store = TursoStore::open_with(dir.join("messages.db"), encrypted())
-            .await
-            .unwrap();
+        let message_store = Arc::new(
+            TursoStore::open_with(dir.join("messages.db"), encrypted())
+                .await
+                .unwrap(),
+        );
         let actor = format!("https://local.invalid/users/{}", who.address());
         let mut config = MessengerConfig::new(actor.clone());
         config.max_message_bytes = limit;
-        let repo = MessengerRepo::open_turso(Arc::new(store), config)
+        let repo = MessengerRepo::open_turso(message_store.clone(), config)
             .await
             .unwrap();
         // ADR 0018: keys in a store of their own, encrypted; never synchronised with the messages.
-        let key_store = TursoStore::open_with(dir.join("keys.db"), encrypted())
-            .await
-            .unwrap();
-        let keys = Arc::new(FsKeyStore::open_turso(Arc::new(key_store), actor).unwrap());
+        let key_store = Arc::new(
+            TursoStore::open_with(dir.join("keys.db"), encrypted())
+                .await
+                .unwrap(),
+        );
+        let keys = Arc::new(FsKeyStore::open_turso(key_store.clone(), actor).unwrap());
         let address = who.address();
         let account = match repo.accounts().await.unwrap().pop() {
             Some(a) => a,
@@ -145,6 +152,9 @@ impl Person {
             provider,
             counting,
             dir: dir.to_path_buf(),
+            keys,
+            message_store,
+            key_store,
         }
     }
 

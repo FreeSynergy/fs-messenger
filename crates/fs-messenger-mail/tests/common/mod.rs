@@ -109,7 +109,7 @@ async fn person_on(address: &str, keys: Arc<dyn KeyStore>, limit: Option<usize>)
 }
 
 async fn real_keys() -> Arc<dyn KeyStore> {
-    let store: Arc<dyn Store> = Arc::new(TursoStore::open_in_memory().await.unwrap());
+    let store = Arc::new(TursoStore::open_in_memory().await.unwrap());
     Arc::new(FsKeyStore::open(store, "https://local.invalid/me"))
 }
 
