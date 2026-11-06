@@ -11,7 +11,7 @@ Version 0.1.0, not tagged. Mirrors `messenger.capnp` draft 0.2 of `fs-interfaces
 | Area | State |
 |---|---|
 | Model (serde): `Message`, `MessageSummary`, `ConversationSummary`, `Account`, `Kind`, `Encryption`, `DeliveryState`, `SenderKind`, `ToolCall` with all contract fields, `Attachment`, `Reaction`, `Usage`, events | done |
-| Fail-safe values: unset or unrecognised `Encryption`, `risk`, `ToolCallKind`, `ToolCallState`, `SenderKind`, `Kind`, `DeliveryState` = `unknown`; `choice` = `refuse`; unrecognised `outcome` = `unknown`, unset `open`, which the contract reads as "not known". `MessageAction` has no default, `None` is refused. Holds for old and newer records, tested through the program | done |
+| Fail-safe values: unset or unrecognised `Encryption`, `risk`, `ToolCallKind`, `ToolCallState`, `SenderKind`, `Kind`, `DeliveryState` = `unknown`; `choice` = `refuse`; `signature` = `notVerified`; unrecognised `outcome` = `unknown`, unset `open`, which the contract reads as "not known". `MessageAction` has no default, `None` is refused. Holds for old and newer records, and rewriting a record keeps the value it could not read, unless this version really changed it | done |
 | Unreadable records: a page skips them and lists them in `skipped`; they cannot block a list, the next page, `next_unread`, `mark_read` or the newest message | done |
 | Store form: `Note` envelope, `context` = conversation id, `inReplyTo`, vendor `freesynergy.net:encryption`, index fields, `original` | done |
 | Dedupe: an alias the provider issued, also kept by a tombstone. A `Message-ID` only links | done, provisional (see decisions) |
@@ -25,10 +25,12 @@ Version 0.1.0, not tagged. Mirrors `messenger.capnp` draft 0.2 of `fs-interfaces
 | Encrypted only, incoming: stored and marked with what the provider says; `none`, `transport-only` and `unknown` are never end-to-end; no quarantine | done |
 | Encrypted only, at rest: see "Encryption at rest" | done |
 | Tool calls as stored data: store, update in place, read; engine id and revision; `settled` final; an outside question is `working` | done |
-| What a connector found: `RawMessage.undecrypted` and `signature` (`SignatureCheck`, unset is `notVerified`), kept on the `Message` as typed fields, not in the text, and not in the contract yet. The fingerprint of a good signature stays with the provider | done |
+| What a connector found: `RawMessage.undecrypted` and `signature` (`SignatureCheck`, unset is `notVerified`, and always `notVerified` without a sender or readable content), kept on `MessageSummary` as typed fields, not in the text, mirroring `msg-contract-2`. The fingerprint of a good signature stays with the provider | done |
 | Mail threading: `RawMessage.references`, sender-chosen, newest 64 kept, only link. `Outgoing::references` gives the parent's chain, and a sent message continues it | done |
-| Size limits at ingest: 25 MiB a message, named refusal `TooLarge`; search reads 256 KiB of a body | done, provisional |
-| Tests | 120 against real `TursoStore` (in memory, or temp files where encryption matters); the `Provider` doubles only feed core logic |
+| Size limits at ingest and in `record_tool_call`: see "Limits". Over the limit a stub stays (`Ingested::TooLarge`, `Message.too_large`), so the mail is visible, not gone (ADR 0030): aliases, sender, date, subject, size, no content | done, provisional |
+| Large bodies: over 64 KiB in a store object of their own, see "What a large body costs" | done, with a limit named there |
+| An undecrypted message: no ciphertext in preview, name or search; it cannot be forwarded; delivered again under a provider-issued id in readable form it is replaced under the same id, keeping what the person did | done |
+| Tests | 149 against real `TursoStore` (in memory, or temp files where encryption matters); the `Provider` doubles only feed core logic |
 
 ### Local only: says so here, and claims nothing more
 
@@ -67,9 +69,11 @@ Public contract: `Messenger`, `Draft`, `Provider`, `Ingest`, `Listener`, small v
 | `repo/feed.rs` | Adapter | store activity to contract events |
 | `repo/handle.rs` | Facade + Registry | one entry; providers per account |
 | `repo/store_check.rs` | Specification over a real write | the store cannot be asked, so its behaviour is tested |
-| `repo/{message,conversation}_codec.rs`, `repo/draft_data.rs`, `repo/ingest_store.rs`, `repo/tool_calls.rs` | Adapter | model to envelope + content + index |
+| `repo/{message,conversation}_codec.rs`, `repo/message_index.rs`, `repo/draft_data.rs`, `repo/ingest_store.rs`, `repo/tool_calls.rs` | Adapter | model to envelope + content + index |
+| `repo/preserve.rs` | Memento | keeps what this version could not read through a rewrite |
+| `repo/ingest_upgrade.rs` | State | undecrypted to readable, one way |
 | `ingest_rules.rs` | Specification | what a delivered message must be, as pure rules |
-| `repo/{accounts,conversations,messages,attachments}.rs` | Repository | one concern each |
+| `repo/{accounts,conversations,messages,attachments,body,ingest_threads}.rs` | Repository | one concern each |
 | `repo/actions.rs`, `repo/deletion.rs`, `repo/conversation_ops.rs`, `model/action.rs` | Command | `MessageAction` and its executor; small edits |
 | `repo/send.rs`, `repo/send_record.rs`, `repo/send_receipt.rs` | Template method + State | check first; `sending` -> `sent` or `failed` |
 | `repo/forward.rs`, `repo/api.rs` | Facade | forward is a send; wiring only |
@@ -89,23 +93,53 @@ Types: `Note`, `Tombstone`, `Document` (attachment), `Collection` (conversation)
 `Store` **cannot be asked** whether it is encrypted: `is_encrypted` exists only on the concrete `TursoStore`. So:
 
 * Every object this program writes carries the sensitive category, so `fs-store`'s own refusal holds for each of them (tested for all types).
-* `MessengerRepo::open_turso(Arc<TursoStore>)` is the **only constructor of a normal build**. It asks `is_encrypted`, so it refuses every plain store, also one opened with `allow_sensitive_unencrypted`, and an in-memory one.
+* `MessengerRepo::open_turso(Arc<TursoStore>)` is the **only constructor unless a build asks for `test-support`**. It asks `is_encrypted`, so it refuses every plain store, also one opened with `allow_sensitive_unencrypted`, and an in-memory one.
 * It then tries to write a sensitive check object, the same check any other backend would need. Later opens offer that object a different original, which an encrypted store rejects as `OriginalImmutable` after its encryption check, so the log does not grow with every start.
-* `MessengerRepo::open(dyn Store)` exists only behind the feature `test-support`, for tests over a plain in-memory store. Connector crates may turn it on in their dev-dependencies. No normal build can name it.
+* `MessengerRepo::open(dyn Store)` exists only behind the feature `test-support`, for tests over a plain in-memory store. Connector crates may turn it on in their dev-dependencies. The feature is off unless a build asks for it, so it is a guard against mistakes, not against someone who turns it on. `tests/compile_fail.rs` builds a real crate without it and checks that `open` does not exist.
 
 **Limit:** a non-Turso backend cannot use this program until the `Store` trait has `is_encrypted`, which is wanted from `fs-store`.
 
-**One handle per store.** Clone a `MessengerRepo`; do not open a second one on the same store. Two would share no write lock, so a dedupe could interleave, and no arrival counter.
+**One handle per store.** Clone a `MessengerRepo`; do not open a second one on the same store. Two would share no write lock, so a dedupe could interleave, and no arrival counter. A second open of the same `Arc` in one process is refused with `Conflict`, until the last clone of the first is gone. A second `TursoStore` opened on the same file is another object and is **not** detected: `fs-store` gives no identity to ask for, so this part stays a rule, documented here.
 
 ## Reading
 
 **Display** goes by the sender's date, newest first; on equal dates the last arrived is on top. A date in the future shows as written but sorts at its arrival, so it cannot hold the top of the list.
 
-**"Read up to X", `next_unread` and `unread_count`** go by a local arrival sequence stored with each message, never by a date a sender chose (`mark_read` sets the flag that `unread_count` counts). Read up to X marks what arrived at or before X in this conversation. A later arrival is never marked, whatever its date:
+**"Read up to X"** sweeps a message only if it is **both** at or before X in local arrival, a sequence stored with each message and never from a sender, **and** at or below X on screen. `next_unread` walks the arrival order. `unread_count` counts the result.
 
-* A mail dated 1970 that arrives after the mark stays unread, though it is shown far down, and `next_unread` finds it.
+* A mail dated 1970 that arrives after the mark stays unread: it is below X, but arrived later.
+* Reading a backdated mail does not take along the newer, unseen mail above it: that arrived earlier, but is above X.
 * A mail dated 2999 cannot make what arrived after it read.
-* **When a frontend passes the top message:** everything that had arrived by the time that message arrived reads as read. A message shown below it that arrived **later** stays unread, even if the person has seen it on screen: it has an older date and came after the top one. That is the rule, chosen so a sender's date cannot decide what counts as read. It shows when dates and arrival disagree (delayed mail, a re-sync). A frontend that wants "all I see" must pass the last arrived message on screen; `Message.arrival` tells which, and the page's summaries do not carry it yet (open point).
+* **When a frontend passes the top message:** everything below it on screen that had arrived by then reads as read. A message shown below it that arrived **later** stays unread, even if the person has seen it on screen. So a person who has read everything visible can still have unread mail after one "read up to the top", when dates and arrival disagree (delayed mail, a re-sync). That case, "read all I see", **stays open**. `MessageSummary.arrival` lets a frontend see the difference, and it can mark such a message on its own.
+
+## Limits (provisional)
+
+The limit, 25 MiB by default, applies to **metadata + the larger of (the original, what was decoded)**. Metadata is subject, conversation name, sender, recipients, job and task references, links, references, aliases, tool calls with their results, attachment names and types. Decoded is body, reasoning and attachment bytes. So a mail's decoded parts are not counted on top of the original they came from, and they cannot hide behind a small original either.
+
+At most 256 attachments: more is treated as too large, whatever they weigh. At most 64 links (the first) and 64 references (the newest). An id may have 2048 bytes. In `record_tool_call`, the limit applies to the tool calls of a message plus its inline body, and a report over it is refused with `Error::TooLarge` and changes nothing.
+
+Search reads the first 256 KiB of a body and stops there; the message itself stays whole. NUL is taken out of text; the original keeps every byte.
+
+## What a large body costs
+
+Each change of a message logs a before and an after image of it, content and index included, and those stay until compaction. A body over 64 KiB therefore lives in a store object of its own, as the immutable original of a `Document`. `fs-store` leaves originals out of update images, so a flag does not copy it. Measured on a 5 MiB body: four flag changes add 2.0 MiB of log (2,110,236 bytes), where the same body inside `content` adds 42 MiB (44,053,060 bytes).
+
+**What this does not solve, and what `fs-store` would have to do:**
+
+1. **Creating still doubles a body, and more.** A Create image carries the original, base64: the 5 MiB body measured 6.9 MiB of log (7,257,991 bytes) on top of its 5 MiB in the object. Scaled up, not measured, a 25 MiB body is then about 60 MiB, somewhat **more** than the 51 MiB reported for inline text. Deleting it adds another image. The same holds for every attachment and every mail original. Needed: `fs-store` keeps large originals in one place and logs a reference, for instance content-addressed.
+2. **The index is copied by every change.** Update images include index fields, so up to 256 KiB of search text is copied twice per change: that is the 2.0 MiB above. Needed: images without the index, which can be derived. Not worked around here: a search index in another object would need a second query for every filter.
+3. Reasoning and tool results stay in `content`, within the limits. Drafts keep their whole text in `content`, and are only rewritten when saved.
+
+## Store damage
+
+A record this version cannot read at all is store damage or a bug, not a state of the program. It is handled so that it fails nothing else, and this is where it shows:
+
+* Pages report it in `skipped`, and asking for it by id answers `Error::Json`.
+* `next_unread`, `mark_read`, the newest message of a conversation and threading go past it. An unreadable unread message stays counted in `unread_count`.
+* A sync counts an `Error::Json` as `rejected` and goes on; a conversation that cannot be read is replaced by a new one for the same thread, so no mail is lost.
+* `drafts()` and `accounts()` leave it out **without reporting it**. Their result is a plain list. A later version should report it there too.
+
+An account that cannot be read stops its sync with `Error::Json`, because nothing can be said about it.
 
 ## Decisions
 
@@ -115,11 +149,15 @@ Types: `Note`, `Tombstone`, `Document` (attachment), `Collection` (conversation)
 * **The provider is not trusted further than it can be.** The core cannot read ciphertext. It can only refuse beforehand and report afterwards: a receipt weaker than end-to-end stores the message as reported and answers `EncryptionDowngraded`. A provider that lies, or sends on its own, is out of reach of this crate: connectors must be reviewed.
 * **Agent input claims nothing.** `id`, `revision`, `risk`, `options`, `argumentsDigest`, `askedOf` are never taken from a report, `detail` moves into `summary` (contract: agent text goes there only). An agent's number is never compared to the engine's revision. An empty reference is refused, because a replay would add the call again.
 * **An outside question is `working`.** It is shown and not asked: nobody here can answer it, and `refused` would claim something the agent never hears, while `settled` being final would hide what it does next. The contract wording is being corrected accordingly.
-* **What a stranger claims about a reply goes, the mail stays.** A self-link is dropped, a link that would close a cycle is given up, a `|` in a sender-chosen id drops that id. A `|` in an alias or a conversation alias is refused by name, so connectors must not build those from sender text unencoded.
-* **An outgoing claim needs the account's own address as sender;** otherwise it is an ordinary incoming mail.
-* **Provisional: limits.** 25 MiB for a message, all parts counted, `Error::TooLarge`; configurable. Search reads the first 256 KiB of a body and stops there; the message itself stays whole. NUL is taken out of text; the original keeps every byte.
+* **What a stranger claims about a reply goes, the mail stays.** A self-link is dropped, a link that would close a cycle is given up, a `|` or a control character in a sender-chosen id drops that id, and none of them reach an `Outgoing`, also from older records. The same in an alias or a conversation alias is refused by name, so connectors must not build those from sender text unencoded. A provider's receipt is checked the same way.
+* **The first arrived wins as parent,** so a later message cannot take a thread over by claiming the same id.
+* **A match on a receipt merges nothing.** It only says "this is my own copy", so what the copy calls itself is not learned from it. Only an alias the provider issued is believed for that, and for replacing an undecrypted version.
+* **A conversation gives way only if this send created it,** when its thread turns out to be known already. A reply stays in its thread.
+* **Scheme labels matter.** Only `message-id` (`MESSAGE_ID`) is recognised as sender-chosen. A connector that puts a sender's id under another label in `aliases` makes it dedupe.
+* **`outgoing` on a delivered message:** a connector sets it from its own Sent folder only, and the core believes it only if the sender is the account's own address; otherwise it is an ordinary incoming mail.
 * **A body type other than plain or markdown falls back to `text/plain`.**
-* **`Kind`, `DeliveryState`, `ToolCallState`, `ToolCallOutcome` have `unknown` here and not in the contract,** whose ordinal 0 of each is a real value. See the open points: the server must decide how to send them.
+* **A bad tool call goes alone:** one with an empty reference is dropped, the message stays. `record_tool_call` refuses it.
+* **`Kind`, `DeliveryState`, `ToolCallState` have `unknown` as in `msg-contract-2`.** `ToolCallOutcome` has it here only, for a value this version cannot read: see the open points.
 * **Delete = delete + tombstone.** The original cannot be removed by an update (immutable), so the object is deleted and an AS2 `Tombstone` under the same id keeps aliases and order.
 * **A message gets its own id at sending, not the draft's**, because the store keeps `published` of an existing object and a message must sort by when it was sent. Its id stays through edits.
 * **Provisional: message order.** Newest first by `published`, which the sender writes and can forge within the limits above. Page size 50, configurable: the contract has none.
@@ -133,17 +171,18 @@ Contract, for the owner:
 1. `Compose.draft(replyTo)` has no account: with several accounts nothing says which one sends. The core adds `Draft::set_account` (provisional, refused on a reply); with exactly one account, it is taken.
 2. `Draft.setSubject` is on branch `msg-contract-2` of `fs-interfaces`, not tagged. `Draft::set_subject` mirrors the name with no dependency change; `Outgoing::subject` exposes it.
 3. No page size, and no direction for `messages`.
-4. `Kind`, `DeliveryState`, `ToolCallState`, `ToolCallOutcome` have no `unknown` on the wire. The server can't send what the core holds without a guess, so these need the same ordinal-0 treatment as `Encryption`, or a decision.
-5. `Message` holds `undecrypted` and `signature`, which the contract has no field for.
-6. `MessageSummary` has no arrival, so a frontend cannot tell which message on screen arrived last (see "Reading").
+4. `MessageSummary.arrival`, `undecrypted`, `signature`, `MessagePage.skipped` and `unknown` on `Kind`, `ToolCallState`, `DeliveryState` are on `msg-contract-2`, not tagged. The core mirrors them; `skipped` is a count there and the ids here. The dependency stays on v0.16.0.
+5. `ToolCallOutcome` has no `unknown` on the wire. The server can only send a value this version cannot read as `open`, which the contract reads as "not known" on a settled call.
+6. "Read all I see" (see "Reading").
+7. A stub has no wire field: `Message.too_large` is the core's.
 
 Code:
 
 1. **Send is not exactly-once.** A store failure right after a provider accepted answers an error and keeps the draft open, so a retry can send twice. A failed send stays visible, and its retry is a second message.
 2. **Echo race.** A copy fetched while a send is under way, before the receipt is stored, is not recognised and is stored as a second message. Needs a provider-side client id.
 3. **Delete takes two store steps;** a crash in between lets a replay revive it. The store's log keeps the old image, content included, until compaction; the program must call `compact()`, which only removes entries acknowledged by the hub. Since messages do not sync through the hub, nothing acknowledges them yet.
-4. **Mark read** writes one transaction per message. An unreadable record stays counted as unread until it is repaired.
-5. **Performance.** Pages load whole objects, originals included; search is a substring scan (`fs-store` has no tokenised search), and body text is held twice for it, up to its limit.
+4. **Mark read** writes one transaction per message.
+5. **Performance.** Pages load whole objects, originals included; search is a substring scan (`fs-store` has no tokenised search), and body text is held twice for it, up to its limit. See "What a large body costs".
 6. Removing an account keeps its messages, and those conversations can no longer send until the account comes back.
 7. A claimed parent that never arrives stays pending.
 8. The lag catch-up re-reads the log from the last seen id; on a read failure it waits for the next lag.
@@ -151,6 +190,6 @@ Code:
 
 ## Crates
 
-Feature `test-support`: `MessengerRepo::open`, off in every normal build.
+Feature `test-support`: `MessengerRepo::open`, off unless a build asks for it.
 
 `fs-store` (git tag v0.2.0), `fs-interfaces` (git tag v0.16.0): `Capabilities`, `Unsupported`. `serde`, `serde_json`, `chrono`, `thiserror`, `async-trait`, `tokio`; dev: `tempfile`. No network crates in this crate. `scripts/test-servers` belongs to the connector work, not to this crate.

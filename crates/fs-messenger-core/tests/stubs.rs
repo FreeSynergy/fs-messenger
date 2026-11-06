@@ -18,6 +18,11 @@ async fn limited(limit: usize) -> MessengerRepo {
     MessengerRepo::open(store, config).await.unwrap()
 }
 
+#[test]
+fn the_default_limit_is_25_mib() {
+    assert_eq!(MessengerConfig::new(ME).max_message_bytes, 26_214_400);
+}
+
 #[tokio::test]
 async fn n17_what_stays_of_a_mail_too_large_is_visible_and_has_no_content() {
     let repo = limited(100).await;

@@ -1,4 +1,4 @@
-//! N1, N17, C24: what the limit counts, and what stays of a message over it. Provisional values.
+//! N1, C24: what the limit counts. Provisional values.
 
 mod common;
 
@@ -29,15 +29,9 @@ fn file(name: &str, size: usize) -> RawAttachment {
 }
 
 fn blob(size: usize) -> Blob {
-    Blob {
-        media_type: "message/rfc822".into(),
-        bytes: vec![1; size],
-    }
-}
-
-#[test]
-fn the_default_limit_is_25_mib() {
-    assert_eq!(MessengerConfig::new(ME).max_message_bytes, 25 * 1024 * 1024);
+    let media_type = "message/rfc822".to_string();
+    let bytes = vec![1; size];
+    Blob { media_type, bytes }
 }
 
 #[tokio::test]
@@ -95,7 +89,7 @@ async fn n1_every_part_counts_towards_the_limit() {
                         result: "x".repeat(70_000),
                         ..ToolCall::default()
                     },
-                }]
+                }];
             }),
         ),
     ];

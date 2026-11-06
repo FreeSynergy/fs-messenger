@@ -70,6 +70,30 @@ async fn n14_a_real_change_wins_over_what_was_there_also_one_to_unknown() {
 }
 
 #[tokio::test]
+async fn n14_a_real_change_replaces_a_value_this_version_could_not_read() {
+    let (repo, store) = setup().await;
+    let me = account(&repo, "me@example.org").await;
+    let mut locked = raw("uid-1", "t", "ciphertext");
+    locked.undecrypted = true;
+    let id = stored(&repo, me.id, locked).await;
+    let conv = conversation_of(&repo).await;
+    let mut newer = store.get(id).await.unwrap().unwrap();
+    newer.content["freesynergy.net:encryption"] = json!("quantum");
+    store.put(newer, "newer-version").await.unwrap();
+
+    let mut readable = raw("uid-1", "t", "words");
+    readable.encryption = Encryption::Mls;
+    repo.ingest(me.id, readable).await.unwrap();
+
+    let shown = repo.message(conv, id).await.unwrap().summary;
+    assert_eq!(
+        shown.encryption,
+        Encryption::Mls,
+        "not the old unknown value"
+    );
+}
+
+#[tokio::test]
 async fn attachment_names_lose_control_characters() {
     let (repo, _) = setup().await;
     let me = account(&repo, "me@example.org").await;

@@ -1292,8 +1292,8 @@ dependencies = [
 
 [[package]]
 name = "fs-store"
-version = "0.2.0"
-source = "git+https://github.com/FreeSynergy/fs-store?tag=v0.2.0#bf919bce0197e115f011d9192f9f2757b2b551e2"
+version = "0.3.0"
+source = "git+https://github.com/FreeSynergy/fs-store?tag=v0.3.0#cf506699d9ca1517277c22ec2761dfa1c33cf2b7"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
