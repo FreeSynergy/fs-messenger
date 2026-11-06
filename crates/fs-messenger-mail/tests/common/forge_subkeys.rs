@@ -203,3 +203,31 @@ pub fn padded(cert: &PublicCert, tag: &str, size: usize) -> PublicCert {
     form.details.direct_signatures.push(copy);
     PublicCert::from_binary(&form.to_bytes().unwrap()).unwrap()
 }
+
+/// As [`padded`], on the newest signature of subkey `index` itself.
+pub fn padded_subkey_signature(cert: &PublicCert, index: usize, size: usize) -> PublicCert {
+    use pgp::composed::{Deserializable as _, SignedPublicKey};
+    use pgp::packet::{Notation, Signature};
+    let bytes = cert.to_binary().unwrap();
+    let mut form = SignedPublicKey::from_bytes(std::io::Cursor::new(bytes)).unwrap();
+    let signatures = &mut form.public_subkeys[index].signatures;
+    let last = signatures.pop().unwrap();
+    let mut config = last.config().unwrap().clone();
+    let note = Notation {
+        readable: true,
+        name: b"pad@example.org".to_vec().into(),
+        value: vec![b'x'; size].into(),
+    };
+    config
+        .unhashed_subpackets
+        .push(Subpacket::regular(SubpacketData::Notation(note)).unwrap());
+    signatures.push(
+        Signature::from_config(
+            config,
+            last.signed_hash_value().unwrap(),
+            last.signature().unwrap().clone(),
+        )
+        .unwrap(),
+    );
+    PublicCert::from_binary(&form.to_bytes().unwrap()).unwrap()
+}

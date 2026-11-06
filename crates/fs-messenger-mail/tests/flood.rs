@@ -8,7 +8,7 @@ mod forge_subkeys;
 
 use common::{Offline, deliver, person};
 use forge::key;
-use forge_subkeys::{key_with_subkeys, padded, subkey_revoked};
+use forge_subkeys::{key_with_subkeys, padded, padded_subkey_signature, subkey_revoked};
 use fs_messenger_mail::autocrypt::{Decision, KeyLearner, Offer, format_header};
 use fs_messenger_mail::openpgp::{PublicCert, unix_now, usable_encryption_key};
 
@@ -72,8 +72,9 @@ async fn a_real_revocation_in_a_padded_form_is_taken_without_the_padding() {
     let before = held_bytes(&bob).await;
     let learner = KeyLearner::new(bob.keys.clone());
     let revoked = subkey_revoked(&rpgp, 0, &[]);
+    // The padding is on the very signature that is new, and on another one.
     let offer = Offer {
-        cert: padded(&revoked, "real", 40_000),
+        cert: padded_subkey_signature(&padded(&revoked, "real", 40_000), 0, 40_000),
         proven_by_known_key: false,
     };
     let decision = learner.learn(ALICE, &offer).await.unwrap();
