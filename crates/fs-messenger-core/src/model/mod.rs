@@ -19,7 +19,7 @@ pub use action::MessageAction;
 pub use attachment::{Attachment, Reaction};
 pub use conversation::ConversationSummary;
 pub use event::{Event, EventFilter, StateChange, TextChunk, TextPart, ToolCallChange};
-pub use external_id::ExternalId;
+pub use external_id::{ExternalId, MESSAGE_ID};
 pub use kinds::{DeliveryState, Encryption, Kind, SenderKind};
 pub use message::{Message, MessageSummary};
 pub use page::{ConversationPage, Cursor, MessagePage, Page};

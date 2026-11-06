@@ -11,10 +11,8 @@ use super::handle::Inner;
 use super::message_codec::message_to;
 use super::text::{display_name, preview};
 use crate::error::{Error, Result};
-use crate::model::{
-    DeliveryState, EncryptionPlan, ExternalId, Kind, Message, MessageSummary, SenderKind,
-};
-use crate::provider::{OutgoingBody, SendReceipt};
+use crate::model::{DeliveryState, EncryptionPlan, Kind, Message, MessageSummary, SenderKind};
+use crate::provider::OutgoingBody;
 
 impl Inner {
     pub(super) async fn record_sending(
@@ -25,11 +23,12 @@ impl Inner {
     ) -> Result<(Message, OutgoingBody)> {
         let _writes = self.writes.lock().await;
         let (_, sender) = self.load_account(account).await?;
+        let scope = sender.scope();
         let parent = match data.reply_to {
             Some(id) => self
                 .reload(id)
                 .await?
-                .map(|m| m.aliases)
+                .map(|m| [m.aliases, m.links, m.receipts].concat())
                 .unwrap_or_default(),
             None => vec![],
         };
@@ -45,7 +44,7 @@ impl Inner {
             };
             // Never the hidden recipients: a name is shown.
             let name = [data.to.as_slice(), &data.cc].concat().join(", ");
-            self.create_conversation(account, vec![], &name, kind)
+            self.create_conversation(account, &scope, vec![], &name, kind)
                 .await?
         };
         let conversation_id = conversation.envelope.id;
@@ -81,6 +80,9 @@ impl Inner {
             reasoning: String::new(),
             body_media_type: data.media_type.clone(),
             aliases: vec![],
+            links: vec![],
+            receipts: vec![],
+            alias_scope: scope,
             account: Some(account),
             outgoing: true,
             pending_reply: None,
@@ -118,47 +120,5 @@ impl Inner {
         };
         message.summary.state = DeliveryState::Failed;
         self.put(message_to(&message)?).await
-    }
-
-    pub(super) async fn record_sent(
-        &self,
-        id: ObjectId,
-        receipt: SendReceipt,
-        draft: ObjectId,
-    ) -> Result<()> {
-        let actual = receipt.encryption;
-        {
-            let _writes = self.writes.lock().await;
-            if let Some(mut message) = self.reload(id).await? {
-                message.summary.state = DeliveryState::Sent;
-                message.summary.encryption = actual;
-                message.aliases = receipt.aliases;
-                self.put(message_to(&message)?).await?;
-                let context = message.summary.envelope.context.as_deref();
-                let conversation: ObjectId = context.unwrap_or_default().parse()?;
-                self.adopt_alias(conversation, receipt.conversation).await?;
-                self.refresh(conversation).await?;
-            }
-        }
-        self.drop_draft_object(draft).await?;
-        if actual.is_end_to_end() {
-            Ok(())
-        } else {
-            Err(Error::EncryptionDowngraded {
-                message: id,
-                encryption: actual,
-            })
-        }
-    }
-
-    /// A conversation learns what the provider calls it, so its replies land in the same place.
-    async fn adopt_alias(&self, conversation: ObjectId, alias: Option<ExternalId>) -> Result<()> {
-        let Some(alias) = alias else { return Ok(()) };
-        let mut record = self.load_conversation(conversation).await?;
-        if !record.content.aliases.contains(&alias) {
-            record.content.aliases.push(alias);
-            self.put(record.to_object()?).await?;
-        }
-        Ok(())
     }
 }

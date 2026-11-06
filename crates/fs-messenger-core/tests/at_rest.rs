@@ -171,3 +171,20 @@ async fn the_stores_own_refusal_holds_for_a_message_built_by_the_program() {
         Err(fs_store::Error::EncryptionRequired(_))
     ));
 }
+
+#[test]
+fn c3_the_open_on_any_store_exists_only_with_test_support() {
+    let source = include_str!("../src/repo/handle.rs");
+    let at = source
+        .find("pub async fn open(")
+        .expect("the test constructor");
+    let before = source[..at].trim_end();
+    assert!(
+        before.ends_with(r#"#[cfg(feature = "test-support")]"#),
+        "`open` must stay behind the feature"
+    );
+    let manifest = include_str!("../Cargo.toml");
+    let dependencies = &manifest[manifest.find("[dependencies]").unwrap()..];
+    let dependencies = &dependencies[..dependencies.find("[dev-dependencies]").unwrap()];
+    assert!(!dependencies.contains("test-support"));
+}

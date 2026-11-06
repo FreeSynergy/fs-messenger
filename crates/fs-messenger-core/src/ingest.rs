@@ -37,7 +37,8 @@ pub struct SyncReport {
 /// The way in, for whoever runs a provider.
 #[async_trait]
 pub trait Ingest: Send + Sync {
-    /// Take one message from a provider. A replay is recognised by its aliases.
+    /// Take one message from a provider. A replay is recognised by an alias the provider issued; a
+    /// copy of what we sent by its receipt, if its sender is the account's own address.
     async fn ingest(&self, account: ObjectId, raw: RawMessage) -> Result<Ingested>;
     /// Fetch from the account's provider since its cursor and ingest everything. The cursor moves
     /// after a batch is stored; a crash in between only causes a replay.
@@ -60,6 +61,8 @@ pub trait Ingest: Send + Sync {
 /// The steps of the flow.
 #[async_trait]
 pub(crate) trait IngestSteps: Send + Sync {
+    /// The largest message taken.
+    fn max_message_bytes(&self) -> usize;
     /// Dedupe and store must not interleave with another delivery.
     async fn exclusive(&self) -> OwnedMutexGuard<()>;
     /// The stored message one of the aliases points at, if any.
@@ -71,7 +74,7 @@ pub(crate) trait IngestSteps: Send + Sync {
 
     /// The fixed flow.
     async fn ingest_flow(&self, account: ObjectId, raw: RawMessage) -> Result<Ingested> {
-        let raw = ingest_rules::accepted(raw)?;
+        let raw = ingest_rules::accepted(raw, self.max_message_bytes())?;
         let _writes = self.exclusive().await;
         if let Some(id) = self.known(account, &raw).await? {
             self.merge_aliases(id, account, &raw).await?;

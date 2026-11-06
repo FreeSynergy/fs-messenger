@@ -66,6 +66,7 @@ async fn sending_tells_the_state_and_a_replay_or_alias_is_silent() {
     no_event(&mut rx).await;
 
     let mut with_new_alias = raw("sent-1", "t", "x");
+    with_new_alias.sender = "me@example.org".into();
     with_new_alias.aliases.push(common::alias("uid-5"));
     repo.ingest(me.id, with_new_alias).await.unwrap();
     no_event(&mut rx).await;

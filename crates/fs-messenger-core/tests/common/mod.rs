@@ -1,5 +1,4 @@
-//! Shared helpers of the integration tests: a real store, and a small test double for `Provider`.
-
+//! Shared test helpers: a real store, and a small test double for `Provider`.
 #![allow(dead_code)] // each test file uses a different subset
 
 use std::collections::VecDeque;
@@ -19,7 +18,7 @@ use tokio::sync::mpsc;
 
 pub const ME: &str = "https://local.invalid/users/owner";
 
-/// A repo over a real in-memory store (in memory, so there is nothing at rest to encrypt).
+/// A repo over a real in-memory store.
 pub async fn setup() -> (MessengerRepo, Arc<dyn Store>) {
     let store: Arc<dyn Store> = Arc::new(TursoStore::open_in_memory().await.unwrap());
     (repo_over(store.clone(), 50).await, store)
@@ -41,7 +40,7 @@ pub async fn account(repo: &MessengerRepo, address: &str) -> Account {
     .unwrap()
 }
 
-/// An account with a provider that knows keys for `keys`.
+/// With a provider that knows keys for `keys`.
 pub async fn with_provider(
     repo: &MessengerRepo,
     encryption: Encryption,
@@ -54,7 +53,12 @@ pub async fn with_provider(
 }
 
 pub fn alias(id: &str) -> ExternalId {
-    ExternalId::new("message-id", id)
+    ExternalId::new("uid", id)
+}
+
+/// A sender's `Message-ID`.
+pub fn message_id(id: &str) -> ExternalId {
+    ExternalId::new(fs_messenger_core::MESSAGE_ID, id)
 }
 
 pub fn at(minute: u32) -> DateTime<Utc> {

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use super::consts::{ACCOUNT, CONTENT_TYPE, IDX_ADDRESS, IDX_KIND, SENSITIVE};
 use super::handle::Inner;
+use super::keys::{account_scope, normalised_address};
 use crate::error::{Error, Result};
 use crate::model::{Account, AccountSetup};
 use crate::provider::ProviderCursor;
@@ -19,6 +20,13 @@ pub(super) struct AccountContent {
     pub(super) address: String,
     pub(super) kind: String,
     pub(super) sync_cursor: Option<ProviderCursor>,
+}
+
+impl AccountContent {
+    /// The identity alias keys hang on; it outlives the account's object id.
+    pub(super) fn scope(&self) -> String {
+        account_scope(&self.kind, &self.address)
+    }
 }
 
 impl Inner {
@@ -70,10 +78,13 @@ impl Inner {
                 "an account needs an address and a kind".into(),
             ));
         }
+        if setup.address.contains('|') || setup.kind.contains('|') {
+            return Err(Error::Invalid("an account cannot contain `|`".into()));
+        }
         let _writes = self.writes.lock().await;
         let same = Query::new()
             .of_type(ACCOUNT)
-            .with_index(IDX_ADDRESS, setup.address.clone())
+            .with_index(IDX_ADDRESS, normalised_address(&setup.address))
             .with_index(IDX_KIND, setup.kind.clone());
         if self.store.count(&same).await? > 0 {
             return Err(Error::Conflict(format!(
@@ -90,7 +101,7 @@ impl Inner {
             sync_cursor: None,
         };
         let object = StoredObject::new(env, CONTENT_TYPE, serde_json::to_value(&content)?)
-            .with_index(IDX_ADDRESS, setup.address)
+            .with_index(IDX_ADDRESS, normalised_address(&setup.address))
             .with_index(IDX_KIND, setup.kind);
         self.put(object).await?;
         Ok(self.account_view(id, content))

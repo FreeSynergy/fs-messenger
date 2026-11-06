@@ -49,6 +49,14 @@ pub enum Error {
     /// ADR 0018, 0024: the program does not open on a store without encryption.
     #[error("the store is not encrypted; the messenger does not open on it (ADR 0024)")]
     StoreNotEncrypted,
+    /// A message is larger than this program takes. Nothing of it was stored.
+    #[error("message of {size} bytes refused, the limit is {limit}")]
+    TooLarge {
+        /// Its size, all parts counted.
+        size: usize,
+        /// The limit.
+        limit: usize,
+    },
     /// The input breaks a rule.
     #[error("invalid: {0}")]
     Invalid(String),

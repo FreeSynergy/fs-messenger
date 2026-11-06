@@ -3,7 +3,7 @@
 //! Pattern: Repository. `refresh` recomputes count, newest message and order from the messages, so
 //! a crash between two writes heals with the next change.
 
-use fs_store::{ActivityKind, Envelope, LogEntry, ObjectId, Op, Query, StoredObject};
+use fs_store::{Envelope, ObjectId, Op, Query};
 
 use super::consts::{
     CONVERSATION, IDX_CONV_ALIAS, IDX_DESC, IDX_FOLDER, IDX_SORT, IDX_UNREAD, NOTE, YES,
@@ -14,7 +14,7 @@ use super::keys::alias_key;
 use super::paging::split_page;
 use crate::error::{Error, Result};
 use crate::model::{
-    ConversationPage, ConversationSummary, Cursor, Encryption, ExternalId, Kind, Page, Usage,
+    ConversationPage, ConversationSummary, Cursor, Encryption, ExternalId, Kind, Page,
 };
 
 impl Inner {
@@ -28,28 +28,47 @@ impl Inner {
         ConversationRecord::from_object(o)
     }
 
-    /// The conversation with this alias, or a new one.
+    /// The conversation with this alias, if there is one.
+    pub(super) async fn find_conversation(
+        &self,
+        scope: &str,
+        alias: &ExternalId,
+    ) -> Result<Option<ConversationRecord>> {
+        let query = Query::new()
+            .of_type(CONVERSATION)
+            .with_index(IDX_CONV_ALIAS, alias_key(scope, alias))
+            .limit(1);
+        match self.store.query(&query).await?.pop() {
+            Some(o) => Ok(Some(ConversationRecord::from_object(o)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// The conversation with this alias, or a new one. One found from an earlier life of the account
+    /// goes over to the account as it is now.
     pub(super) async fn ensure_conversation(
         &self,
         account: ObjectId,
+        scope: &str,
         alias: &ExternalId,
         name: &str,
         kind: Kind,
     ) -> Result<ConversationRecord> {
-        let query = Query::new()
-            .of_type(CONVERSATION)
-            .with_index(IDX_CONV_ALIAS, alias_key(account, alias))
-            .limit(1);
-        if let Some(o) = self.store.query(&query).await?.pop() {
-            return ConversationRecord::from_object(o);
+        if let Some(mut record) = self.find_conversation(scope, alias).await? {
+            if record.content.account != Some(account) {
+                record.content.account = Some(account);
+                self.put(record.to_object()?).await?;
+            }
+            return Ok(record);
         }
-        self.create_conversation(account, vec![alias.clone()], name, kind)
+        self.create_conversation(account, scope, vec![alias.clone()], name, kind)
             .await
     }
 
     pub(super) async fn create_conversation(
         &self,
         account: ObjectId,
+        scope: &str,
         aliases: Vec<ExternalId>,
         name: &str,
         kind: Kind,
@@ -65,6 +84,7 @@ impl Inner {
             envelope,
             content: ConversationContent {
                 account: Some(account),
+                scope: scope.to_string(),
                 kind,
                 aliases,
                 ..ConversationContent::default()
@@ -162,47 +182,5 @@ impl Inner {
             }
         }
         Ok(page)
-    }
-
-    async fn put_logged(
-        &self,
-        o: StoredObject,
-        kind: ActivityKind,
-        why: serde_json::Value,
-    ) -> Result<()> {
-        let extra = vec![LogEntry::new(kind, why)];
-        self.store.put_and_log(o, &self.config.actor, extra).await?;
-        Ok(())
-    }
-
-    pub(super) async fn pin(&self, id: ObjectId, pinned: bool) -> Result<()> {
-        let _writes = self.writes.lock().await;
-        let mut record = self.load_conversation(id).await?;
-        record.content.pinned = pinned;
-        self.put(record.to_object()?).await
-    }
-
-    pub(super) async fn move_to(&self, id: ObjectId, folder: &str) -> Result<()> {
-        let _writes = self.writes.lock().await;
-        let mut record = self.load_conversation(id).await?;
-        record.content.folders = if folder.is_empty() {
-            vec![]
-        } else {
-            vec![folder.to_string()]
-        };
-        let why = serde_json::json!({ "folder": folder });
-        self.put_logged(record.to_object()?, ActivityKind::Move, why)
-            .await
-    }
-
-    pub(super) async fn usage(&self, id: ObjectId) -> Result<Usage> {
-        Ok(self.load_conversation(id).await?.content.usage)
-    }
-
-    pub(super) async fn record_usage(&self, id: ObjectId, usage: Usage) -> Result<()> {
-        let _writes = self.writes.lock().await;
-        let mut record = self.load_conversation(id).await?;
-        record.content.usage = usage;
-        self.put(record.to_object()?).await
     }
 }

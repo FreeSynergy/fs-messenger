@@ -18,6 +18,7 @@ use crate::error::{Error, Result};
 use crate::provider::Provider;
 
 const DEFAULT_PAGE_SIZE: usize = 50;
+const DEFAULT_MAX_MESSAGE_BYTES: usize = 25 * 1024 * 1024;
 
 /// How the program runs.
 #[derive(Clone, Debug)]
@@ -28,6 +29,8 @@ pub struct MessengerConfig {
     pub instance: Option<String>,
     /// Items per page. The contract has no page size; provisional.
     pub page_size: usize,
+    /// Largest message taken from a provider, all its parts counted. Provisional.
+    pub max_message_bytes: usize,
 }
 
 impl MessengerConfig {
@@ -37,6 +40,7 @@ impl MessengerConfig {
             actor: actor.into(),
             instance: None,
             page_size: DEFAULT_PAGE_SIZE,
+            max_message_bytes: DEFAULT_MAX_MESSAGE_BYTES,
         }
     }
 }

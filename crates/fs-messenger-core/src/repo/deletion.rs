@@ -1,12 +1,15 @@
 //! Deleting a message: `Delete` + tombstone (`data/messages/technical.md`).
 //!
 //! Pattern: Command in two store steps. The object goes, and an AS2 `Tombstone` under the same id
-//! keeps only the aliases and the place in the order, so a replay does not bring the message back
+//! keeps only what it is known as and the place in the arrival order, so a replay does not bring the message back
 //! and `next_unread` can go on from it. The store's log keeps the old image until compaction.
 
 use fs_store::{Envelope, ObjectId, StoredObject};
 
-use super::consts::{CONTENT_TYPE, IDX_ALIAS, IDX_ARRIVAL, IDX_ARRIVAL_DESC, SENSITIVE, TOMBSTONE};
+use super::consts::{
+    CONTENT_TYPE, IDX_ALIAS, IDX_ARRIVAL, IDX_ARRIVAL_DESC, IDX_LINK, IDX_RECEIPT, SENSITIVE,
+    TOMBSTONE,
+};
 use super::handle::Inner;
 use crate::error::Result;
 
@@ -26,7 +29,13 @@ impl Inner {
         env.context.clone_from(&old.envelope.context);
         env.sensitive = vec![SENSITIVE.to_string()];
         let mut tombstone = StoredObject::new(env, CONTENT_TYPE, serde_json::json!({}));
-        for key in [IDX_ALIAS, IDX_ARRIVAL, IDX_ARRIVAL_DESC] {
+        for key in [
+            IDX_ALIAS,
+            IDX_LINK,
+            IDX_RECEIPT,
+            IDX_ARRIVAL,
+            IDX_ARRIVAL_DESC,
+        ] {
             if let Some(values) = old.index.get(key) {
                 tombstone.index.insert(key.to_string(), values.clone());
             }

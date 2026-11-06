@@ -25,7 +25,8 @@ async fn the_echo_of_a_sent_message_is_recognised() {
     d.set_text("hi".into(), "text/plain".into()).await.unwrap();
     let id = d.send(None).await.unwrap();
 
-    let echo = raw("sent-1", "t", "hi");
+    let mut echo = raw("sent-1", "t", "hi");
+    echo.sender = "me@example.org".into();
     assert_eq!(
         repo.ingest(me.id, echo).await.unwrap(),
         Ingested::Duplicate(id)

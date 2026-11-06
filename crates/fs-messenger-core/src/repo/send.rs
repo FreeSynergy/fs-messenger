@@ -40,7 +40,10 @@ impl Inner {
         let outgoing = Outgoing::approve(message.id(), plan, body)?;
         let id = message.id();
         match provider.send(&outgoing).await {
-            Ok(receipt) => self.record_sent(id, receipt, data.id).await?,
+            Ok(receipt) => {
+                let scope = message.alias_scope.as_str();
+                self.record_sent(id, scope, receipt, data.id).await?;
+            }
             Err(e) => {
                 self.record_failed(id).await?;
                 return Err(e);

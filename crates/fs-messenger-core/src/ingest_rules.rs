@@ -12,6 +12,12 @@ fn bad_part(alias: &ExternalId) -> bool {
     bad(&alias.scheme) || bad(&alias.id)
 }
 
+fn size_of(raw: &RawMessage) -> usize {
+    let files: usize = raw.attachments.iter().map(|a| a.data.len()).sum();
+    let original = raw.original.as_ref().map_or(0, |o| o.bytes.len());
+    raw.body_text.len() + raw.reasoning.len() + files + original
+}
+
 fn scrub(text: &mut String) {
     if text.contains('\0') {
         *text = text.replace('\0', "");
@@ -19,10 +25,20 @@ fn scrub(text: &mut String) {
 }
 
 /// The message as the flow may take it, or the refusal.
-pub(crate) fn accepted(mut raw: RawMessage) -> Result<RawMessage> {
+pub(crate) fn accepted(mut raw: RawMessage, limit: usize) -> Result<RawMessage> {
+    let size = size_of(&raw);
+    if size > limit {
+        return Err(Error::TooLarge { size, limit });
+    }
+    // What a sender chose can only link, however a provider labels it.
+    let (chosen, issued): (Vec<_>, Vec<_>) = std::mem::take(&mut raw.aliases)
+        .into_iter()
+        .partition(ExternalId::is_sender_chosen);
+    raw.aliases = issued;
+    raw.links.extend(chosen);
     if raw.aliases.is_empty() {
         return Err(Error::Invalid(
-            "a provider must give every message at least one alias, creating its own if needed"
+            "a provider must give every message an id it issued itself; a Message-ID is not one"
                 .into(),
         ));
     }
@@ -36,6 +52,8 @@ pub(crate) fn accepted(mut raw: RawMessage) -> Result<RawMessage> {
             "a tool call needs the agent's reference".into(),
         ));
     }
+    // The sender writes these. A bad one loses the claim, never the mail.
+    raw.links.retain(|l| !bad_part(l));
     raw.in_reply_to = raw.in_reply_to.filter(|p| !bad_part(p));
     // The original keeps every byte; these are what is indexed and shown.
     scrub(&mut raw.body_text);

@@ -72,6 +72,7 @@ async fn main() -> Result<()> {
         "Hello!",
     );
     hello.encryption = Encryption::None;
+    hello.kind = fs_messenger_core::Kind::Mail;
     println!(
         "first delivery: {:?}",
         repo.ingest(me.id, hello.clone()).await?

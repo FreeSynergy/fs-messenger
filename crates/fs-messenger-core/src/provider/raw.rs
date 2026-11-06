@@ -49,8 +49,12 @@ pub struct RawToolCall {
 /// One message as a provider delivers it.
 #[derive(Clone, Debug)]
 pub struct RawMessage {
-    /// What the provider calls it; at least one. A provider without ids must create its own.
+    /// What the provider itself issued (UID, JMAP email id, Matrix event id); at least one. Only
+    /// these recognise a replay. A `message-id` given here counts as a link.
     pub aliases: Vec<ExternalId>,
+    /// What the sender chose (`Message-ID`). These only link replies to it, because anyone can
+    /// write them: they never make a message count as known.
+    pub links: Vec<ExternalId>,
     /// Room, mail thread, comment thread.
     pub conversation: ExternalId,
     /// Name of the conversation, if a new one has to be created.
@@ -87,7 +91,8 @@ pub struct RawMessage {
     pub reasoning: String,
     /// The job it is anchored to.
     pub job_ref: String,
-    /// Whether I wrote it, for example on another device.
+    /// Whether I wrote it, for example on another device. Only believed if `sender` is the
+    /// account's own address.
     pub outgoing: bool,
 }
 
@@ -101,6 +106,7 @@ impl RawMessage {
     ) -> Self {
         Self {
             aliases: vec![alias],
+            links: vec![],
             conversation,
             conversation_name: None,
             kind: Kind::default(),

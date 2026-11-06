@@ -58,8 +58,28 @@ pub(super) fn conversation_key(pinned: bool, at: DateTime<Utc>, id: ObjectId) ->
     )
 }
 
-/// Scoped to the account (provisional): a sender in one account cannot hide a message in another
-/// by claiming its `Message-ID`.
-pub(super) fn alias_key(account: ObjectId, alias: &ExternalId) -> String {
-    format!("{account}|{}|{}", alias.scheme, alias.id)
+/// Scoped to the account's identity, kind plus address, so that removing and adding an account
+/// again does not make its mail new. Provisional: a sender in one account cannot hide a message in
+/// another by claiming its id.
+pub(super) fn alias_key(scope: &str, alias: &ExternalId) -> String {
+    format!("{scope}|{}|{}", alias.scheme, alias.id)
+}
+
+/// Addresses compare without case or surrounding space.
+pub(super) fn normalised_address(address: &str) -> String {
+    address.trim().to_lowercase()
+}
+
+/// The stable identity of an account.
+pub(super) fn account_scope(kind: &str, address: &str) -> String {
+    format!(
+        "{}:{}",
+        kind.trim().to_lowercase(),
+        normalised_address(address)
+    )
+}
+
+/// Whether `sender` is the account's own address.
+pub(super) fn same_address(sender: &str, address: &str) -> bool {
+    !sender.trim().is_empty() && normalised_address(sender) == normalised_address(address)
 }

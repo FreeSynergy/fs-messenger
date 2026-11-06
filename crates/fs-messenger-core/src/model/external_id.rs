@@ -4,6 +4,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// The scheme of the mail header `Message-ID`, which whoever sends the mail writes.
+pub const MESSAGE_ID: &str = "message-id";
+
 /// What another system calls a message or a conversation: `Message-ID`, Matrix `event_id`, ...
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ExternalId {
@@ -14,6 +17,11 @@ pub struct ExternalId {
 }
 
 impl ExternalId {
+    /// Whether the sender chose this id, so that it can only link and never dedupes.
+    pub fn is_sender_chosen(&self) -> bool {
+        self.scheme.eq_ignore_ascii_case(MESSAGE_ID)
+    }
+
     /// An id in `scheme`.
     pub fn new(scheme: impl Into<String>, id: impl Into<String>) -> Self {
         Self {

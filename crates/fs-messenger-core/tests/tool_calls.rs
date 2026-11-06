@@ -165,3 +165,24 @@ async fn calls_delivered_with_a_message_are_treated_the_same_and_a_replay_adds_n
         .unwrap();
     assert_eq!(updated.id, calls[0].id, "the reference carried over");
 }
+
+#[tokio::test]
+async fn c8_an_incoming_revision_is_not_compared_to_the_engines() {
+    let (repo, _) = setup().await;
+    let (conv, id) = message(&repo).await;
+    repo.record_tool_call(id, "t1", call(ToolCallState::Working, "one"))
+        .await
+        .unwrap();
+    repo.record_tool_call(id, "t1", call(ToolCallState::Working, "two"))
+        .await
+        .unwrap();
+    let mut low = call(ToolCallState::Working, "three");
+    low.revision = 1;
+    let stored = repo.record_tool_call(id, "t1", low).await.unwrap();
+    assert_eq!((stored.summary.as_str(), stored.revision), ("three", 3));
+    let mut high = call(ToolCallState::Working, "four");
+    high.revision = 99;
+    let stored = repo.record_tool_call(id, "t1", high).await.unwrap();
+    assert_eq!(stored.revision, 4, "the number is the engine's");
+    assert_eq!(read(&repo, conv, id).await.tool_calls[0].summary, "four");
+}

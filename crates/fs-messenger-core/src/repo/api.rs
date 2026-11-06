@@ -94,9 +94,16 @@ impl Messenger for MessengerRepo {
         if let Some(parent) = reply_to {
             let m = self.inner.load_note(parent).await?;
             let context = m.summary.envelope.context.as_deref().unwrap_or_default();
-            data.conversation = Some(context.parse().map_err(crate::Error::Store)?);
+            let conversation = context.parse().map_err(crate::Error::Store)?;
+            // The conversation knows the account as it is now; the message as it was then.
+            data.account = self
+                .inner
+                .load_conversation(conversation)
+                .await?
+                .content
+                .account;
+            data.conversation = Some(conversation);
             data.reply_to = Some(parent);
-            data.account = m.account;
             data.to = if m.outgoing {
                 m.summary.envelope.to.clone()
             } else {

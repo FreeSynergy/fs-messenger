@@ -18,6 +18,7 @@ use crate::model::{Encryption, ExternalId, Kind, Usage};
 #[serde(rename_all = "camelCase", default)]
 pub(super) struct ConversationContent {
     pub(super) account: Option<ObjectId>,
+    pub(super) scope: String,
     pub(super) kind: Kind,
     #[serde(rename = "freesynergy.net:encryption")]
     pub(super) encryption: Encryption,
@@ -62,8 +63,10 @@ impl ConversationRecord {
         }
         if let Some(account) = c.account {
             o = o.with_index(IDX_ACCOUNT, account.to_string());
+        }
+        if !c.scope.is_empty() {
             for a in &c.aliases {
-                o = o.with_index(IDX_CONV_ALIAS, alias_key(account, a));
+                o = o.with_index(IDX_CONV_ALIAS, alias_key(&c.scope, a));
             }
         }
         Ok(o)

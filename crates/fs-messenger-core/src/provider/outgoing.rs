@@ -86,7 +86,7 @@ impl Outgoing {
     pub fn conversation(&self) -> &[ExternalId] {
         &self.body.conversation
     }
-    /// What the provider calls the parent; empty if this is no reply.
+    /// All the parent is known as, `Message-ID` included; empty if this is no reply.
     pub fn in_reply_to(&self) -> &[ExternalId] {
         &self.body.in_reply_to
     }
@@ -95,7 +95,8 @@ impl Outgoing {
 /// What a provider answers after sending.
 #[derive(Clone, Debug, Default)]
 pub struct SendReceipt {
-    /// What the provider calls the message now; its echo on a later fetch is recognised by these.
+    /// What the message is known as now, `Message-ID` included. A later copy is recognised by these
+    /// only if its sender is the account's own address.
     pub aliases: Vec<ExternalId>,
     /// What the provider calls the conversation.
     pub conversation: Option<ExternalId>,

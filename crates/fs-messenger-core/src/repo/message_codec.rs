@@ -12,11 +12,11 @@ use serde::{Deserialize, Serialize};
 
 use super::consts::{
     CONTENT_TYPE, IDX_ACCOUNT, IDX_ALIAS, IDX_ARRIVAL, IDX_ARRIVAL_DESC, IDX_BLOB, IDX_DESC,
-    IDX_ENCRYPTION, IDX_FLAGGED, IDX_FROM, IDX_HAS_ATTACHMENT, IDX_JOB, IDX_KIND, IDX_REPLY_ALIAS,
-    IDX_TASK, IDX_TEXT, IDX_UNREAD, SENSITIVE, YES,
+    IDX_ENCRYPTION, IDX_FLAGGED, IDX_FROM, IDX_HAS_ATTACHMENT, IDX_JOB, IDX_KIND, IDX_LINK,
+    IDX_RECEIPT, IDX_REPLY_ALIAS, IDX_TASK, IDX_TEXT, IDX_UNREAD, SENSITIVE, YES,
 };
 use super::keys::{alias_key, arrival_desc_key, arrival_key, desc_key};
-use super::text::body_media_type;
+use super::text::{body_media_type, indexable};
 use crate::error::Result;
 use crate::model::{
     Attachment, DeliveryState, Encryption, ExternalId, Kind, Message, MessageSummary, Reaction,
@@ -47,6 +47,9 @@ struct Content {
     task_refs: Vec<String>,
     reasoning: String,
     aliases: Vec<ExternalId>,
+    links: Vec<ExternalId>,
+    receipts: Vec<ExternalId>,
+    alias_scope: String,
     account: Option<ObjectId>,
     outgoing: bool,
     pending_reply: Option<ExternalId>,
@@ -86,6 +89,9 @@ pub(super) fn message_from(o: StoredObject) -> Result<Message> {
         reasoning: c.reasoning,
         body_media_type: body_media_type(&c.body_media_type),
         aliases: c.aliases,
+        links: c.links,
+        receipts: c.receipts,
+        alias_scope: c.alias_scope,
         account: c.account,
         outgoing: c.outgoing,
         pending_reply: c.pending_reply,
@@ -115,6 +121,9 @@ pub(super) fn message_to(m: &Message) -> Result<StoredObject> {
         task_refs: m.task_refs.clone(),
         reasoning: m.reasoning.clone(),
         aliases: m.aliases.clone(),
+        links: m.links.clone(),
+        receipts: m.receipts.clone(),
+        alias_scope: m.alias_scope.clone(),
         account: m.account,
         outgoing: m.outgoing,
         pending_reply: m.pending_reply.clone(),
@@ -146,7 +155,7 @@ fn add_index(o: &mut StoredObject, m: &Message) {
         IDX_FROM,
         s.envelope.attributed_to.clone().unwrap_or_default(),
     );
-    add(IDX_TEXT, m.body_text.clone());
+    add(IDX_TEXT, indexable(&m.body_text).to_string());
     add(IDX_JOB, s.job_ref.clone());
     let flag = |on: bool| if on { YES.to_string() } else { String::new() };
     add(IDX_UNREAD, flag(s.unread));
@@ -160,11 +169,20 @@ fn add_index(o: &mut StoredObject, m: &Message) {
     }
     if let Some(account) = m.account {
         add(IDX_ACCOUNT, account.to_string());
-        for a in &m.aliases {
-            add(IDX_ALIAS, alias_key(account, a));
+    }
+    if !m.alias_scope.is_empty() {
+        let scope = m.alias_scope.as_str();
+        for (key, ids) in [
+            (IDX_ALIAS, &m.aliases),
+            (IDX_LINK, &m.links),
+            (IDX_RECEIPT, &m.receipts),
+        ] {
+            for a in ids {
+                add(key, alias_key(scope, a));
+            }
         }
         if let Some(parent) = &m.pending_reply {
-            add(IDX_REPLY_ALIAS, alias_key(account, parent));
+            add(IDX_REPLY_ALIAS, alias_key(scope, parent));
         }
     }
 }

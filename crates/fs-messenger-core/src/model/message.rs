@@ -64,8 +64,14 @@ pub struct Message {
     pub reasoning: String,
     /// `text/plain` or `text/markdown`.
     pub body_media_type: String,
-    /// What other systems call this message. Not in the contract; the dedupe key.
+    /// What providers issued for this message. Not in the contract; the dedupe key.
     pub aliases: Vec<ExternalId>,
+    /// What senders chose for it; these only link. Not in the contract.
+    pub links: Vec<ExternalId>,
+    /// What a provider answered when we sent it. Not in the contract.
+    pub receipts: Vec<ExternalId>,
+    /// The stable identity of its account, which the alias keys hang on. Not in the contract.
+    pub alias_scope: String,
     /// The account it belongs to. Not in the contract.
     pub account: Option<ObjectId>,
     /// Whether I sent it. Not in the contract.

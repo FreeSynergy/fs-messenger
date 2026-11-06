@@ -7,65 +7,90 @@ use async_trait::async_trait;
 use fs_store::{Cond, ObjectId, Op, Query};
 use tokio::sync::OwnedMutexGuard;
 
-use super::consts::{IDX_ALIAS, NOTE};
+use super::consts::{IDX_ALIAS, IDX_LINK, IDX_RECEIPT, NOTE};
 use super::handle::Inner;
-use super::keys::alias_key;
+use super::keys::{alias_key, same_address};
 use super::message_codec::{message_from, message_to};
 use crate::error::{Error, Result};
 use crate::ingest::{IngestSteps, Ingested, SyncReport};
+use crate::model::ExternalId;
 use crate::provider::RawMessage;
 
 #[async_trait]
 impl IngestSteps for Inner {
+    fn max_message_bytes(&self) -> usize {
+        self.config.max_message_bytes
+    }
+
     async fn exclusive(&self) -> OwnedMutexGuard<()> {
         self.writes.clone().lock_owned().await
     }
 
+    /// Only an id the provider issued makes a message known. The one exception is a copy of what we
+    /// sent ourselves: it may match a receipt, but only with the account's own address as sender.
     async fn known(&self, account: ObjectId, raw: &RawMessage) -> Result<Option<ObjectId>> {
-        self.load_account(account).await?;
+        let (_, content) = self.load_account(account).await?;
+        let scope = content.scope();
+        let eq = |key: &str, alias: &ExternalId| Cond::Index {
+            key: key.to_string(),
+            op: Op::Eq,
+            value: alias_key(&scope, alias),
+        };
         let mut q = Query::new().limit(1);
         for alias in &raw.aliases {
-            q = q.or(Cond::Index {
-                key: IDX_ALIAS.to_string(),
-                op: Op::Eq,
-                value: alias_key(account, alias),
-            });
+            q = q.or(eq(IDX_ALIAS, alias));
+        }
+        if same_address(&raw.sender, &content.address) {
+            for alias in raw.aliases.iter().chain(&raw.links) {
+                q = q.or(eq(IDX_RECEIPT, alias));
+            }
         }
         Ok(self.store.query(&q).await?.pop().map(|o| o.envelope.id))
     }
 
     async fn merge_aliases(&self, id: ObjectId, account: ObjectId, raw: &RawMessage) -> Result<()> {
-        let mut object = self.store.get(id).await?.ok_or(Error::NotFound(id))?;
+        let object = self.store.get(id).await?.ok_or(Error::NotFound(id))?;
         if object.envelope.object_type == NOTE {
             let mut m = message_from(object)?;
-            let new: Vec<_> = raw
-                .aliases
-                .iter()
-                .filter(|a| !m.aliases.contains(a))
-                .cloned()
-                .collect();
-            if !new.is_empty() {
-                m.aliases.extend(new);
+            let before = (m.aliases.len(), m.links.len());
+            add_new(&mut m.aliases, &raw.aliases);
+            add_new(&mut m.links, &raw.links);
+            if before != (m.aliases.len(), m.links.len()) {
                 self.put(message_to(&m)?).await?;
             }
             return Ok(());
         }
-        let held = object.index.entry(IDX_ALIAS.to_string()).or_default();
-        let before = held.len();
-        for alias in &raw.aliases {
-            let key = alias_key(account, alias);
-            if !held.contains(&key) {
-                held.push(key);
+        let (_, content) = self.load_account(account).await?;
+        let scope = content.scope();
+        let mut tombstone = object;
+        let mut changed = false;
+        for (key, ids) in [(IDX_ALIAS, &raw.aliases), (IDX_LINK, &raw.links)] {
+            let held = tombstone.index.entry(key.to_string()).or_default();
+            for alias in ids {
+                let value = alias_key(&scope, alias);
+                if !held.contains(&value) {
+                    held.push(value);
+                    changed = true;
+                }
             }
         }
-        if held.len() != before {
-            self.put(object).await?;
+        tombstone.index.retain(|_, values| !values.is_empty());
+        if changed {
+            self.put(tombstone).await?;
         }
         Ok(())
     }
 
     async fn store_new(&self, account: ObjectId, raw: RawMessage) -> Result<ObjectId> {
         self.store_raw(account, raw).await
+    }
+}
+
+fn add_new(held: &mut Vec<ExternalId>, new: &[ExternalId]) {
+    for alias in new {
+        if !held.contains(alias) {
+            held.push(alias.clone());
+        }
     }
 }
 
@@ -84,7 +109,7 @@ impl Inner {
                 match self.ingest_flow(account, raw).await {
                     Ok(Ingested::Stored(_)) => report.stored += 1,
                     Ok(Ingested::Duplicate(_)) => report.duplicates += 1,
-                    Err(Error::Invalid(_)) => report.rejected += 1,
+                    Err(Error::Invalid(_) | Error::TooLarge { .. }) => report.rejected += 1,
                     Err(e) => return Err(e),
                 }
             }
