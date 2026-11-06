@@ -117,13 +117,15 @@ pub(super) fn kv_key(data: &StateStoreDataKey<'_>) -> Option<String> {
 
 /// Custom keys are bytes and journal keys text.
 pub(super) fn custom_key(name: &[u8]) -> String {
-    key(&[kind::CUSTOM, &crate::store::crypto::encode_bytes(name)])
+    key(&[kind::CUSTOM, &crate::store::hex::encode_bytes(name)])
 }
 
-/// All that hangs on a room.
+/// All that hangs on a room. Its info is one record, the rest hang below the room's id.
 pub(super) fn room_ops(room: &str) -> Vec<Op> {
-    kind::OF_ROOM
+    let below = kind::OF_ROOM
         .iter()
-        .map(|k| Op::RemovePrefix(prefix(&[k, room])))
-        .collect()
+        .map(|k| Op::RemovePrefix(prefix(&[k, room])));
+    let mut ops: Vec<Op> = below.collect();
+    ops.push(Op::Remove(key(&[kind::ROOM_INFO, room])));
+    ops
 }

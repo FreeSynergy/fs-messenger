@@ -3,7 +3,6 @@
 //! Pattern: Adapter: `Changes` to journal entries. Pickles of the SDK are serde values, and the
 //! pickle key is none: the store around them is what is encrypted (ADR 0024).
 
-use self::base64_free::encode_bytes;
 use matrix_sdk_base::crypto::olm::InboundGroupSession;
 use matrix_sdk_base::crypto::store::types::Changes;
 use serde::Serialize;
@@ -11,6 +10,7 @@ use serde::Serialize;
 use super::kind;
 use crate::error::StoreFail;
 use crate::store::Op;
+use crate::store::hex::encode_bytes;
 use crate::store::keys::key;
 
 fn put<T: Serialize>(parts: &[&str], value: &T) -> Result<Op, StoreFail> {
@@ -134,23 +134,4 @@ pub(super) async fn change_ops(changes: &Changes) -> Result<Vec<Op>, StoreFail> 
 /// The entry of a custom value.
 pub(super) fn custom_op(name: &str, value: &[u8]) -> Result<Op, StoreFail> {
     put(&[kind::CUSTOM, name], &encode_bytes(value))
-}
-
-/// Custom values hold arbitrary bytes, and journal values are text.
-pub(crate) mod base64_free {
-    /// As lower-case hex: no dependency, and these values are small.
-    pub(crate) fn encode_bytes(bytes: &[u8]) -> String {
-        bytes.iter().map(|b| format!("{b:02x}")).collect()
-    }
-
-    /// Back from hex.
-    pub(crate) fn decode_bytes(text: &str) -> Option<Vec<u8>> {
-        if !text.len().is_multiple_of(2) {
-            return None;
-        }
-        (0..text.len())
-            .step_by(2)
-            .map(|i| u8::from_str_radix(text.get(i..i + 2)?, 16).ok())
-            .collect()
-    }
 }

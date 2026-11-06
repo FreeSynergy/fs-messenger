@@ -27,12 +27,12 @@ use matrix_sdk_base::{
     MinimalRoomMemberEvent, RoomInfo, RoomMemberships, StateChanges, StateStore,
 };
 
-use super::FsStateStore;
 use super::persist::{change_ops, custom_key, kv_key, room_ops};
+use super::store::FsStateStore;
 use crate::error::StoreFail;
 use crate::store::Op;
-use crate::store::crypto::encode_bytes;
 use crate::store::forward::decorate_memory;
+use crate::store::hex::encode_bytes;
 
 fn hex_value(value: &[u8]) -> Result<String, StoreFail> {
     Ok(serde_json::to_string(&encode_bytes(value))?)

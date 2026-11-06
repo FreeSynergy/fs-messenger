@@ -9,12 +9,13 @@ use fs_messenger_matrix::StoreFail;
 use fs_messenger_matrix::store::{FsCryptoStore, FsJournal, FsStateStore, Journal, Op};
 use fs_store_unlogged::traits::{ActivityLog, ObjectQuery};
 use fs_store_unlogged::{ActivityFilter, Query, TursoStore};
+use matrix_sdk_base::deserialized_responses::RawAnySyncOrStrippedState;
 use matrix_sdk_base::store::StateStoreDataKey;
 use matrix_sdk_base::{RoomInfo, RoomState, StateChanges, StateStore};
 use matrix_sdk_crypto::store::CryptoStore;
 use ruma::events::{GlobalAccountDataEventType, StateEventType};
 use ruma::serde::Raw;
-use ruma::{room_id, user_id};
+use ruma::{owned_event_id, room_id, user_id};
 use serde_json::json;
 
 async fn state_over(store: &Arc<TursoStore>) -> FsStateStore {
@@ -42,7 +43,7 @@ async fn a_plain_store_is_refused() {
 }
 
 #[tokio::test]
-async fn state_comes_back_with_redactions_and_goes_with_its_room() {
+async fn state_comes_back_and_goes_with_its_room() {
     let store = support::fresh_store().await;
     let room = room_id!("!r:x.test");
     let other = room_id!("!r:x.test.other");
@@ -129,6 +130,49 @@ async fn state_comes_back_with_redactions_and_goes_with_its_room() {
     // Unlogged: the activity log holds nothing of all this.
     let logged = store.activities(&ActivityFilter::default()).await.unwrap();
     assert!(logged.is_empty(), "{} activities", logged.len());
+}
+
+#[tokio::test]
+async fn a_redaction_still_holds_after_a_restart() {
+    let store = support::fresh_store().await;
+    let room = room_id!("!r:x.test");
+    let state = state_over(&store).await;
+    let mut changes = StateChanges::new("t".to_owned());
+    changes.add_room(RoomInfo::new(room, RoomState::Joined));
+    let raw_topic = Raw::new(&topic("$t:x", "Secret plans"))
+        .unwrap()
+        .cast_unchecked();
+    let types = changes.state.entry(room.to_owned()).or_default();
+    let events = types.entry(StateEventType::RoomTopic).or_default();
+    events.insert(String::new(), raw_topic);
+    state.save_changes(&changes).await.unwrap();
+
+    let redaction = json!({
+        "type": "m.room.redaction", "event_id": "$r:x", "sender": "@a:x.test", "redacts": "$t:x",
+        "origin_server_ts": 2, "content": {"redacts": "$t:x"},
+    });
+    let mut changes = StateChanges::new("t2".to_owned());
+    let redactions = changes.redactions.entry(room.to_owned()).or_default();
+    redactions.insert(
+        owned_event_id!("$t:x"),
+        Raw::new(&redaction).unwrap().cast_unchecked(),
+    );
+    state.save_changes(&changes).await.unwrap();
+    drop(state);
+
+    let state = state_over(&store).await;
+    let held = state
+        .get_state_event(room, StateEventType::RoomTopic, "")
+        .await
+        .unwrap();
+    let RawAnySyncOrStrippedState::Sync(raw) = held.expect("the event stays, emptied") else {
+        panic!("a joined room has synced state");
+    };
+    assert!(
+        !raw.json().get().contains("Secret plans"),
+        "{}",
+        raw.json().get()
+    );
 }
 
 #[tokio::test]

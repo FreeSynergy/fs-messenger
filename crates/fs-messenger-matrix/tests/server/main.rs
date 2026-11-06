@@ -12,12 +12,14 @@
 //! No test double anywhere in this binary: real provider, real core on an encrypted `TursoStore`, real
 //! server. What the server holds is read by plain HTTP, past the provider.
 
+mod acts;
 mod common;
 mod http;
 
 mod ciphertext;
 mod late_key;
 mod plain;
+mod replay;
 mod restart;
 mod roundtrip;
 mod secrets;

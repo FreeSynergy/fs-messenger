@@ -10,38 +10,19 @@ use matrix_sdk_base::StateChanges;
 use matrix_sdk_base::StateStore;
 use matrix_sdk_base::deserialized_responses::DisplayName;
 use matrix_sdk_base::ruma::serde::Raw;
-use matrix_sdk_base::ruma::{EventId, OwnedEventId, OwnedRoomId, OwnedUserId, RoomId, UserId};
+use matrix_sdk_base::ruma::{EventId, OwnedEventId};
 use matrix_sdk_base::store::{MemoryStore, StateStoreDataKey, StateStoreDataValue};
-use serde::de::DeserializeOwned;
 
-use super::{FsStateStore, kind};
+use super::kind;
+use super::store::FsStateStore;
 use crate::error::StoreFail;
 use crate::store::Journal;
-use crate::store::crypto::decode_bytes;
+use crate::store::hex::decode_bytes;
 use crate::store::keys::parts;
-
-fn read<T: DeserializeOwned>(text: &str) -> Result<T, StoreFail> {
-    Ok(serde_json::from_str(text)?)
-}
+use crate::store::read_back::{bad, read, room, user};
 
 fn raw<T>(text: &str) -> Result<Raw<T>, StoreFail> {
     Ok(Raw::from_json_string(text.to_owned())?)
-}
-
-fn bad(what: &str, why: impl std::fmt::Display) -> StoreFail {
-    StoreFail::Record(format!("{what}: {why}"))
-}
-
-fn room(text: &str) -> Result<OwnedRoomId, StoreFail> {
-    <&RoomId>::try_from(text)
-        .map(ToOwned::to_owned)
-        .map_err(|e| bad("room id", e))
-}
-
-fn user(text: &str) -> Result<OwnedUserId, StoreFail> {
-    <&UserId>::try_from(text)
-        .map(ToOwned::to_owned)
-        .map_err(|e| bad("user id", e))
 }
 
 fn event(text: &str) -> Result<OwnedEventId, StoreFail> {

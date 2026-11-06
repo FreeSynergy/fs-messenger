@@ -20,8 +20,9 @@ use matrix_sdk_base::crypto::vodozemac::Curve25519PublicKey;
 use matrix_sdk_base::crypto::{DeviceData, GossipRequest, SecretInfo, UserIdentityData};
 use zeroize::Zeroizing;
 
+use super::kind;
 use super::persist::{change_ops, custom_op, inbound_ops};
-use super::{FsCryptoStore, kind};
+use super::store::FsCryptoStore;
 use crate::error::StoreFail;
 use crate::store::Op;
 use crate::store::forward::decorate_memory;

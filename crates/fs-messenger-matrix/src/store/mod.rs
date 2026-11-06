@@ -7,8 +7,10 @@
 mod crypto;
 mod forward;
 mod fs_journal;
+mod hex;
 mod journal;
 mod keys;
+mod read_back;
 mod state;
 
 pub use crypto::FsCryptoStore;
