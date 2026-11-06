@@ -61,7 +61,7 @@ async fn sending_into_a_plain_room_is_refused_and_nothing_reaches_the_server() {
         .await
         .unwrap();
     assert_eq!(plan.encryption, Encryption::None);
-    assert_eq!(plan.missing_keys, [room.clone()]);
+    assert_eq!(plan.missing_keys, std::slice::from_ref(&room));
 
     // By the room's id: the core's plan refuses.
     let needle = format!("MustNotLeave-{}", token());
@@ -98,7 +98,7 @@ async fn sending_into_a_plain_room_is_refused_and_nothing_reaches_the_server() {
         panic!("{refused}");
     };
     assert_eq!(encryption, Encryption::None);
-    assert_eq!(missing_keys, [room.clone()]);
+    assert_eq!(missing_keys, std::slice::from_ref(&room));
 
     // Nothing of Alice's on the server, seen past the provider.
     let events = http::room_events(&view, &room).await;

@@ -158,11 +158,6 @@ impl Person {
         person.sync().await; // Uploads the device's keys.
         person
     }
-
-    /// One sync through the core.
-    pub async fn sync(&self) -> SyncReport {
-        self.repo.sync(self.account.id).await.expect("sync")
-    }
 }
 
 /// Alice opens an encrypted room with Bob, and Bob joins. Answers the room.

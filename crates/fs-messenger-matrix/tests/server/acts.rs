@@ -1,5 +1,6 @@
 //! What a person does through the core and the provider.
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use fs_messenger_core::{

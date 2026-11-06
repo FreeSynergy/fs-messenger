@@ -2,6 +2,9 @@
 //! `clear_data = false` builds a new store from the journal, so what the suite reads back after such a
 //! call has gone through an encrypted `TursoStore`.
 
+// The SDK's macro asks for features of its own crate, which this crate does not have.
+#![allow(unexpected_cfgs)]
+
 mod support;
 
 use std::sync::Arc;

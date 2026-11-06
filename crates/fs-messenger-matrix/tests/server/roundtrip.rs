@@ -105,7 +105,7 @@ async fn someone_without_keys_is_named_and_nothing_leaves() {
             .await
             .unwrap()
     };
-    assert_eq!(plan.missing_keys, [carol.clone()]);
+    assert_eq!(plan.missing_keys, std::slice::from_ref(&carol));
 
     let text = format!("NotSent-{}", token());
     let refused = alice.send(&[&carol], &text).await.unwrap_err();
