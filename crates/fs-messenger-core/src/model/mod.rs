@@ -1,4 +1,4 @@
-//! Value types of the messenger; names mirror `messenger.capnp` (draft 0.2), no generated types.
+//! Value types of the messenger; names mirror `messenger.capnp` (draft 0.3), no generated types.
 
 mod account;
 mod action;

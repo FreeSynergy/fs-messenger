@@ -8,7 +8,7 @@ use fs_store::{Blob, Envelope, StoredObject};
 
 use super::consts::{CONTENT_TYPE, DOCUMENT, SENSITIVE};
 use super::handle::Inner;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::model::Message;
 
 /// Up to here a body stays in `content`.
@@ -33,13 +33,16 @@ impl Inner {
         Ok(())
     }
 
-    /// The whole text, for whoever reads the message.
+    /// The whole text, for whoever reads the message. A body that has gone is store damage and says
+    /// so: an empty text would read as a message that says nothing, and forward would send it.
     pub(super) async fn hydrate(&self, mut m: Message) -> Result<Message> {
         if let Some(id) = m.stored.body_blob {
             let blob = self.store.get(id).await?.and_then(|o| o.original);
-            if let Some(blob) = blob {
-                m.body_text = String::from_utf8_lossy(&blob.bytes).into_owned();
-            }
+            let blob = blob.ok_or(Error::BodyMissing {
+                message: m.id(),
+                body: id,
+            })?;
+            m.body_text = String::from_utf8_lossy(&blob.bytes).into_owned();
         }
         Ok(m)
     }

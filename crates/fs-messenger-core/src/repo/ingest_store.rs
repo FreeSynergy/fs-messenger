@@ -88,6 +88,7 @@ impl Inner {
                 arrival: self.next_arrival(),
                 undecrypted: raw.undecrypted,
                 signature: raw.signature,
+                too_large: too_large.unwrap_or(0),
             },
             body_text: raw.body_text,
             body_html: String::new(),
@@ -112,7 +113,6 @@ impl Inner {
             outgoing,
             pending_reply,
             references: raw.references,
-            too_large,
             sort_at,
             stored: StoredForm::default(),
         };

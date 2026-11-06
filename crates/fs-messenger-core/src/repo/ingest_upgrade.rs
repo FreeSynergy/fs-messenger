@@ -24,7 +24,7 @@ impl Inner {
         let Ok(mut m) = message_from(object) else {
             return Ok(());
         };
-        if !m.summary.undecrypted || m.too_large.is_some() {
+        if !m.summary.undecrypted || m.summary.too_large > 0 {
             return Ok(());
         }
         let old = m.clone();

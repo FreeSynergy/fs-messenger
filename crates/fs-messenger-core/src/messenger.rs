@@ -18,7 +18,7 @@ use crate::model::{
 };
 
 /// The version of `messenger.capnp` this core mirrors.
-pub const CONTRACT_VERSION: &str = "0.2";
+pub const CONTRACT_VERSION: &str = "0.3";
 
 fn no<T>(capability: &str) -> Result<T> {
     Err(Unsupported::new(capability, "this provider does not offer it").into())

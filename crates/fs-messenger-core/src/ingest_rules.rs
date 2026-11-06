@@ -14,6 +14,20 @@ const MAX_REFERENCES: usize = 64;
 const MAX_LINKS: usize = 64;
 /// More files than this is treated as too large, whatever they weigh.
 const MAX_ATTACHMENTS: usize = 256;
+/// Who, what about, what it is known as: more than this is treated as too large. These fields stay
+/// in the message, so every change logs them again and every list carries them.
+const MAX_HEADER_BYTES: usize = 64 * 1024;
+
+/// Without control characters: what a header, a name or a recipient may hold.
+pub(crate) fn printable(text: &str) -> String {
+    text.chars().filter(|c| !c.is_control()).collect()
+}
+
+fn strip(text: &mut String) {
+    if text.contains(char::is_control) {
+        *text = printable(text);
+    }
+}
 
 fn scrub(text: &mut String) {
     if text.contains('\0') {
@@ -29,18 +43,13 @@ fn texts(list: &[String]) -> usize {
     list.iter().map(String::len).sum()
 }
 
-/// Everything else a message brings, none of which the original makes redundant.
-fn metadata_size(raw: &RawMessage) -> usize {
+/// Who, what about, what it is known as.
+fn header_size(raw: &RawMessage) -> usize {
     let one = |t: &Option<String>| t.as_ref().map_or(0, String::len);
     let files: usize = raw
         .attachments
         .iter()
         .map(|a| a.name.len() + a.media_type.len())
-        .sum();
-    let calls: usize = raw
-        .tool_calls
-        .iter()
-        .map(|t| t.agent_ref.len() + serde_json::to_string(&t.call).map_or(0, |s| s.len()))
         .sum();
     raw.sender.len()
         + raw.job_ref.len()
@@ -59,7 +68,17 @@ fn metadata_size(raw: &RawMessage) -> usize {
             .as_ref()
             .map_or(0, |p| ids(std::slice::from_ref(p)))
         + files
-        + calls
+}
+
+/// Everything else a message brings, none of which the original makes redundant. Tool calls count
+/// here and not as a header: what a tool returned can rightly be larger.
+fn metadata_size(raw: &RawMessage) -> usize {
+    let calls: usize = raw
+        .tool_calls
+        .iter()
+        .map(|t| t.agent_ref.len() + serde_json::to_string(&t.call).map_or(0, |s| s.len()))
+        .sum();
+    header_size(raw) + calls
 }
 
 /// The size the limit applies to: metadata plus the original, or plus what was decoded from it if
@@ -75,7 +94,10 @@ pub(crate) fn size_of(raw: &RawMessage) -> usize {
 /// The message as the flow may take it, and its size if it is over what is taken; or the refusal.
 pub(crate) fn judged(mut raw: RawMessage, limit: usize) -> Result<(RawMessage, Option<usize>)> {
     let size = size_of(&raw);
-    let over = (size > limit || raw.attachments.len() > MAX_ATTACHMENTS).then_some(size);
+    let over = (size > limit
+        || raw.attachments.len() > MAX_ATTACHMENTS
+        || header_size(&raw) > MAX_HEADER_BYTES)
+        .then_some(size);
     // What a sender chose can only link, however a provider labels it.
     let (chosen, issued): (Vec<_>, Vec<_>) = std::mem::take(&mut raw.aliases)
         .into_iter()
@@ -106,15 +128,16 @@ pub(crate) fn judged(mut raw: RawMessage, limit: usize) -> Result<(RawMessage, O
     // The original keeps every byte; these are what is indexed and shown.
     scrub(&mut raw.body_text);
     scrub(&mut raw.reasoning);
-    scrub(&mut raw.sender);
-    scrub(&mut raw.job_ref);
-    raw.subject.iter_mut().for_each(scrub);
-    raw.conversation_name.iter_mut().for_each(scrub);
+    // These can go on into a reply's recipients and a mail's headers: no CRLF, no other control.
+    strip(&mut raw.sender);
+    strip(&mut raw.job_ref);
+    raw.subject.iter_mut().for_each(strip);
+    raw.conversation_name.iter_mut().for_each(strip);
     raw.to
         .iter_mut()
         .chain(&mut raw.cc)
         .chain(&mut raw.task_refs)
-        .for_each(scrub);
+        .for_each(strip);
     // A signature says who wrote what: without a sender or readable content it says nothing.
     if raw.undecrypted || raw.sender.trim().is_empty() {
         raw.signature = SignatureCheck::NotVerified;
@@ -133,6 +156,8 @@ pub(crate) fn stub_of(raw: RawMessage) -> RawMessage {
         "",
     );
     stub.aliases = raw.aliases.into_iter().take(8).collect();
+    // Already capped; a reply to it still finds it.
+    stub.links = raw.links;
     stub.conversation_name = raw.conversation_name.map(|n| short(&n, 200));
     stub.subject = Some(
         raw.subject

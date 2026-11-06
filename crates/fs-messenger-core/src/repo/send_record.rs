@@ -11,6 +11,7 @@ use super::handle::Inner;
 use super::message_codec::message_to;
 use super::text::{display_name, preview};
 use crate::error::{Error, Result};
+use crate::ingest_rules::printable;
 use crate::model::{
     DeliveryState, EncryptionPlan, ExternalId, Kind, Message, MessageSummary, SenderKind,
     SignatureCheck, StoredForm,
@@ -84,6 +85,7 @@ impl Inner {
                 arrival: self.next_arrival(),
                 undecrypted: false,
                 signature: SignatureCheck::default(),
+                too_large: 0,
             },
             body_text: data.text.clone(),
             body_html: String::new(),
@@ -104,7 +106,6 @@ impl Inner {
             outgoing: true,
             pending_reply: None,
             references: chain,
-            too_large: None,
             sort_at: None,
             stored: StoredForm::default(),
         };
@@ -121,7 +122,7 @@ impl Inner {
             conversation: clean(conversation.content.aliases),
             in_reply_to,
             references,
-            subject: data.subject.clone(),
+            subject: printable(&data.subject),
         };
         Ok((message, body))
     }

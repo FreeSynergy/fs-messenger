@@ -17,6 +17,8 @@ use crate::model::{
     ConversationPage, ConversationSummary, Cursor, Encryption, ExternalId, Kind, Page,
 };
 
+const MAX_NAME_CHARS: usize = 200;
+
 impl Inner {
     pub(super) async fn load_conversation(&self, id: ObjectId) -> Result<ConversationRecord> {
         let o = self
@@ -73,10 +75,12 @@ impl Inner {
         name: &str,
         kind: Kind,
     ) -> Result<ConversationRecord> {
+        // Every list page carries it, and a sender writes it.
+        let name: String = name.chars().take(MAX_NAME_CHARS).collect();
         let shown = if name.trim().is_empty() {
             "Conversation"
         } else {
-            name
+            name.as_str()
         };
         let mut envelope = Envelope::new(CONVERSATION, shown);
         envelope.iri = self.iri(envelope.id);

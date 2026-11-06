@@ -15,11 +15,22 @@ pub(crate) fn normalise(mut plan: EncryptionPlan, recipients: &[String]) -> Encr
     plan
 }
 
+/// A recipient goes on into a mail header: a CRLF there would add one.
+pub(crate) fn check_recipients(recipients: &[String]) -> Result<()> {
+    if recipients.iter().any(|r| r.contains(char::is_control)) {
+        return Err(Error::Invalid(
+            "a recipient cannot contain control characters".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Only end-to-end, and only if nobody lacks a key.
 pub(crate) fn check(plan: &EncryptionPlan, recipients: &[String]) -> Result<()> {
     if recipients.is_empty() {
         return Err(Error::Invalid("no recipients".into()));
     }
+    check_recipients(recipients)?;
     if !plan.encryption.is_end_to_end() || !plan.missing_keys.is_empty() {
         let plan = normalise(plan.clone(), recipients);
         return Err(Error::EncryptionRefused {
