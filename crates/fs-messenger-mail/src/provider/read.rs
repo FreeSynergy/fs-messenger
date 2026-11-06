@@ -2,19 +2,20 @@
 //!
 //! Pattern: Template method. The state is `openpgp` only if decryption really happened in this flow;
 //! everything else is `none`. `transport-only` is never claimed: we measure TLS on our own leg to the
-//! server, not the way the mail travelled. All of parsing, decrypting and verifying runs on one blocking
-//! thread; a panic in there leaves that mail stored and undecrypted, with its original.
+//! server, not the way the mail travelled. Parsing, decrypting and verifying run on blocking threads; a
+//! panic in there leaves that mail stored and undecrypted, with its original and its outer headers.
 //!
 //! What a signature says, PROVISIONAL: it vouches only for what it covers. In a `multipart/signed` that
 //! is the signed part, never the headers around it, so headers and key offers come from inside that part.
-//! `Valid` needs the covered part to name the sender in its own `From`: a signature over a bare body says
-//! nothing about who sent it, and anybody can put it under any `From`.
+//! `Valid` needs the covered part to name the sender in its own `From`, in a clean header block: a
+//! signature over a bare body says nothing about who sent it, and prose with a `From:` line is prose.
 
 use std::sync::Arc;
 
 use fs_messenger_core::{Encryption, SignatureCheck};
 use tokio::runtime::Handle;
 
+use super::contained::contained;
 use super::facade::MailProvider;
 use super::opened::{check_of, opened_mail, plain, undecrypted};
 use crate::address::normalise_address;
@@ -89,12 +90,12 @@ impl Covered {
     fn of(payload: &[u8]) -> Self {
         if let Shape::Signed { content, signature } = classify(payload) {
             return Self {
-                fields: MailFields::read(&content).unwrap_or_default(),
+                fields: MailFields::read_covered(&content).unwrap_or_default(),
                 detached: Some((content, signature)),
             };
         }
         Self {
-            fields: MailFields::read(payload).unwrap_or_default(),
+            fields: MailFields::read_covered(payload).unwrap_or_default(),
             detached: None,
         }
     }
@@ -137,8 +138,7 @@ impl Reader {
         })
     }
 
-    fn read(&self, raw: &[u8]) -> Result<ReadMail> {
-        let outer = MailFields::read(raw).unwrap_or_default();
+    fn read(&self, raw: &[u8], outer: MailFields) -> Result<ReadMail> {
         match classify(raw) {
             Shape::Plain | Shape::Unparsable => Ok(plain(outer, SignatureCheck::NotSigned)),
             Shape::MalformedEncrypted => Ok(undecrypted(outer.clone(), outer.message_id)),
@@ -149,7 +149,7 @@ impl Reader {
 
     /// `multipart/signed` at the root, not encrypted. It can show who wrote it; a key offer needs more.
     fn read_signed(&self, outer: MailFields, content: &[u8], signature: &[u8]) -> Result<ReadMail> {
-        let covered = MailFields::read(content).unwrap_or_default();
+        let covered = MailFields::read_covered(content).unwrap_or_default();
         let claimed = covered.from.clone().or_else(|| outer.from.clone());
         let claimed = claimed.unwrap_or_default();
         let offers = [offer_of(&outer.autocrypt, &claimed)];
@@ -204,7 +204,8 @@ impl Reader {
 }
 
 impl MailProvider {
-    /// One mail. Fails only if the key store fails, so the cursor stays and nothing is lost.
+    /// One mail. Fails only if the key store fails, so the cursor stays and nothing is lost. The outer
+    /// headers are read first and alone: a panic while opening costs the content, not who sent it.
     pub(super) async fn read_mail(&self, raw: Vec<u8>) -> Result<ReadMail> {
         let reader = Reader {
             keys: self.keys.clone(),
@@ -212,12 +213,22 @@ impl MailProvider {
             limit: self.limits.bytes,
             runtime: Handle::current(),
         };
-        match tokio::task::spawn_blocking(move || reader.read(&raw)).await {
-            Ok(read) => read,
-            Err(e) => {
-                tracing::warn!(error = %e, "reading a mail panicked; it stays undecrypted");
-                Ok(ReadMail::unreadable())
-            }
-        }
+        let bytes = raw.clone();
+        let outer = contained(
+            move || MailFields::read(&bytes).unwrap_or_default(),
+            MailFields::default,
+        )
+        .await;
+        let for_panic = outer.clone();
+        contained(
+            move || reader.read(&raw, outer),
+            move || Ok(undecrypted(for_panic.clone(), for_panic.message_id)),
+        )
+        .await
+    }
+
+    /// Only the start of a mail over the limit was read: who and what, nothing else.
+    pub(super) async fn read_cut_off(&self, start: Vec<u8>) -> ReadMail {
+        contained(move || ReadMail::cut_off(&start), ReadMail::unreadable).await
     }
 }

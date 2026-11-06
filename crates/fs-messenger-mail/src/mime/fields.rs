@@ -145,6 +145,49 @@ pub fn thread_root(fields: &MailFields) -> Option<&str> {
         .map(String::as_str)
 }
 
+/// Whether `raw` begins with a clean header block: every line up to the first empty one is a field or the
+/// continuation of one. `mail-parser` is lenient, as it should be for mail from the wild: it skips a line
+/// that is no header and reads on, which turns `From:` lines in prose into headers.
+fn clean_header_block(raw: &[u8]) -> bool {
+    let mut seen_field = false;
+    for line in raw.split(|b| *b == b'\n') {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        if line.is_empty() {
+            return true;
+        }
+        if line[0] == b' ' || line[0] == b'\t' {
+            if !seen_field {
+                return false;
+            }
+            continue;
+        }
+        let Some(colon) = line.iter().position(|b| *b == b':') else {
+            return false;
+        };
+        let name = &line[..colon];
+        if name.is_empty() || !name.iter().all(|b| b.is_ascii_graphic()) {
+            return false;
+        }
+        seen_field = true;
+    }
+    true
+}
+
+impl MailFields {
+    /// Read a part a signature covers, where a header means something. Without a clean header block it
+    /// has no headers at all: it is text, all of it, and what looks like a `From:` in there is prose.
+    pub fn read_covered(raw: &[u8]) -> Option<Self> {
+        if clean_header_block(raw) {
+            return Self::read(raw);
+        }
+        Some(Self {
+            text_body: String::from_utf8_lossy(raw).replace("\r\n", "\n"),
+            text_media_type: "text/plain".to_string(),
+            ..Self::default()
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,6 +210,37 @@ References: <root@example.org> <parent@example.org>\r\nContent-Type: text/plain\
         assert_eq!(f.text_body, "line1\nline2\n");
         assert_eq!(f.sent_at.unwrap().timestamp(), 1_637_446_921);
         assert_eq!(thread_root(&f), Some("root@example.org"));
+    }
+
+    #[test]
+    fn prose_with_header_lines_has_no_headers() {
+        let prose =
+            b"Dear all\nFrom: a@b\nSubject: quoted\nAutocrypt: addr=a@b; keydata=QUJD\n\nbye\n";
+        let f = MailFields::read_covered(prose).unwrap();
+        assert_eq!(f.from, None);
+        assert_eq!(f.subject, None);
+        assert!(f.autocrypt.is_empty());
+        assert!(
+            f.text_body.starts_with("Dear all\nFrom: a@b"),
+            "nothing is lost"
+        );
+        for junk in [
+            &b"From: a@b\nnot a header\nSubject: s\n\nx"[..],
+            b" folded first\n\nx",
+            b"Two words: x\n\ny",
+        ] {
+            assert_eq!(
+                MailFields::read_covered(junk).unwrap().subject,
+                None,
+                "{junk:?}"
+            );
+            assert_eq!(MailFields::read_covered(junk).unwrap().from, None);
+        }
+        let clean = b"From: a@b\r\nSubject: s\r\n continued\r\nX-Y: z\r\n\r\nbody";
+        assert_eq!(
+            MailFields::read_covered(clean).unwrap().from.as_deref(),
+            Some("a@b")
+        );
     }
 
     #[test]

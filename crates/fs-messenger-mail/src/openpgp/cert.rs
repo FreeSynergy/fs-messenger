@@ -86,35 +86,51 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 impl PublicCert {
-    /// Creation time of the newest self-signature, subkeys included, for telling two forms of one key
-    /// apart: a new or newly bound subkey makes a form newer.
-    pub(crate) fn newest_self_signature(&self) -> u64 {
-        let details = &self.0.details;
-        details
-            .direct_signatures
-            .iter()
-            .chain(details.users.iter().flat_map(|u| u.signatures.iter()))
-            .chain(
-                self.0
-                    .public_subkeys
-                    .iter()
-                    .flat_map(|s| s.signatures.iter()),
-            )
-            .filter_map(pgp::packet::Signature::created)
-            .map(|t| u64::from(t.as_secs()))
-            .max()
-            .unwrap_or(0)
+    /// This certificate and everything `other` adds to the same key: signatures and subkeys, each
+    /// verified by `verify_bindings` before anyone relies on it. Nothing is ever removed, so a form with
+    /// a subkey stripped cannot make a peer unusable, and a form without a revocation cannot undo one.
+    /// Answers whether anything was added.
+    pub(crate) fn merge(&mut self, other: &Self) -> bool {
+        let (held, offered) = (&mut self.0, &other.0);
+        let mut changed = add_missing(
+            &mut held.details.revocation_signatures,
+            &offered.details.revocation_signatures,
+        );
+        changed |= add_missing(
+            &mut held.details.direct_signatures,
+            &offered.details.direct_signatures,
+        );
+        for user in &offered.details.users {
+            match held.details.users.iter_mut().find(|u| u.id == user.id) {
+                Some(mine) => changed |= add_missing(&mut mine.signatures, &user.signatures),
+                None => {
+                    held.details.users.push(user.clone());
+                    changed = true;
+                }
+            }
+        }
+        for sub in &offered.public_subkeys {
+            let same = |s: &&mut pgp::composed::SignedPublicSubKey| {
+                s.key.fingerprint() == sub.key.fingerprint()
+            };
+            match held.public_subkeys.iter_mut().find(|s| same(s)) {
+                Some(mine) => changed |= add_missing(&mut mine.signatures, &sub.signatures),
+                None => {
+                    held.public_subkeys.push(sub.clone());
+                    changed = true;
+                }
+            }
+        }
+        changed
     }
+}
 
-    /// How many revocations it carries, of the key and of its subkeys.
-    pub(crate) fn revocations(&self) -> usize {
-        let of_subkeys = self
-            .0
-            .public_subkeys
-            .iter()
-            .flat_map(|s| s.signatures.iter())
-            .filter(|s| s.typ() == Some(pgp::packet::SignatureType::SubkeyRevocation))
-            .count();
-        self.0.details.revocation_signatures.len() + of_subkeys
+fn add_missing<T: Clone + PartialEq>(held: &mut Vec<T>, offered: &[T]) -> bool {
+    let before = held.len();
+    for item in offered {
+        if !held.contains(item) {
+            held.push(item.clone());
+        }
     }
+    held.len() != before
 }

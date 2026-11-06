@@ -67,8 +67,9 @@ impl KeyLearner {
             }
             (Decision::SameKey { take_offered }, Some(mut peer)) => {
                 if *take_offered {
-                    let fresh = PeerKey::new(&address, &offer.cert, peer.source, now)?;
-                    peer.cert = fresh.cert;
+                    let mut merged = peer.certificate()?;
+                    merged.merge(&offer.cert);
+                    peer.cert = PeerKey::new(&address, &merged, peer.source, now)?.cert;
                 }
                 peer.last_seen = now;
                 self.keys.put_peer(&peer).await?;

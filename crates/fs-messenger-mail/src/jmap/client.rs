@@ -17,7 +17,6 @@ use crate::secret::Password;
 use crate::tls::TlsTrust;
 
 const CORE: &str = "urn:ietf:params:jmap:core";
-const TIMEOUT: Duration = Duration::from_secs(60);
 
 /// How to reach a JMAP server.
 #[derive(Clone, Debug)]
@@ -36,6 +35,8 @@ pub struct JmapConfig {
     /// Other `https` origins this account may send its credentials to, if the session document names
     /// them. Empty by default: only the origin of `session_url` gets them.
     pub other_credential_origins: Vec<String>,
+    /// How long a connection may stand still. [`crate::fetch::DEFAULT_IDLE_TIMEOUT`].
+    pub idle_timeout: Duration,
 }
 
 /// At most this much JSON from a server. Generous: `maxObjectsInGet` ids per call, no mail bodies.
@@ -53,13 +54,14 @@ async fn read_limited(mut response: reqwest::Response, limit: usize) -> Result<V
     Ok(body)
 }
 
-/// The body of `response` up to one byte past `limit`, and whether there was more than `limit`.
-async fn read_start(mut response: reqwest::Response, limit: usize) -> Result<(Vec<u8>, bool)> {
-    let keep = limit.saturating_add(1);
+/// The body of `response` up to `limit` bytes, and whether there was more.
+async fn read_start(mut response: reqwest::Response, limit: u64) -> Result<(Vec<u8>, bool)> {
+    let keep = usize::try_from(limit).unwrap_or(usize::MAX);
     let mut body = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(err)? {
-        body.extend_from_slice(&chunk[..chunk.len().min(keep - body.len())]);
-        if body.len() == keep {
+        let fits = chunk.len().min(keep - body.len());
+        body.extend_from_slice(&chunk[..fits]);
+        if fits < chunk.len() {
             return Ok((body, true));
         }
     }
@@ -93,7 +95,10 @@ impl JmapClient {
             .tls_backend_preconfigured(config.trust.client_config()?)
             .https_only(true)
             .redirect(Policy::none())
-            .timeout(TIMEOUT)
+            // How long nothing may move, not how long a download may take: a large mail on a slow line
+            // is no fault, and a sender must not be able to stall an account by writing one.
+            .connect_timeout(config.idle_timeout)
+            .read_timeout(config.idle_timeout)
             .build()
             .map_err(err)?;
         Ok(Self {
@@ -171,9 +176,9 @@ impl JmapClient {
             .ok_or_else(|| err("the upload answered no blobId"))
     }
 
-    /// Download a blob, byte for byte. Of one over `limit` only the start, one byte past it, and
-    /// `true`: holding the rest would let a sender fill the memory.
-    pub(super) async fn download(&self, blob: &str, limit: usize) -> Result<(Vec<u8>, bool)> {
+    /// Download a blob, byte for byte, up to `limit` bytes. `true` if there is more: holding the rest
+    /// would let a sender fill the memory.
+    pub(super) async fn download(&self, blob: &str, limit: u64) -> Result<(Vec<u8>, bool)> {
         let session = self.session().await?;
         let url = session
             .download_url
@@ -227,6 +232,6 @@ mod tests {
         let (body, cut) = read_start(response(10), 10).await.unwrap();
         assert_eq!((body.len(), cut), (10, false));
         let (body, cut) = read_start(response(5000), 10).await.unwrap();
-        assert_eq!((body.len(), cut), (11, true));
+        assert_eq!((body.len(), cut), (10, true));
     }
 }

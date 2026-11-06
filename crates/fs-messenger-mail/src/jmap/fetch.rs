@@ -14,8 +14,8 @@ use serde_json::{Value, json};
 use super::client::{JmapClient, err};
 use crate::error::{MailError, Result};
 use crate::fetch::{
-    FetchLimits, FetchedBatch, FetchedMail, MailCursor, MailFetch, MailboxCursor, MailboxRole,
-    sent_is_optional,
+    Budget, FetchLimits, FetchedBatch, FetchedMail, HEAD_BYTES, MailCursor, MailFetch,
+    MailboxCursor, MailboxRole, sent_is_optional,
 };
 
 const MAIL: &str = "urn:ietf:params:jmap:mail";
@@ -110,6 +110,7 @@ impl JmapFetch {
             state,
             walking,
             anchor,
+            pending: vec![],
         };
         Ok((ids, cursor))
     }
@@ -138,76 +139,118 @@ impl JmapFetch {
             state: next,
             walking: false,
             anchor: None,
+            pending: vec![],
         };
         Ok(Some((ids, cursor, args["hasMoreChanges"] == true)))
     }
 
-    /// Download those of `ids` that are in `mailbox`. Ids that vanished meanwhile are simply gone.
+    /// Download those of `ids` that are in `mailbox`, as far as the budget goes, and answer the ids left
+    /// for later. Ids that vanished meanwhile are simply gone.
     async fn download(
         &self,
         ids: Vec<String>,
-        mailbox: &str,
-        role: MailboxRole,
-        limit: usize,
+        (mailbox, role): (&str, MailboxRole),
+        limits: &FetchLimits,
+        budget: &mut Budget,
         out: &mut Vec<FetchedMail>,
-    ) -> Result<()> {
+    ) -> Result<Vec<String>> {
         if ids.is_empty() {
-            return Ok(());
+            return Ok(vec![]);
         }
         let call = json!([["Email/get", {"accountId": self.account().await?, "ids": ids,
-            "properties": ["id", "blobId", "mailboxIds"]}, "g"]]);
+            "properties": ["id", "blobId", "mailboxIds", "size"]}, "g"]]);
         let answers = self.client.call(&[MAIL], call).await?;
         let list = JmapClient::answer(&answers, "g")?["list"]
             .as_array()
             .cloned()
             .unwrap_or_default();
+        let bytes = u64::try_from(limits.bytes).unwrap_or(u64::MAX);
+        let mut left = vec![];
         for email in list.iter().filter(|e| e["mailboxIds"][mailbox] == true) {
             let (Some(id), Some(blob)) = (email["id"].as_str(), email["blobId"].as_str()) else {
                 return Err(err("Email/get answered a mail without id or blobId"));
             };
-            let (bytes, truncated) = self.client.download(blob, limit).await?;
+            let size = email["size"].as_u64().unwrap_or(0);
+            let over = size > bytes;
+            if !left.is_empty() || !budget.admit(if over { HEAD_BYTES } else { size }) {
+                left.push(id.to_string());
+                continue;
+            }
+            let keep = if over { HEAD_BYTES } else { bytes };
+            let (body, cut) = self.client.download(blob, keep).await?;
             out.push(FetchedMail {
-                bytes,
+                bytes: body,
                 role,
                 stable_id: format!("{mailbox}/{id}"),
-                truncated,
+                // A server that said small and sends more is cut off at the limit as well.
+                too_large: (over || cut).then_some(size.max(keep)),
             });
         }
-        Ok(())
+        Ok(left)
     }
 
     async fn read_mailbox(
         &self,
-        mailbox: &str,
-        role: MailboxRole,
+        (mailbox, role): (&str, MailboxRole),
         limits: &FetchLimits,
+        budget: &mut Budget,
         batch: &mut FetchedBatch,
     ) -> Result<()> {
-        let (state, walking, anchor) = match batch.cursor.mailboxes.get(mailbox).cloned() {
+        let held = batch.cursor.mailboxes.get(mailbox).cloned();
+        let (ids, mut next, mut more) = match held {
             Some(MailboxCursor::Jmap {
                 state,
                 walking,
                 anchor,
-            }) => (Some(state), walking, anchor),
-            _ => (None, false, None),
+                pending,
+            }) if !pending.is_empty() => {
+                // First what the last call had to leave; the walk or the changes go on after that.
+                let cursor = MailboxCursor::Jmap {
+                    state,
+                    walking,
+                    anchor,
+                    pending: vec![],
+                };
+                (pending, cursor, true)
+            }
+            Some(MailboxCursor::Jmap {
+                state,
+                walking: false,
+                ..
+            }) => match self.changes(&state, limits.mails).await? {
+                Some(answer) => answer,
+                None => self.first_page(mailbox, None, None, limits).await?,
+            },
+            Some(MailboxCursor::Jmap { state, anchor, .. }) => {
+                self.first_page(mailbox, Some(state), anchor, limits)
+                    .await?
+            }
+            _ => self.first_page(mailbox, None, None, limits).await?,
         };
-        let changes = match &state {
-            Some(state) if !walking => self.changes(state, limits.mails).await?,
-            _ => None,
-        };
-        let (ids, next, more) = if let Some(answer) = changes {
-            answer
-        } else {
-            // A first listing, its next page, or the server can no longer say what changed.
-            let state = state.filter(|_| walking);
-            let (ids, next) = self.listing(mailbox, state, anchor, limits.mails).await?;
-            (ids, next, true)
-        };
-        self.download(ids, mailbox, role, limits.bytes, &mut batch.mails)
+        let left = self
+            .download(ids, (mailbox, role), limits, budget, &mut batch.mails)
             .await?;
+        if !left.is_empty() {
+            more = true;
+            if let MailboxCursor::Jmap { pending, .. } = &mut next {
+                *pending = left;
+            }
+        }
         batch.more |= more;
         batch.cursor.mailboxes.insert(mailbox.to_string(), next);
         Ok(())
+    }
+
+    /// A first listing, its next page, or the server can no longer say what changed.
+    async fn first_page(
+        &self,
+        mailbox: &str,
+        state: Option<String>,
+        anchor: Option<String>,
+        limits: &FetchLimits,
+    ) -> Result<(Vec<String>, MailboxCursor, bool)> {
+        let (ids, next) = self.listing(mailbox, state, anchor, limits.mails).await?;
+        Ok((ids, next, true))
     }
 }
 
@@ -223,11 +266,17 @@ impl MailFetch for JmapFetch {
             cursor: cursor.clone(),
             ..FetchedBatch::default()
         };
-        self.read_mailbox(&boxes.inbox, MailboxRole::Inbox, limits, &mut batch)
-            .await?;
+        let mut budget = Budget::new(limits.batch_bytes);
+        self.read_mailbox(
+            (&boxes.inbox, MailboxRole::Inbox),
+            limits,
+            &mut budget,
+            &mut batch,
+        )
+        .await?;
         if let Some(sent) = &boxes.sent {
             sent_is_optional(
-                self.read_mailbox(sent, MailboxRole::Sent, limits, &mut batch)
+                self.read_mailbox((sent, MailboxRole::Sent), limits, &mut budget, &mut batch)
                     .await,
             );
         }

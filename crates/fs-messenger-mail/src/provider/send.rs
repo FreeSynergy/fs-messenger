@@ -13,7 +13,7 @@ use fs_messenger_core::{
 use super::facade::MailProvider;
 use super::ids::{encode_id, header_id};
 use super::receive::{SCHEME_MESSAGE_ID, SCHEME_THREAD};
-use crate::address::normalise_address;
+use crate::address::{clean_address, normalise_address};
 use crate::autocrypt::format_header;
 use crate::error::MailError;
 use crate::mime::{PayloadInput, build_outer, build_payload};
@@ -25,6 +25,9 @@ use crate::submit::{MailEnvelope, SentCopy};
 impl MailProvider {
     /// The certificate to use for `address`, if there is a usable one.
     async fn usable_cert(&self, address: &str, now: u64) -> Result<Option<PublicCert>, MailError> {
+        if !clean_address(address) {
+            return Ok(None);
+        }
         let address = normalise_address(address);
         let cert = if address == self.identity.address {
             self.keys.own_key(&address).await?.map(|k| k.public())

@@ -10,7 +10,6 @@ use fs_store::Blob;
 
 use super::facade::MailProvider;
 use super::ids::{encode_id, kept};
-use super::read::ReadMail;
 use crate::address::normalise_address;
 use crate::error::MailError;
 use crate::fetch::{FetchedMail, MailboxRole};
@@ -25,16 +24,15 @@ const MEDIA_RFC822: &str = "message/rfc822";
 impl MailProvider {
     /// One fetched mail as the core wants it.
     pub(super) async fn receive(&self, mail: FetchedMail) -> Result<RawMessage, MailError> {
-        let read = if mail.truncated {
-            ReadMail::cut_off(&mail.bytes)
+        let read = if mail.too_large.is_some() {
+            self.read_cut_off(mail.bytes.clone()).await
         } else {
             self.read_mail(mail.bytes.clone()).await?
         };
-        if let Some((sender, offer)) = &read.offer
-            && normalise_address(sender) != self.identity.address
-            && let Err(e) = self.learner().learn(sender, offer).await
+        if let Some((sender, offer)) = read.offer.clone()
+            && normalise_address(&sender) != self.identity.address
         {
-            tracing::warn!(error = %e, "could not learn a key from an Autocrypt header");
+            self.learn_contained(sender, offer).await;
         }
         let fields = read.fields;
         let local = encode_id(&format!("{}/{}", self.identity.address, mail.stable_id));

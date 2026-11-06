@@ -13,8 +13,11 @@ use fs_messenger_core::{
     Result as CoreResult, SendReceipt,
 };
 
+use tokio::runtime::Handle;
+
+use super::contained::contained;
 use crate::address::normalise_address;
-use crate::autocrypt::KeyLearner;
+use crate::autocrypt::{Decision, KeyLearner, Offer};
 use crate::error::MailError;
 use crate::fetch::{FetchLimits, MailCursor, MailFetch};
 use crate::keys::{KeyStore, PeerKey};
@@ -23,6 +26,8 @@ use crate::submit::MailSubmit;
 
 /// Mails per mailbox in one fetch.
 const FETCH_MAILS: usize = 50;
+/// Bytes in one fetch, by the sizes the server reports. Twice the core's default limit on a mail.
+const FETCH_BATCH_BYTES: u64 = 50 * 1024 * 1024;
 
 /// Whose mail this is.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -47,7 +52,7 @@ pub struct MailProvider {
     pub(super) submitter: Arc<dyn MailSubmit>,
     pub(super) keys: Arc<dyn KeyStore>,
     pub(super) limits: FetchLimits,
-    learner: KeyLearner,
+    learner: Arc<KeyLearner>,
 }
 
 impl MailProvider {
@@ -62,27 +67,33 @@ impl MailProvider {
             identity,
             fetcher,
             submitter,
-            learner: KeyLearner::new(keys.clone()),
+            learner: Arc::new(KeyLearner::new(keys.clone())),
             keys,
             // The core's own default, so that both refuse at the same point.
             limits: FetchLimits {
                 mails: FETCH_MAILS,
                 bytes: MessengerConfig::new("").max_message_bytes,
+                batch_bytes: FETCH_BATCH_BYTES,
             },
         }
     }
 
-    /// The largest mail, and the largest plaintext after decrypting. A program that sets
-    /// `MessengerConfig::max_message_bytes` must set the same here: the core keeps a stub only of what
-    /// is over ITS limit, so a lower value here would store the cut-off start as an original.
+    /// The largest mail, and the largest plaintext after decrypting.
     #[must_use]
     pub fn with_max_message_bytes(mut self, bytes: usize) -> Self {
         self.limits.bytes = bytes;
         self
     }
 
-    pub(super) fn learner(&self) -> &KeyLearner {
-        &self.learner
+    /// Apply the rule to an offer where a panic in rPGP costs the offer, not the mail. A failure only
+    /// costs the offer too: nothing is learned from this mail.
+    pub(super) async fn learn_contained(&self, sender: String, offer: Offer) {
+        let (learner, runtime) = (self.learner.clone(), Handle::current());
+        let work = move || runtime.block_on(learner.learn(&sender, &offer));
+        let learned = contained(work, || Ok(Decision::Ignore)).await;
+        if let Err(e) = learned {
+            tracing::warn!(error = %e, "could not learn a key from an Autocrypt header");
+        }
     }
 
     /// Our own key: the stored one, or a new one, stored at once.

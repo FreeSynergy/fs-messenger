@@ -6,8 +6,6 @@
 //! whose signature verifies with the known key. An outer `Autocrypt` header proves nothing, whatever
 //! signature the mail carries, because that header is not covered by the signature.
 
-use std::cmp::Ordering;
-
 use super::learner::Offer;
 use crate::keys::PeerKey;
 use crate::openpgp::{KeyRefusal, usable_encryption_key};
@@ -19,9 +17,9 @@ pub enum Decision {
     Ignore,
     /// Nobody known yet: trust on first use.
     FirstSeen,
-    /// The known key, seen again; possibly with newer self-signatures.
+    /// The known key, seen again; possibly with more self-signatures.
     SameKey {
-        /// Whether to take the offered certificate over the stored one.
+        /// Whether the offered certificate adds something to merge into the stored one.
         take_offered: bool,
     },
     /// A proven rotation.
@@ -63,27 +61,14 @@ fn may_prove(known: &PeerKey, now: u64) -> bool {
     })
 }
 
-/// The same primary key. A forger cannot add self-signatures, but he can offer an older form or strip
-/// signatures from one. So a form with fewer revocations is never taken, one with more always is.
+/// The same primary key. A forger cannot add self-signatures, so what a form brings beyond the held one,
+/// if its signatures verify, is the owner's: a revocation, a new subkey, a later expiry. The two forms are
+/// merged, and nothing is ever given up: a form with a subkey stripped takes nothing away.
 fn same_key(known: &PeerKey, offer: &Offer, now: u64) -> Decision {
-    let Ok(held) = known.certificate() else {
-        return Decision::SameKey {
-            take_offered: false,
-        };
-    };
-    let held_state = usable_encryption_key(&held, now);
-    let offered_state = usable_encryption_key(&offer.cert, now);
-    let take_offered = if offered_state == Err(KeyRefusal::Invalid) {
-        false
-    } else {
-        match offer.cert.revocations().cmp(&held.revocations()) {
-            Ordering::Less => false,
-            Ordering::Greater => true,
-            Ordering::Equal => {
-                let newer = offer.cert.newest_self_signature() > held.newest_self_signature();
-                newer && (held_state.is_err() || offered_state.is_ok())
-            }
-        }
-    };
+    let invalid = usable_encryption_key(&offer.cert, now) == Err(KeyRefusal::Invalid);
+    let take_offered = !invalid
+        && known
+            .certificate()
+            .is_ok_and(|mut held| held.merge(&offer.cert));
     Decision::SameKey { take_offered }
 }

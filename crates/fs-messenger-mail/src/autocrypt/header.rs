@@ -9,7 +9,7 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 
-use crate::address::normalise_address;
+use crate::address::{clean_address, normalise_address};
 use crate::error::{MailError, Result};
 use crate::openpgp::PublicCert;
 
@@ -50,7 +50,7 @@ impl AutocryptHeader {
             }
         }
         Some(Self {
-            address: address.filter(|a: &String| !a.is_empty())?,
+            address: address.filter(|a: &String| !a.is_empty() && clean_address(a))?,
             keydata: keydata.filter(|k: &Vec<u8>| !k.is_empty())?,
             prefers_mutual,
         })
@@ -102,6 +102,8 @@ mod tests {
         assert!(AutocryptHeader::parse(b"keydata=QUJD").is_none());
         assert!(AutocryptHeader::parse(b"addr=a@b").is_none());
         assert!(AutocryptHeader::parse(b"addr=a@b; keydata=not base64!").is_none());
+        assert!(AutocryptHeader::parse(b"addr=a\x01@b; keydata=QUJD").is_none());
+        assert!(AutocryptHeader::parse(b"addr=a\nb@c; keydata=QUJD").is_none());
     }
 
     #[test]

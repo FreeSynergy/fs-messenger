@@ -10,7 +10,7 @@
 use pgp::composed::SignedPublicSubKey;
 use pgp::packet::{Signature, SignatureType};
 use pgp::ser::Serialize as _;
-use pgp::types::{KeyDetails, KeyVersion, PublicParams};
+use pgp::types::{KeyDetails, KeyVersion, PublicParams, VerifyingKey};
 
 use super::PublicCert;
 
@@ -76,6 +76,91 @@ pub(crate) fn may_vouch(cert: &PublicCert) -> bool {
     cert.0.verify_bindings().is_ok()
         && cert.0.details.revocation_signatures.is_empty()
         && strong(cert.0.primary_key.public_params())
+}
+
+/// A key of a certificate that may sign, and until when.
+pub(crate) struct SigningKey<'a> {
+    key: Signer<'a>,
+    /// When its life ends, if it does.
+    until: Option<u64>,
+}
+
+enum Signer<'a> {
+    Primary(&'a pgp::packet::PublicKey),
+    Subkey(&'a SignedPublicSubKey),
+}
+
+impl SigningKey<'_> {
+    pub(crate) fn key(&self) -> &dyn VerifyingKey {
+        match self.key {
+            Signer::Primary(k) => k,
+            Signer::Subkey(k) => k,
+        }
+    }
+
+    /// Whether `signature` over `content` verifies with this key, and was made while it lived.
+    pub(crate) fn verifies(&self, signature: &Signature, content: &[u8]) -> bool {
+        let data = std::io::Cursor::new(content);
+        self.covers(signature)
+            && match self.key {
+                Signer::Primary(k) => signature.verify(k, data).is_ok(),
+                Signer::Subkey(k) => signature.verify(k, data).is_ok(),
+            }
+    }
+
+    /// Whether the signature was made while the key lived. Its date is the signer's word: whoever
+    /// stole an expired key can write an older one (`DESIGN.md`).
+    pub(crate) fn covers(&self, signature: &Signature) -> bool {
+        let made = signature.created().map(|t| u64::from(t.as_secs()));
+        match (self.until, made) {
+            (None, _) => true,
+            (Some(until), Some(made)) => made < until,
+            (Some(_), None) => false,
+        }
+    }
+}
+
+fn life_end(created: u64, sig: &Signature) -> Option<u64> {
+    let lifetime = sig
+        .key_expiration_time()
+        .map_or(0, |d| u64::from(d.as_secs()));
+    (lifetime != 0).then_some(created + lifetime)
+}
+
+/// The keys of `cert` a signature may be made with: those whose own self-signature carries the sign
+/// flag, without a revocation, in a certificate whose signatures verify. An encryption or authentication
+/// subkey signs nothing, and a revoked one proves nothing. Whether the whole key is revoked is
+/// `may_vouch`.
+pub(crate) fn signing_keys(cert: &PublicCert) -> Vec<SigningKey<'_>> {
+    let mut keys: Vec<SigningKey<'_>> = vec![];
+    if cert.0.verify_bindings().is_err() {
+        return keys;
+    }
+    if let Some(own) = self_signature(cert).filter(|s| s.key_flags().sign()) {
+        let created = u64::from(cert.0.primary_key.created_at().as_secs());
+        keys.push(SigningKey {
+            key: Signer::Primary(&cert.0.primary_key),
+            until: life_end(created, own),
+        });
+    }
+    for sub in &cert.0.public_subkeys {
+        let revoked = sub
+            .signatures
+            .iter()
+            .any(|s| s.typ() == Some(SignatureType::SubkeyRevocation));
+        let bindings = sub
+            .signatures
+            .iter()
+            .filter(|s| s.typ() == Some(SignatureType::SubkeyBinding));
+        if let Some(binding) = newest(bindings).filter(|s| !revoked && s.key_flags().sign()) {
+            let created = u64::from(sub.key.created_at().as_secs());
+            keys.push(SigningKey {
+                key: Signer::Subkey(sub),
+                until: life_end(created, binding),
+            });
+        }
+    }
+    keys
 }
 
 fn self_signature(cert: &PublicCert) -> Option<&Signature> {

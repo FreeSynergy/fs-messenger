@@ -14,6 +14,12 @@ pub fn normalise_address(address: &str) -> String {
     inner.trim().to_lowercase()
 }
 
+/// Whether this can be an address at all. A control character in one could end up in a command or a
+/// header, and it never names a mailbox.
+pub(crate) fn clean_address(address: &str) -> bool {
+    !address.contains(char::is_control)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

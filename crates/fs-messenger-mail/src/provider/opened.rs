@@ -31,10 +31,12 @@ pub(super) fn opened_mail(
     let believed = verified || inner.header_protected;
     let sender = if believed { inner.from.clone() } else { None };
     let sender = sender.or_else(|| outer.from.clone()).unwrap_or_default();
-    // The rule of `autocrypt::rule`: only an offer inside a payload the known key signed is a proof.
+    // The rule of `autocrypt::rule`: only an offer the known key signed, in a part that declares its
+    // headers as headers (`hp`), is a proof. Someone who signs a text with a header-like line in it did
+    // not offer a key.
     let inner_offer = offer_of(&inner.autocrypt, &sender);
     let offer = match inner_offer {
-        Some(cert) => offering(&sender, Some(cert), verified),
+        Some(cert) => offering(&sender, Some(cert), verified && inner.header_protected),
         None => offering(&sender, offer_of(&outer.autocrypt, &sender), false),
     };
     let message_id = if believed {

@@ -31,6 +31,10 @@ pub enum MailboxCursor {
         walking: bool,
         /// The last id of that walk: an id stays right when mail is deleted, a position does not.
         anchor: Option<String>,
+        /// Ids found and not read yet, because the byte budget of the last call ran out. The state has
+        /// moved past them, so they are kept here until they are read.
+        #[serde(default)]
+        pending: Vec<String>,
     },
 }
 
@@ -75,6 +79,7 @@ mod tests {
                 state: "s1".into(),
                 walking: false,
                 anchor: None,
+                pending: vec![],
             },
         );
         let written = c.write().unwrap();

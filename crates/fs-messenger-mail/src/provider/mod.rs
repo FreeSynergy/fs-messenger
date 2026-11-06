@@ -1,5 +1,6 @@
 //! [`MailProvider`]: the core's `Provider` for mail.
 
+mod contained;
 mod facade;
 mod ids;
 mod opened;

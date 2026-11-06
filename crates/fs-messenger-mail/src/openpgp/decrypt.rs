@@ -6,11 +6,10 @@
 
 use std::io::{BufReader, Cursor, Read as _};
 
-use pgp::composed::{
-    Deserializable, DetachedSignature, Message, SignedPublicKey, SignedPublicSubKey,
-};
-use pgp::types::{Password, VerifyingKey};
+use pgp::composed::{Deserializable, DetachedSignature, Message};
+use pgp::types::Password;
 
+use super::usable::signing_keys;
 use super::{PublicCert, SecretCert};
 use crate::error::{MailError, Result};
 
@@ -27,13 +26,6 @@ pub enum SignatureState {
     },
     /// It is signed, but with no certificate known for the sender, or it does not verify.
     Unverified,
-}
-
-/// The keys of a certificate that may sign: the primary key and every subkey.
-fn verifiers(cert: &SignedPublicKey) -> Vec<&dyn VerifyingKey> {
-    let mut keys: Vec<&dyn VerifyingKey> = vec![&cert.primary_key];
-    keys.extend(cert.public_subkeys.iter().map(|s| s as &dyn VerifyingKey));
-    keys
 }
 
 /// Decrypt with `own` and check the signature against `signers`. Fails if `own` opens nothing, or if the
@@ -85,16 +77,13 @@ pub fn decrypt_selecting(
     }
     let signers = pick(&plaintext)?;
     let state = if message.is_signed() {
-        signers
-            .iter()
-            .find(|cert| {
-                verifiers(&cert.0)
-                    .into_iter()
-                    .any(|k| message.verify(k).is_ok())
+        verdict(signers.iter().find(|cert| {
+            signing_keys(cert).iter().any(|k| {
+                message
+                    .verify(k.key())
+                    .is_ok_and(|signature| k.covers(signature))
             })
-            .map_or(SignatureState::Unverified, |cert| SignatureState::Valid {
-                fingerprint: cert.fingerprint(),
-            })
+        }))
     } else {
         SignatureState::NotSigned
     };
@@ -106,17 +95,16 @@ pub fn verify_detached(armored: &[u8], content: &[u8], signers: &[PublicCert]) -
     let Ok((signature, _)) = DetachedSignature::from_armor_single(Cursor::new(armored)) else {
         return SignatureState::Unverified;
     };
-    signers
-        .iter()
-        .find(|cert| {
-            let by = |k: &SignedPublicSubKey| signature.signature.verify(k, Cursor::new(content));
-            signature
-                .signature
-                .verify(&cert.0.primary_key, Cursor::new(content))
-                .is_ok()
-                || cert.0.public_subkeys.iter().any(|s| by(s).is_ok())
-        })
-        .map_or(SignatureState::Unverified, |cert| SignatureState::Valid {
-            fingerprint: cert.fingerprint(),
-        })
+    let signature = &signature.signature;
+    verdict(signers.iter().find(|cert| {
+        signing_keys(cert)
+            .iter()
+            .any(|k| k.verifies(signature, content))
+    }))
+}
+
+fn verdict(cert: Option<&PublicCert>) -> SignatureState {
+    cert.map_or(SignatureState::Unverified, |cert| SignatureState::Valid {
+        fingerprint: cert.fingerprint(),
+    })
 }
