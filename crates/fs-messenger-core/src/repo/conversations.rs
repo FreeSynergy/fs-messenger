@@ -90,18 +90,14 @@ impl Inner {
             .await?;
         let mut new = record.clone();
         new.content.unread_count = u32::try_from(unread).unwrap_or(u32::MAX);
-        match last.into_iter().next() {
-            Some(o) => {
-                let m = message_from(o)?;
-                new.content.last_message = Some(m.id());
-                new.content.last_at = Some(m.summary.envelope.published);
-                new.content.encryption = m.summary.encryption;
-            }
-            None => {
-                new.content.last_message = None;
-                new.content.last_at = None;
-                new.content.encryption = Encryption::Unknown;
-            }
+        new.content.last_message = None;
+        new.content.last_at = None;
+        new.content.encryption = Encryption::Unknown;
+        if let Some(o) = last.into_iter().next() {
+            let m = message_from(o)?;
+            new.content.last_message = Some(m.id());
+            new.content.last_at = Some(m.summary.envelope.published);
+            new.content.encryption = m.summary.encryption;
         }
         if new != record {
             self.put(new.to_object()?).await?;

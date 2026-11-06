@@ -22,6 +22,7 @@ mod messages;
 mod paging;
 mod search;
 mod send;
+mod send_record;
 mod store_check;
 mod subscription;
 mod text;
