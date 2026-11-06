@@ -21,6 +21,7 @@ pub use conversation::ConversationSummary;
 pub use event::{Event, EventFilter, StateChange, TextChunk, TextPart, ToolCallChange};
 pub use external_id::{ExternalId, MESSAGE_ID};
 pub use kinds::{DeliveryState, Encryption, Kind, SenderKind, SignatureCheck};
+pub(crate) use message::StoredForm;
 pub use message::{Message, MessageSummary};
 pub use page::{ConversationPage, Cursor, MessagePage, Page};
 pub use plan::EncryptionPlan;

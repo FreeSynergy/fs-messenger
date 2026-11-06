@@ -142,15 +142,16 @@ async fn folder_and_unread_filters_narrow_the_list() {
     assert_eq!(work.len(), 1);
     assert_eq!(work[0].folders, ["work"]);
     repo.move_to(a.id, "home").await.unwrap();
-    assert!(
+    assert_eq!(
         repo.conversations(Some("work"), false, None)
             .await
             .unwrap()
             .items
-            .is_empty()
+            .len(),
+        0
     );
     repo.move_to(a.id, "").await.unwrap();
-    assert!(repo.open(a.id).await.unwrap().folders.is_empty());
+    assert_eq!(repo.open(a.id).await.unwrap().folders.len(), 0);
 
     let id = b.last_message.unwrap().envelope.id;
     repo.mark_read(b.id, id).await.unwrap();

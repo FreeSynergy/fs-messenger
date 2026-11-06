@@ -8,7 +8,7 @@ use fs_store::{ActivityKind, LogEntry, ObjectId, Op, Query};
 
 use super::consts::{IDX_ARRIVAL, IDX_DESC, IDX_UNREAD, NOTE, TOMBSTONE, YES};
 use super::handle::Inner;
-use super::keys::arrival_key;
+use super::keys::{arrival_key, desc_key};
 use super::message_codec::{message_from, message_to};
 use super::paging::{decoded, split_page};
 use crate::error::{Error, Result};
@@ -35,6 +35,16 @@ impl Inner {
             return Err(Error::NotFound(id));
         }
         Ok(m)
+    }
+
+    /// A whole message to read, its text included.
+    pub(super) async fn read_message(
+        &self,
+        conversation: ObjectId,
+        id: ObjectId,
+    ) -> Result<Message> {
+        let m = self.load_in(conversation, id).await?;
+        self.hydrate(m).await
     }
 
     /// The first message in the order of `key` that can be read.
@@ -87,8 +97,9 @@ impl Inner {
         Ok(decoded(objects, next, |o| Ok(message_from(o)?.summary)))
     }
 
-    /// Everything that had arrived by the time `up_to` arrived reads as read; a later arrival never
-    /// does, whatever its date. A record that cannot be read stays as it is.
+    /// Swept only what is both at or before `up_to` in arrival and at or below it on screen. A later
+    /// arrival never goes along, whatever its date, and reading a backdated mail does not take the
+    /// newer mail above it along. A record that cannot be read stays as it is.
     pub(super) async fn mark_read(&self, conversation: ObjectId, up_to: ObjectId) -> Result<()> {
         let _writes = self.writes.lock().await;
         let target = self.load_in(conversation, up_to).await?;
@@ -96,7 +107,16 @@ impl Inner {
             .of_type(NOTE)
             .in_context(conversation.to_string())
             .with_index(IDX_UNREAD, YES)
-            .index_op(IDX_ARRIVAL, Op::Le, arrival_key(target.arrival, up_to));
+            .index_op(
+                IDX_ARRIVAL,
+                Op::Le,
+                arrival_key(target.summary.arrival, up_to),
+            )
+            .index_op(
+                IDX_DESC,
+                Op::Ge,
+                desc_key(target.sort_time(), target.summary.arrival, up_to),
+            );
         for o in self.store.query(&q).await? {
             let Ok(mut m) = message_from(o) else {
                 continue;

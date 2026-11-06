@@ -56,6 +56,7 @@ async fn a_cursor_survives_a_restart() {
     repo.register_provider(me.id, p);
     repo.sync(me.id).await.unwrap();
 
+    drop(repo);
     let later = repo_over(store, 50).await;
     let p2 = TestProvider::new(Encryption::Mls, &[]);
     later.register_provider(me.id, p2.clone());

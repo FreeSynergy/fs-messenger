@@ -1,12 +1,13 @@
 //! [`MessengerRepo`]: the program's entry, and what its parts share.
 //!
 //! Pattern: Facade + Registry: one small type hides the store, the rules and the providers;
-//! providers are registered per account at runtime (hot plugins, ADR 0045). A normal build has one
-//! way to a `MessengerRepo`: `open_turso`, which asks the store whether it is encrypted.
+//! providers are registered per account at runtime (hot plugins, ADR 0045). Unless a build asks for
+//! `test-support`, the one way to a `MessengerRepo` is `open_turso`, which asks whether the store is
+//! encrypted.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{Arc, Mutex as Mutex2, PoisonError, RwLock};
 
 use fs_store::{ObjectId, Query, Store, StoredObject, TursoStore};
 use tokio::sync::Mutex;
@@ -58,15 +59,17 @@ pub(super) struct Inner {
     pub(super) writes: Arc<Mutex<()>>,
     /// Highest local arrival sequence handed out.
     arrival: AtomicU64,
+    _handle: StoreHandle,
     providers: RwLock<HashMap<ObjectId, Arc<dyn Provider>>>,
 }
 
 impl MessengerRepo {
     /// Open on a Turso store. Refuses every unencrypted one, including one that opted out of the
-    /// sensitive-data rule. The only constructor of a normal build.
+    /// sensitive-data rule. The only constructor, unless a build asks for `test-support`.
     ///
-    /// Keep one handle per store and clone it: a second `open_turso` on the same store shares no
-    /// write lock and no arrival counter with the first.
+    /// Keep one handle per store and clone it: a second one would share no write lock and no arrival
+    /// counter. A second open of the same `Arc` is refused with `Conflict`. A second `TursoStore` on
+    /// the same file is another object, which this cannot see; `DESIGN.md` says so.
     pub async fn open_turso(store: Arc<TursoStore>, config: MessengerConfig) -> Result<Self> {
         if !store.is_encrypted() {
             return Err(Error::StoreNotEncrypted);
@@ -83,6 +86,7 @@ impl MessengerRepo {
 
     async fn checked(store: Arc<dyn Store>, config: MessengerConfig) -> Result<Self> {
         store_check::check(store.as_ref(), &config.actor).await?;
+        let handle = StoreHandle::claim(&store)?;
         let arrival = AtomicU64::new(highest_arrival(store.as_ref()).await?);
         Ok(Self {
             inner: Arc::new(Inner {
@@ -90,6 +94,7 @@ impl MessengerRepo {
                 config,
                 writes: Arc::new(Mutex::new(())),
                 arrival,
+                _handle: handle,
                 providers: RwLock::new(HashMap::new()),
             }),
         })
@@ -102,6 +107,33 @@ impl MessengerRepo {
             .write()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(account, provider);
+    }
+}
+
+/// The stores open in this process, by address.
+static OPEN_STORES: Mutex2<BTreeSet<usize>> = Mutex2::new(BTreeSet::new());
+
+/// RAII guard: the claim on a store ends with the last clone of its repo. It lives no longer than
+/// the `Arc` beside it in `Inner`, so an address cannot be reused while it is claimed.
+struct StoreHandle(usize);
+
+impl StoreHandle {
+    fn claim(store: &Arc<dyn Store>) -> Result<Self> {
+        let address = Arc::as_ptr(store).cast::<()>() as usize;
+        let mut open = OPEN_STORES.lock().unwrap_or_else(PoisonError::into_inner);
+        if !open.insert(address) {
+            return Err(Error::Conflict(
+                "this store is already open; clone the repo instead".into(),
+            ));
+        }
+        Ok(Self(address))
+    }
+}
+
+impl Drop for StoreHandle {
+    fn drop(&mut self) {
+        let mut open = OPEN_STORES.lock().unwrap_or_else(PoisonError::into_inner);
+        open.remove(&self.0);
     }
 }
 

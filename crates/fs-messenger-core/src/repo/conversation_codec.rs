@@ -11,6 +11,7 @@ use super::consts::{
     CONTENT_TYPE, IDX_ACCOUNT, IDX_CONV_ALIAS, IDX_FOLDER, IDX_SORT, IDX_UNREAD, SENSITIVE, YES,
 };
 use super::keys::{alias_key, conversation_key};
+use super::preserve::keep_unknown;
 use crate::error::Result;
 use crate::model::{Encryption, ExternalId, Kind, Usage};
 
@@ -36,13 +37,16 @@ pub(super) struct ConversationContent {
 pub(super) struct ConversationRecord {
     pub(super) envelope: Envelope,
     pub(super) content: ConversationContent,
+    /// The content as read, for what this version does not know.
+    pub(super) raw: Option<serde_json::Value>,
 }
 
 impl ConversationRecord {
     pub(super) fn from_object(o: StoredObject) -> Result<Self> {
         Ok(Self {
             envelope: o.envelope,
-            content: serde_json::from_value(o.content)?,
+            content: serde_json::from_value(o.content.clone())?,
+            raw: Some(o.content),
         })
     }
 
@@ -53,7 +57,9 @@ impl ConversationRecord {
         env.sensitive = vec![SENSITIVE.to_string()];
         let at = c.last_at.unwrap_or(env.published);
         let id = env.id;
-        let mut o = StoredObject::new(env, CONTENT_TYPE, serde_json::to_value(c)?)
+        let mut content = serde_json::to_value(c)?;
+        keep_unknown::<ConversationContent>(&mut content, self.raw.as_ref())?;
+        let mut o = StoredObject::new(env, CONTENT_TYPE, content)
             .with_index(IDX_SORT, conversation_key(c.pinned, at, id));
         if c.unread_count > 0 {
             o = o.with_index(IDX_UNREAD, YES);

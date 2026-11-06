@@ -40,6 +40,7 @@ fn shown_differently(before: &Message, after: &Message) -> bool {
     a.envelope.updated = after.summary.envelope.updated;
     a != after.summary
         || before.body_text != after.body_text
+        || before.stored.body_blob != after.stored.body_blob
         || before.reactions != after.reactions
         || before.attachments != after.attachments
 }

@@ -7,8 +7,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [features]
-# Lets tests open a repo on any store, such as a plain in-memory one. Off in every normal build, so a
-# program cannot even name it: a binary can only use `open_turso`, which asks `is_encrypted`.
+# Lets tests open a repo on any store, such as a plain in-memory one. Off unless a build asks for it:
+# without it a program cannot name `open` and has only `open_turso`, which asks `is_encrypted`.
 test-support = []
 
 [dependencies]

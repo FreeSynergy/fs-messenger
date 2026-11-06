@@ -42,7 +42,7 @@ impl Inner {
         match provider.send(&outgoing).await {
             Ok(receipt) => {
                 let scope = message.alias_scope.as_str();
-                self.record_sent(id, scope, receipt, data.id).await?;
+                self.record_sent(id, scope, receipt, data).await?;
             }
             Err(e) => {
                 self.record_failed(id).await?;

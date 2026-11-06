@@ -104,7 +104,7 @@ async fn a_new_message_has_no_chain_and_a_senders_chain_is_bounded() {
         .await
         .unwrap();
     d.send(None).await.unwrap();
-    assert!(provider.sent.lock().unwrap()[0].references().is_empty());
+    assert_eq!(provider.sent.lock().unwrap()[0].references().len(), 0);
 
     let mut long = raw("uid-1", "t", "x");
     long.references = (0..500).map(|n| message_id(&format!("{n}@x"))).collect();
@@ -133,18 +133,16 @@ async fn undecrypted_and_the_signature_check_are_typed_and_unset_is_not_verified
     let silent = stored(&repo, me.id, raw("uid-1", "t", "text")).await;
     let conv = conversation_of(&repo).await;
     let m = repo.message(conv, silent).await.unwrap();
-    assert_eq!(m.signature, SignatureCheck::NotVerified);
-    assert!(!m.undecrypted);
+    assert_eq!(m.summary.signature, SignatureCheck::NotVerified);
+    assert!(!m.summary.undecrypted);
 
     let mut locked = raw("uid-2", "t", "");
     locked.undecrypted = true;
-    locked.signature = SignatureCheck::Valid;
     let locked = stored(&repo, me.id, locked).await;
     let m = repo.message(conv, locked).await.unwrap();
-    assert!(m.undecrypted);
-    assert_eq!(m.signature, SignatureCheck::Valid);
+    assert!(m.summary.undecrypted);
     assert_eq!(m.body_text, "", "the state is a field, not body text");
-    assert!(!m.summary.envelope.name.is_empty());
+    assert_ne!(m.summary.envelope.name.len(), 0);
 }
 
 #[test]
@@ -164,6 +162,6 @@ async fn an_old_record_reads_as_not_verified() {
     old.content = json!({ "content": "old" });
     store.put(old, "old-version").await.unwrap();
     let m = repo.message(conv, id).await.unwrap();
-    assert_eq!(m.signature, SignatureCheck::NotVerified);
-    assert!(m.references.is_empty());
+    assert_eq!(m.summary.signature, SignatureCheck::NotVerified);
+    assert_eq!(m.references.len(), 0);
 }

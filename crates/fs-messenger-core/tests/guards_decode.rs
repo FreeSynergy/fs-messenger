@@ -51,7 +51,7 @@ async fn c4_a_record_with_values_from_a_newer_program_still_reads() {
 
     let page = repo.messages(conv, None).await.unwrap();
     assert_eq!(page.items.len(), 3);
-    assert!(page.skipped.is_empty());
+    assert_eq!(page.skipped.len(), 0);
     let m = repo.message(conv, ids[1]).await.unwrap();
     assert_eq!(m.summary.kind, Kind::Unknown);
     assert_eq!(m.summary.state, DeliveryState::Unknown);
@@ -95,7 +95,9 @@ async fn c4_unreadable_records_do_not_block_next_unread_or_the_newest_message() 
         repo.next_unread(None).await.unwrap().unwrap().envelope.id,
         ids[1]
     );
-    repo.record_usage(conv, Default::default()).await.unwrap();
+    repo.record_usage(conv, fs_messenger_core::Usage::default())
+        .await
+        .unwrap();
     repo.pin(conv, true).await.unwrap();
     repo.mark_read(conv, ids[1]).await.unwrap();
     let last = repo.open(conv).await.unwrap().last_message.unwrap();
@@ -110,7 +112,7 @@ async fn c4_an_unreadable_conversation_and_draft_are_skipped() {
     broken.content = json!({ "pinned": "yes" });
     store.put(broken, "corruption").await.unwrap();
     let page = repo.conversations(None, false, None).await.unwrap();
-    assert!(page.items.is_empty());
+    assert_eq!(page.items.len(), 0);
     assert_eq!(page.skipped, [conv]);
 
     let mut d = repo.compose(None).await.unwrap();

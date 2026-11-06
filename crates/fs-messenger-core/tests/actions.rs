@@ -77,7 +77,7 @@ async fn delete_removes_content_and_attachment_keeps_counts_true() {
     let summary = repo.open(conv).await.unwrap();
     assert_eq!(summary.unread_count, 0);
     assert!(summary.last_message.is_none());
-    assert!(repo.messages(conv, None).await.unwrap().items.is_empty());
+    assert_eq!(repo.messages(conv, None).await.unwrap().items.len(), 0);
     assert!(matches!(
         repo.attachment(blob).await,
         Err(Error::NotFound(_))

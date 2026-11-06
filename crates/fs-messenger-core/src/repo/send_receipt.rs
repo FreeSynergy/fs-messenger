@@ -7,6 +7,7 @@
 use fs_store::{ObjectId, Query};
 
 use super::consts::{IDX_RECEIPT, NOTE};
+use super::draft_data::DraftData;
 use super::handle::Inner;
 use super::keys::alias_key;
 use super::message_codec::message_to;
@@ -19,23 +20,28 @@ impl Inner {
         &self,
         id: ObjectId,
         scope: &str,
-        receipt: SendReceipt,
-        draft: ObjectId,
+        mut receipt: SendReceipt,
+        draft: &DraftData,
     ) -> Result<()> {
         let actual = receipt.encryption;
+        // A provider's answer is no more trusted than a delivery: it goes on into mail headers.
+        receipt.aliases.retain(ExternalId::is_well_formed);
+        let alias = receipt.conversation.filter(ExternalId::is_well_formed);
+        let created = draft.conversation.is_none();
         {
             let _writes = self.writes.lock().await;
             if let Some(mut message) = self.reload(id).await? {
                 let context = message.summary.envelope.context.as_deref();
                 let provisional: ObjectId = context.unwrap_or_default().parse()?;
                 let conversation = self
-                    .settle_conversation(provisional, scope, receipt.conversation)
+                    .settle_conversation(provisional, scope, alias, created)
                     .await?;
                 message.summary.envelope.context = Some(conversation.to_string());
                 message.summary.state = DeliveryState::Sent;
                 message.summary.encryption = actual;
                 message.receipts = receipt.aliases;
                 self.put(message_to(&message)?).await?;
+                self.adopt_children(scope, &message).await?;
                 self.drop_if_empty(provisional, conversation).await?;
                 self.refresh(conversation).await?;
             } else {
@@ -43,7 +49,7 @@ impl Inner {
                     .await?;
             }
         }
-        self.drop_draft_object(draft).await?;
+        self.drop_draft_object(draft.id).await?;
         if actual.is_end_to_end() {
             Ok(())
         } else {
@@ -70,13 +76,14 @@ impl Inner {
         self.put(tombstone).await
     }
 
-    /// A conversation learns what the provider calls it, so that replies land in the same place. A
-    /// new one whose thread is already known gives way to the one that exists.
+    /// A conversation learns what the provider calls it, so that replies land in the same place. One
+    /// this send created, whose thread is already known, gives way to the one that exists.
     async fn settle_conversation(
         &self,
         conversation: ObjectId,
         scope: &str,
         alias: Option<ExternalId>,
+        created: bool,
     ) -> Result<ObjectId> {
         let Some(alias) = alias else {
             return Ok(conversation);
@@ -86,8 +93,7 @@ impl Inner {
             return Ok(conversation);
         }
         if let Some(known) = self.find_conversation(scope, &alias).await? {
-            let is_new = record.content.aliases.is_empty();
-            return Ok(if is_new {
+            return Ok(if created {
                 known.envelope.id
             } else {
                 conversation

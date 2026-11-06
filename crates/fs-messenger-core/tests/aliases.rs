@@ -98,12 +98,20 @@ async fn c5_a_returning_copy_of_ours_matches_only_from_our_own_address() {
 
     let mut by_uid = raw("uid-6", "t", "hi");
     by_uid.sender = "someone@else.example".into();
-    assert_eq!(
-        repo.ingest(me.id, by_uid).await.unwrap(),
-        Ingested::Duplicate(id),
-        "uid learned"
+    let stranger = repo.ingest(me.id, by_uid).await.unwrap();
+    assert!(
+        matches!(stranger, Ingested::Stored(_)),
+        "a match on a receipt merges nothing, so the copy's uid is not ours now"
     );
-    assert_eq!(store.count(&Query::new().of_type("Note")).await.unwrap(), 2);
+    let list = repo.conversations(None, false, None).await.unwrap().items;
+    let mine = list
+        .iter()
+        .find(|c| c.name == "bob@example.org")
+        .unwrap()
+        .id;
+    let kept = repo.message(mine, id).await.unwrap();
+    assert!(kept.aliases.is_empty() && kept.links.is_empty(), "N7");
+    assert_eq!(store.count(&Query::new().of_type("Note")).await.unwrap(), 3);
 }
 
 #[tokio::test]

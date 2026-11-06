@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use fs_messenger_core::{
-    AccountSetup, Encryption, EncryptionPlan, Error, ExternalId, Ingest, Messenger,
+    AccountSetup, Encryption, EncryptionPlan, Error, ExternalId, Ingest, Kind, Messenger,
     MessengerConfig, MessengerRepo, Outgoing, Provider, RawMessage, Result, SendReceipt,
 };
 use fs_store::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
@@ -65,14 +65,15 @@ async fn main() -> Result<()> {
     repo.register_provider(me.id, Arc::new(DemoProvider));
 
     let thread = ExternalId::new("thread", "1");
+    // What the transport calls it, here a made-up id: a Message-ID would only link.
     let mut hello = RawMessage::new(
-        ExternalId::new("mid", "a"),
+        ExternalId::new("demo-uid", "a"),
         thread.clone(),
+        Kind::Mail,
         "ada@example.org",
         "Hello!",
     );
     hello.encryption = Encryption::None;
-    hello.kind = fs_messenger_core::Kind::Mail;
     println!(
         "first delivery: {:?}",
         repo.ingest(me.id, hello.clone()).await?

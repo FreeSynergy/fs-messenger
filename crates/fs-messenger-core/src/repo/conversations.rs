@@ -36,12 +36,12 @@ impl Inner {
     ) -> Result<Option<ConversationRecord>> {
         let query = Query::new()
             .of_type(CONVERSATION)
-            .with_index(IDX_CONV_ALIAS, alias_key(scope, alias))
-            .limit(1);
-        match self.store.query(&query).await?.pop() {
-            Some(o) => Ok(Some(ConversationRecord::from_object(o)?)),
-            None => Ok(None),
-        }
+            .with_index(IDX_CONV_ALIAS, alias_key(scope, alias));
+        // An unreadable record is store damage: the thread goes on in a new one, no mail is lost.
+        let found = self.store.query(&query).await?;
+        Ok(found
+            .into_iter()
+            .find_map(|o| ConversationRecord::from_object(o).ok()))
     }
 
     /// The conversation with this alias, or a new one. One found from an earlier life of the account
@@ -89,6 +89,7 @@ impl Inner {
                 aliases,
                 ..ConversationContent::default()
             },
+            raw: None,
         };
         self.put(record.to_object()?).await?;
         Ok(record)
