@@ -94,10 +94,14 @@ pub(crate) fn size_of(raw: &RawMessage) -> usize {
 /// The message as the flow may take it, and its size if it is over what is taken; or the refusal.
 pub(crate) fn judged(mut raw: RawMessage, limit: usize) -> Result<(RawMessage, Option<usize>)> {
     let size = size_of(&raw);
-    let over = (size > limit
+    // What a provider says it cut off is too large whatever fits here. The stub's size is never 0.
+    let claimed = raw
+        .too_large
+        .map(|real| usize::try_from(real).unwrap_or(usize::MAX).max(size).max(1));
+    let over = claimed.or((size > limit
         || raw.attachments.len() > MAX_ATTACHMENTS
         || header_size(&raw) > MAX_HEADER_BYTES)
-        .then_some(size);
+        .then_some(size));
     // What a sender chose can only link, however a provider labels it.
     let (chosen, issued): (Vec<_>, Vec<_>) = std::mem::take(&mut raw.aliases)
         .into_iter()

@@ -50,7 +50,11 @@ impl Inner {
     /// After the message that held it has gone, or has a new one.
     pub(super) async fn release_body(&self, m: &Message) -> Result<()> {
         if let Some(id) = m.stored.body_blob {
-            self.store.delete(id, &self.config.actor).await?;
+            // Already gone is store damage, and what was wanted anyway: it must not fail a delete.
+            match self.store.delete(id, &self.config.actor).await {
+                Ok(_) | Err(fs_store::Error::NotFound(_)) => {}
+                Err(e) => return Err(e.into()),
+            }
         }
         Ok(())
     }
