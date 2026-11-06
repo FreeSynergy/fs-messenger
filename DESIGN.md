@@ -6,7 +6,7 @@ original (ADR 0020, 0030), stored through `fs-store`. Frontends never see protoc
 
 ## State
 
-Version 0.1.0, not tagged. Mirrors the `messenger.capnp` contract, version 0.3 (`CONTRACT_VERSION`), with the dependency on `fs-interfaces` v0.27.0 (consumers: 0 of 2). Generated types are not in the public API.
+Version 0.1.0. Mirrors the `messenger.capnp` contract, version 0.3 (`CONTRACT_VERSION`), with the dependency on `fs-interfaces` v0.27.0 (consumers: 0 of 2). Generated types are not in the public API.
 
 | Area | State |
 |---|---|
@@ -25,7 +25,7 @@ Version 0.1.0, not tagged. Mirrors the `messenger.capnp` contract, version 0.3 (
 | Encrypted only, incoming: stored and marked with what the provider says; `none`, `transport-only` and `unknown` are never end-to-end; no quarantine | done |
 | Encrypted only, at rest: see "Encryption at rest" | done |
 | Tool calls as stored data: store, update in place, read; engine id and revision; `settled` final; an outside question is `working` | done |
-| What a connector found: `RawMessage.undecrypted` and `signature` (`SignatureCheck`, unset is `notVerified`, and always `notVerified` without a sender or readable content), kept on `MessageSummary` as typed fields, not in the text, mirroring `msg-contract-2`. The fingerprint of a good signature stays with the provider | done |
+| What a connector found: `RawMessage.undecrypted` and `signature` (`SignatureCheck`, unset is `notVerified`, and always `notVerified` without a sender or readable content), kept on `MessageSummary` as typed fields, not in the text, mirroring the contract. The fingerprint of a good signature stays with the provider | done |
 | Mail threading: `RawMessage.references`, sender-chosen, newest 64 kept, only link. `Outgoing::references` gives the parent's chain, and a sent message continues it | done |
 | Size limits at ingest and in `record_tool_call`: see "Limits". Over the limit a stub stays (`Ingested::TooLarge`, `MessageSummary.too_large`, 0 = it is not), so the mail is visible, not gone (ADR 0030): aliases, links, sender, date, subject, size, no content | done, provisional |
 | Large bodies: over 64 KiB in a store object of their own, see "What a large body costs" | done, with a limit named there |
@@ -147,10 +147,12 @@ A record that lost its sort keys is neither listed nor reported.
 ## Known limits
 
 * **The ciphertext attachment stays.** When a readable version replaces an undecrypted one, the attachments it brings are added, and what the undecrypted version had stays beside them, because the core cannot tell which of them is the ciphertext.
-* **A stub stays a stub.** A later delivery of the same message that would fit, for example after the limit is raised, does not replace it. `fs-store` refuses to add an original to an object that has none (ADR 0030), so this cannot reuse the path of an undecrypted message, which already has its original.
+* **A stub stays a stub.** A later delivery of the same message that would fit, for example after the limit is raised, does not replace it. Replacing it would take two store steps, or give up the original (ADR 0030); that is a choice, not a limit of `fs-store`. A real mail with a very long `To` (over 64 KiB, about 3000 addresses) therefore loses its content in this program for good; it stays on the server.
 * **A stub keeps only the first 8 aliases.** A replay known only by a later one is stored again: a duplicate beats a lost mail.
 * **A provider holding a repo clone keeps the claim on its store** for as long as it is registered, so the store cannot be opened again until then. It fails safe: the open is refused.
-* **A crash can orphan a `Document`.** A body or attachment is stored before the message that names it. After a crash in between, an unreferenced object holds that text. It is encrypted at rest, and nothing removes it yet.
+* **A crash can orphan a `Document`.** A body or attachment is stored before the message that names it. After a crash in between, an unreferenced object holds that text. It is encrypted at rest, and nothing removes it yet. The same holds for a crash between the tombstone and the release of a body when deleting.
+* **Deleting a message whose body object is already gone answers an error,** although the delete happens; the unread count is only correct after the next change. This needs store damage.
+* **A connector that fills `tool_calls` or `reasoning` from remote content must cap them itself.** They count towards the 25 MiB but not towards the 64 KiB for metadata, so a 5 MiB result adds 40 MiB of log over 4 changes (measured). Mail and Matrix fill neither.
 
 ## Decisions
 
