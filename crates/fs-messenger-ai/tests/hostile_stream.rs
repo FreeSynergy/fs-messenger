@@ -6,7 +6,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::wire::{Reply, Step, answer, anthropic, llama, serve, sse_head, stream};
+use common::wire::{Reply, Step, anthropic, llama, serve, sse_head, stream};
 use common::{Finished, World};
 use fs_messenger_ai::{Limits, TurnFailure};
 use fs_messenger_core::{DeliveryState, Event};
