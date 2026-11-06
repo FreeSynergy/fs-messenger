@@ -1,0 +1,47 @@
+[package]
+name = "fs-messenger-matrix"
+description = "Matrix provider of FreeSynergy.Messenger: matrix-sdk behind the core's Provider, end-to-end encrypted only, stores over fs-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# matrix-sdk 0.19 needs 1.96.
+rust-version = "1.96"
+
+[dependencies]
+fs-messenger-core = { path = "../fs-messenger-core" }
+# What the core speaks: `Blob`, `ObjectId`.
+fs-store = { git = "https://github.com/FreeSynergy/fs-store", tag = "v0.2.0" }
+# The stores of the SDK need writes without the activity log, which v0.3.0 brings; see DESIGN.md,
+# "Wanted from core". Both tags use the same exact turso, so only fs-store itself is built twice.
+fs-store-unlogged = { package = "fs-store", git = "https://github.com/FreeSynergy/fs-store", tag = "v0.3.0" }
+fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.16.0" }
+
+# Pinned exactly: 0.x, and its store traits change with every release. No default features: those
+# bring SQLite (C) and aws-lc (C). TLS is rustls with ring, as in fs-messenger-mail.
+matrix-sdk = { version = "=0.19.1", default-features = false, features = ["e2e-encryption", "automatic-room-key-forwarding"] }
+matrix-sdk-base = { version = "=0.19.1", features = ["e2e-encryption"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+
+async-trait = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["sync"] }
+tracing = "0.1"
+zeroize = "1"
+
+[dev-dependencies]
+# The SDK's own conformance suites for store implementations.
+matrix-sdk-base = { version = "=0.19.1", features = ["testing"] }
+matrix-sdk-crypto = { version = "=0.19.1", features = ["testing"] }
+matrix-sdk-common = "=0.19.1"
+matrix-sdk-test = "=0.19.1"
+assert_matches = "1"
+assert_matches2 = "0.1"
+ruma = "0.17"
+vodozemac = "0.11"
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
