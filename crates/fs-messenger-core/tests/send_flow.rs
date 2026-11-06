@@ -1,10 +1,10 @@
-//! The send flow after the check: echoes, downgrades, failures, forwards and replies.
+//! The send flow after the check: echoes, downgrades, failures, replies and scheduling.
 
 mod common;
 
 use common::{alias, conversation_of, raw, setup, with_provider};
 use fs_messenger_core::{
-    DeliveryState, Encryption, Error, ExternalId, Ingest, Ingested, MessageAction, Messenger,
+    DeliveryState, Encryption, Error, ExternalId, Ingest, Ingested, Messenger,
 };
 use fs_store::{Query, Store};
 use std::sync::Arc;
