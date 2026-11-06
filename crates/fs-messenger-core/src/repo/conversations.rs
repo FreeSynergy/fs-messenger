@@ -1,0 +1,204 @@
+//! Conversations: list, open, pin, move, and keeping their derived fields true.
+//!
+//! Pattern: Repository. `refresh` recomputes count, newest message and order from the messages, so
+//! a crash between two writes heals with the next change.
+
+use fs_store::{ActivityKind, Envelope, LogEntry, ObjectId, Op, Query, StoredObject};
+
+use super::consts::{
+    CONVERSATION, IDX_CONV_ALIAS, IDX_DESC, IDX_FOLDER, IDX_SORT, IDX_UNREAD, NOTE, YES,
+};
+use super::conversation_codec::{ConversationContent, ConversationRecord};
+use super::handle::Inner;
+use super::keys::alias_key;
+use super::message_codec::message_from;
+use super::paging::split_page;
+use crate::error::{Error, Result};
+use crate::model::{
+    ConversationPage, ConversationSummary, Cursor, Encryption, ExternalId, Kind, Page, Usage,
+};
+
+impl Inner {
+    pub(super) async fn load_conversation(&self, id: ObjectId) -> Result<ConversationRecord> {
+        let o = self
+            .store
+            .get(id)
+            .await?
+            .filter(|o| o.envelope.object_type == CONVERSATION)
+            .ok_or(Error::NotFound(id))?;
+        ConversationRecord::from_object(o)
+    }
+
+    /// The conversation with this alias, or a new one.
+    pub(super) async fn ensure_conversation(
+        &self,
+        account: ObjectId,
+        alias: &ExternalId,
+        name: &str,
+        kind: Kind,
+    ) -> Result<ConversationRecord> {
+        let query = Query::new()
+            .of_type(CONVERSATION)
+            .with_index(IDX_CONV_ALIAS, alias_key(account, alias))
+            .limit(1);
+        if let Some(o) = self.store.query(&query).await?.pop() {
+            return ConversationRecord::from_object(o);
+        }
+        self.create_conversation(account, vec![alias.clone()], name, kind)
+            .await
+    }
+
+    pub(super) async fn create_conversation(
+        &self,
+        account: ObjectId,
+        aliases: Vec<ExternalId>,
+        name: &str,
+        kind: Kind,
+    ) -> Result<ConversationRecord> {
+        let shown = if name.trim().is_empty() {
+            "Conversation"
+        } else {
+            name
+        };
+        let mut envelope = Envelope::new(CONVERSATION, shown);
+        envelope.iri = self.iri(envelope.id);
+        let record = ConversationRecord {
+            envelope,
+            content: ConversationContent {
+                account: Some(account),
+                kind,
+                aliases,
+                ..ConversationContent::default()
+            },
+        };
+        self.put(record.to_object()?).await?;
+        Ok(record)
+    }
+
+    /// Recompute what is derived from the messages. Writes only if something changed.
+    pub(super) async fn refresh(&self, id: ObjectId) -> Result<()> {
+        let record = self.load_conversation(id).await?;
+        let context = id.to_string();
+        let notes = || Query::new().of_type(NOTE).in_context(context.clone());
+        let unread = self
+            .store
+            .count(&notes().with_index(IDX_UNREAD, YES))
+            .await?;
+        let last = self
+            .store
+            .query(&notes().order_by_index(IDX_DESC).limit(1))
+            .await?;
+        let mut new = record.clone();
+        new.content.unread_count = u32::try_from(unread).unwrap_or(u32::MAX);
+        match last.into_iter().next() {
+            Some(o) => {
+                let m = message_from(o)?;
+                new.content.last_message = Some(m.id());
+                new.content.last_at = Some(m.summary.envelope.published);
+                new.content.encryption = m.summary.encryption;
+            }
+            None => {
+                new.content.last_message = None;
+                new.content.last_at = None;
+                new.content.encryption = Encryption::Unknown;
+            }
+        }
+        if new != record {
+            self.put(new.to_object()?).await?;
+        }
+        Ok(())
+    }
+
+    async fn summary_of(&self, record: ConversationRecord) -> Result<ConversationSummary> {
+        let c = record.content;
+        let last_message = match c.last_message {
+            Some(id) => Some(self.load_note(id).await?.summary),
+            None => None,
+        };
+        Ok(ConversationSummary {
+            id: record.envelope.id,
+            name: record.envelope.name,
+            kind: c.kind,
+            encryption: c.encryption,
+            unread_count: c.unread_count,
+            last_message,
+            pinned: c.pinned,
+            folders: c.folders,
+        })
+    }
+
+    pub(super) async fn open_conversation(&self, id: ObjectId) -> Result<ConversationSummary> {
+        let record = self.load_conversation(id).await?;
+        self.summary_of(record).await
+    }
+
+    pub(super) async fn list_conversations(
+        &self,
+        folder: Option<&str>,
+        only_unread: bool,
+        cursor: Option<&Cursor>,
+    ) -> Result<ConversationPage> {
+        let size = self.config.page_size;
+        let mut q = Query::new()
+            .of_type(CONVERSATION)
+            .order_by_index(IDX_SORT)
+            .limit(size + 1);
+        if let Some(f) = folder {
+            q = q.with_index(IDX_FOLDER, f);
+        }
+        if only_unread {
+            q = q.with_index(IDX_UNREAD, YES);
+        }
+        if let Some(c) = cursor {
+            q = q.index_op(IDX_SORT, Op::Gt, c.as_str());
+        }
+        let (objects, next) = split_page(self.store.query(&q).await?, size, IDX_SORT);
+        let mut items = Vec::with_capacity(objects.len());
+        for o in objects {
+            items.push(self.summary_of(ConversationRecord::from_object(o)?).await?);
+        }
+        Ok(Page { items, next })
+    }
+
+    async fn put_logged(
+        &self,
+        o: StoredObject,
+        kind: ActivityKind,
+        why: serde_json::Value,
+    ) -> Result<()> {
+        let extra = vec![LogEntry::new(kind, why)];
+        self.store.put_and_log(o, &self.config.actor, extra).await?;
+        Ok(())
+    }
+
+    pub(super) async fn pin(&self, id: ObjectId, pinned: bool) -> Result<()> {
+        let _writes = self.writes.lock().await;
+        let mut record = self.load_conversation(id).await?;
+        record.content.pinned = pinned;
+        self.put(record.to_object()?).await
+    }
+
+    pub(super) async fn move_to(&self, id: ObjectId, folder: &str) -> Result<()> {
+        let _writes = self.writes.lock().await;
+        let mut record = self.load_conversation(id).await?;
+        record.content.folders = if folder.is_empty() {
+            vec![]
+        } else {
+            vec![folder.to_string()]
+        };
+        let why = serde_json::json!({ "folder": folder });
+        self.put_logged(record.to_object()?, ActivityKind::Move, why)
+            .await
+    }
+
+    pub(super) async fn usage(&self, id: ObjectId) -> Result<Usage> {
+        Ok(self.load_conversation(id).await?.content.usage)
+    }
+
+    pub(super) async fn record_usage(&self, id: ObjectId, usage: Usage) -> Result<()> {
+        let _writes = self.writes.lock().await;
+        let mut record = self.load_conversation(id).await?;
+        record.content.usage = usage;
+        self.put(record.to_object()?).await
+    }
+}
