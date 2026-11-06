@@ -13,11 +13,11 @@ use crate::store::Op;
 use crate::store::keys::{key, prefix};
 
 fn put<T: Serialize>(parts: &[&str], value: &T) -> Result<Op, StoreFail> {
-    Ok(Op::Put(key(parts), serde_json::to_string(value)?))
+    Ok(Op::Put(key(parts), serde_json::to_string(value)?.into()))
 }
 
 fn put_text(parts: &[&str], value: &str) -> Op {
-    Op::Put(key(parts), value.to_owned())
+    Op::Put(key(parts), value.to_owned().into())
 }
 
 /// All entries of `changes`, in the order the memory store applies them.

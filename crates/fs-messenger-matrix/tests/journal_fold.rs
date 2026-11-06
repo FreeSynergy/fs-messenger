@@ -3,8 +3,8 @@
 mod support;
 
 use fs_messenger_matrix::store::{FsJournal, Journal, Op};
-use fs_store_unlogged::Query;
-use fs_store_unlogged::traits::ObjectQuery;
+use fs_store::Query;
+use fs_store::traits::ObjectQuery;
 
 #[tokio::test]
 async fn a_long_journal_folds_and_loses_nothing() {
@@ -12,14 +12,14 @@ async fn a_long_journal_folds_and_loses_nothing() {
     let journal = FsJournal::open(store.clone(), "long").await.unwrap();
     let neighbour = FsJournal::open(store.clone(), "neighbour").await.unwrap();
     neighbour
-        .append(vec![Op::Put("mine".into(), "1".into())])
+        .append(vec![Op::Put("mine".into(), "1".to_owned().into())])
         .await
         .unwrap();
 
     for i in 0..600 {
         let ops = vec![
-            Op::Put(format!("k{i}"), i.to_string()),
-            Op::Put("last".into(), i.to_string()),
+            Op::Put(format!("k{i}"), i.to_string().into()),
+            Op::Put("last".into(), i.to_string().into()),
         ];
         journal.append(ops).await.unwrap();
         if i % 2 == 1 {
@@ -30,7 +30,7 @@ async fn a_long_journal_folds_and_loses_nothing() {
         }
     }
     let map = journal.load().await.unwrap();
-    assert_eq!(map["last"], "599");
+    assert!(map["last"].matches("599"));
     assert_eq!(map.len(), 301, "300 odd keys and `last`");
     assert!(!map.contains_key("k0"));
 
@@ -42,11 +42,11 @@ async fn a_long_journal_folds_and_loses_nothing() {
     drop(journal);
     let journal = FsJournal::open(store.clone(), "long").await.unwrap();
     journal
-        .append(vec![Op::Put("later".into(), "x".into())])
+        .append(vec![Op::Put("later".into(), "x".to_owned().into())])
         .await
         .unwrap();
     let map = journal.load().await.unwrap();
-    assert_eq!(map["last"], "599");
-    assert_eq!(map["later"], "x");
+    assert!(map["last"].matches("599"));
+    assert!(map["later"].matches("x"));
     assert_eq!(neighbour.load().await.unwrap().len(), 1);
 }

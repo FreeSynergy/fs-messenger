@@ -54,7 +54,7 @@ decorate_memory! {
                 _ => None,
             };
             if let (Some(k), Some(text)) = (kv_key(&key), text) {
-                self.journal.append(vec![Op::Put(k, text)]).await?;
+                self.journal.append(vec![Op::Put(k, text.into())]).await?;
             }
             Ok(self.memory.set_kv_data(key, value).await?)
         }
@@ -99,7 +99,7 @@ decorate_memory! {
             key: &[u8],
             value: Vec<u8>,
         ) -> Result<Option<Vec<u8>>, StoreFail> {
-            let op = Op::Put(custom_key(key), hex_value(&value)?);
+            let op = Op::Put(custom_key(key), hex_value(&value)?.into());
             self.journal.append(vec![op]).await?;
             Ok(self.memory.set_custom_value(key, value).await?)
         }
@@ -109,7 +109,7 @@ decorate_memory! {
             key: &[u8],
             value: Vec<u8>,
         ) -> Result<(), StoreFail> {
-            let op = Op::Put(custom_key(key), hex_value(&value)?);
+            let op = Op::Put(custom_key(key), hex_value(&value)?.into());
             self.journal.append(vec![op]).await?;
             Ok(self.memory.set_custom_value_no_read(key, value).await?)
         }

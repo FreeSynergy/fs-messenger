@@ -1,6 +1,6 @@
 //! One sync: what happened since the cursor, as `RawMessage`s.
 //!
-//! Pattern: Template method: sync, close gaps, convert, retry what waits for a key, say where we are.
+//! Pattern: Template method: sync, plan and read gaps, convert, retry what waits for a key, say where we are.
 //! A failure anywhere fails the fetch, so the cursor stays and the next one replays; the core dedupes.
 
 use std::time::Duration;
@@ -9,16 +9,15 @@ use fs_messenger_core::{FetchBatch, ProviderCursor};
 use matrix_sdk::RoomState;
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::config::SyncToken;
-use matrix_sdk::deserialized_responses::TimelineEvent;
 use matrix_sdk::ruma::api::client::filter::FilterDefinition;
 use matrix_sdk::ruma::api::client::sync::sync_events::v3::Filter;
 use matrix_sdk::ruma::presence::PresenceState;
-use matrix_sdk::ruma::{OwnedRoomId, RoomId, UInt};
+use matrix_sdk::ruma::{RoomId, UInt};
 use matrix_sdk::store::{StateStoreDataKey, StateStoreDataValue};
 
 use super::MatrixProvider;
 use crate::error::{MatrixError, Result};
-use crate::receive::{MatrixCursor, RoomContext};
+use crate::receive::{Gap, MatrixCursor, RoomContext};
 
 impl MatrixProvider {
     fn sync_settings(&self, since: Option<String>) -> SyncSettings {
@@ -45,12 +44,7 @@ impl MatrixProvider {
             .await
             .map_err(|e| MatrixError::Sdk(e.to_string()))?
             .and_then(StateStoreDataValue::into_sync_token);
-        let mut events = self.replay_since(&cursor, position.as_deref()).await?;
-        for (room_id, _) in &events {
-            if !cursor.rooms.iter().any(|r| r == room_id.as_str()) {
-                cursor.rooms.push(room_id.to_string());
-            }
-        }
+        self.plan_replay(&mut cursor, position.as_deref());
 
         let settings = self.sync_settings(position.clone());
         let response = self.client.sync_once(settings).await?;
@@ -64,20 +58,22 @@ impl MatrixProvider {
             .left
             .into_iter()
             .map(|(r, u)| (r, u.timeline));
+        let mut events = Vec::new();
         for (room_id, timeline) in joined.chain(left) {
             let known = cursor.rooms.iter().any(|r| r == room_id.as_str());
-            if !known || timeline.limited {
-                let to = if known { position.as_deref() } else { None };
-                let gap = self
-                    .missing_events(&room_id, timeline.prev_batch, to)
-                    .await?;
-                events.push((room_id.clone(), gap));
+            if let (true, Some(from)) = (!known || timeline.limited, timeline.prev_batch) {
+                cursor.plan_gap(Gap {
+                    room: room_id.to_string(),
+                    from,
+                    to: if known { position.clone() } else { None },
+                });
             }
-            events.push((room_id.clone(), timeline.events));
             if !known {
                 cursor.rooms.push(room_id.to_string());
             }
+            events.push((room_id, timeline.events));
         }
+        events.extend(self.read_gaps(&mut cursor).await?);
 
         let mut messages = Vec::new();
         for (room_id, list) in events {
@@ -97,34 +93,31 @@ impl MatrixProvider {
         cursor.since = Some(response.next_batch);
         Ok(FetchBatch {
             messages,
+            more: !cursor.gaps.is_empty(),
             next: Some(cursor.write()?),
-            more: false,
         })
     }
 
     /// What the SDK has seen and the core has not: a crash between the two, or a core that lost its
-    /// cursor. Comes from `/messages`, per room.
-    async fn replay_since(
-        &self,
-        cursor: &MatrixCursor,
-        position: Option<&str>,
-    ) -> Result<Vec<(OwnedRoomId, Vec<TimelineEvent>)>> {
+    /// cursor. Read through `/messages`, per room.
+    fn plan_replay(&self, cursor: &mut MatrixCursor, position: Option<&str>) {
         let Some(position) = position.filter(|p| cursor.since.as_deref() != Some(*p)) else {
-            return Ok(vec![]);
+            return;
         };
-        let mut events = Vec::new();
         for room in self.client.rooms() {
             if room.state() == RoomState::Invited {
                 continue;
             }
-            let room_id = room.room_id();
-            let from = Some(position.to_owned());
-            let gap = self
-                .missing_events(room_id, from, cursor.since.as_deref())
-                .await?;
-            events.push((room_id.to_owned(), gap));
+            let id = room.room_id().to_string();
+            cursor.plan_gap(Gap {
+                room: id.clone(),
+                from: position.to_owned(),
+                to: cursor.since.clone(),
+            });
+            if !cursor.rooms.contains(&id) {
+                cursor.rooms.push(id);
+            }
         }
-        Ok(events)
     }
 
     pub(super) fn room_context(&self, room_id: &RoomId) -> RoomContext {

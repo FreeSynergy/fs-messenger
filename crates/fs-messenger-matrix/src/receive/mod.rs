@@ -9,5 +9,5 @@ mod event;
 
 pub(crate) use adapter::{RoomContext, message, placeholder};
 pub use adapter::{SCHEME_EVENT, SCHEME_ROOM, UNDECRYPTED_MARK};
-pub(crate) use cursor::{MatrixCursor, Pending};
+pub(crate) use cursor::{Gap, MatrixCursor, Pending};
 pub(crate) use event::parse;

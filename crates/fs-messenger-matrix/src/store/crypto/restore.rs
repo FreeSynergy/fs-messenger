@@ -24,10 +24,11 @@ use zeroize::Zeroizing;
 use super::kind;
 use super::store::FsCryptoStore;
 use crate::error::StoreFail;
+use crate::secret::SecretText;
 use crate::store::Journal;
 use crate::store::hex::decode_bytes;
 use crate::store::keys::parts;
-use crate::store::read_back::{bad, read, room, user};
+use crate::store::read_back::{bad, read, room, unreadable, user};
 
 impl FsCryptoStore {
     /// Open over `journal`, with everything it holds.
@@ -67,7 +68,7 @@ impl Collected {
             (kind::IDENTITY, _) => {
                 let pickle: PickledCrossSigningIdentity = read(value)?;
                 let identity = PrivateCrossSigningIdentity::from_pickle(pickle);
-                self.identity = Some(identity.map_err(|e| bad("identity", e))?);
+                self.identity = Some(identity.map_err(|_| unreadable("identity"))?);
             }
             (kind::BACKUP_VERSION, _) => changes.backup_version = Some(read(value)?),
             (kind::BACKUP_KEY, _) => changes.backup_decryption_key = Some(read(value)?),
@@ -77,7 +78,7 @@ impl Collected {
             (kind::INBOUND, _) => {
                 let pickle: PickledInboundGroupSession = read(value)?;
                 let session = InboundGroupSession::from_pickle(pickle);
-                let session = session.map_err(|e| bad("inbound", e))?;
+                let session = session.map_err(|_| unreadable("inbound session"))?;
                 changes.inbound_group_sessions.push(session);
             }
             (kind::INBOUND_BACKED_UP, [r, s]) => {
@@ -130,7 +131,7 @@ impl Collected {
             }
             return Err(bad("sessions", "no account in the journal"));
         };
-        let account = Account::from_pickle(pickle).map_err(|e| bad("account", e))?;
+        let account = Account::from_pickle(pickle).map_err(|_| unreadable("account"))?;
         let data = account.static_data().clone();
         let device_keys = account.device_keys();
         let device_id = account.device_id().to_owned();
@@ -138,14 +139,14 @@ impl Collected {
             let session = Session::from_pickle(device_keys.clone(), pickle);
             self.changes
                 .sessions
-                .push(session.map_err(|e| bad("session", e))?);
+                .push(session.map_err(|_| unreadable("session"))?);
         }
         for pickle in outbound {
             let keys = data.identity_keys.clone();
             let session = OutboundGroupSession::from_pickle(device_id.clone(), keys, pickle);
             self.changes
                 .outbound_group_sessions
-                .push(session.map_err(|e| bad("outbound", e))?);
+                .push(session.map_err(|_| unreadable("outbound session"))?);
         }
         let pending = PendingChanges {
             account: Some(account),
@@ -162,11 +163,11 @@ type Restored = (
 
 async fn restore(
     memory: &MemoryStore,
-    records: &BTreeMap<String, String>,
+    records: &BTreeMap<String, SecretText>,
 ) -> Result<Restored, StoreFail> {
     let mut c = Collected::default();
     for (key, value) in records {
-        c.take(key, value)?;
+        c.take(key, value.expose())?;
     }
     let static_account = c.account_into(memory).await?;
     memory.save_changes(c.changes).await?;

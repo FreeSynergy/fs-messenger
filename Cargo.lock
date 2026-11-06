@@ -1255,7 +1255,7 @@ dependencies = [
  "chrono",
  "fs-interfaces",
  "fs-messenger-core",
- "fs-store 0.2.0",
+ "fs-store",
  "serde",
  "serde_json",
  "tempfile",
@@ -1273,8 +1273,7 @@ dependencies = [
  "chrono",
  "fs-interfaces",
  "fs-messenger-core",
- "fs-store 0.2.0",
- "fs-store 0.3.0",
+ "fs-store",
  "matrix-sdk",
  "matrix-sdk-base",
  "matrix-sdk-common",
@@ -1292,23 +1291,6 @@ dependencies = [
  "tracing-subscriber",
  "vodozemac",
  "zeroize",
-]
-
-[[package]]
-name = "fs-store"
-version = "0.3.0"
-source = "git+https://github.com/FreeSynergy/fs-store?tag=v0.3.0#cf506699d9ca1517277c22ec2761dfa1c33cf2b7"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "chrono",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tokio",
- "turso",
- "unicode-normalization",
- "uuid",
 ]
 
 [[package]]

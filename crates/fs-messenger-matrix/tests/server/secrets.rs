@@ -1,11 +1,14 @@
-//! Secrets stay out of `Debug`, logs, the activity log, and readable bytes on disk.
+//! The binding rule: no access token, passphrase, Olm or Megolm key in any activity, hub path, `Debug`,
+//! `Display`, error or log line, or readable in the raw store file. Needles from the real secrets.
 
 use std::io::Write;
+use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use fs_messenger_matrix::{MatrixAccount, MatrixProvider, Password};
-use fs_store_unlogged::ActivityFilter;
-use fs_store_unlogged::traits::ActivityLog;
+use fs_store::ActivityFilter;
+use fs_store::traits::{ActivityLog, ObjectQuery};
+use matrix_sdk_crypto::decrypt_room_key_export;
 use tracing_subscriber::fmt::MakeWriter;
 
 use crate::common::{Person, encrypted_room, token};
@@ -45,25 +48,21 @@ fn captured() -> &'static Captured {
     })
 }
 
-/// The access token of this provider, which only its own store holds.
-async fn access_token(person: &Person) -> String {
-    let store = &person.keys;
-    let q = fs_store_unlogged::Query::new().of_type("freesynergy.net:MatrixStoreSegment");
-    let segments = fs_store_unlogged::traits::ObjectQuery::query(store.as_ref(), &q)
-        .await
-        .unwrap();
-    let all =
-        serde_json::to_string(&segments.iter().map(|s| &s.content).collect::<Vec<_>>()).unwrap();
-    let start = all
-        .find("access_token")
-        .expect("the session is in the store");
-    let rest = &all[start..];
-    let text: String = rest.chars().skip_while(|c| *c != ':').skip(1).collect();
-    let cleaned = text.trim_start_matches(['\\', '"']);
-    cleaned
-        .chars()
-        .take_while(|c| c.is_alphanumeric())
-        .collect()
+/// A journal's record as it stands, through the store's own API.
+async fn record(person: &Person, key: &str) -> serde_json::Value {
+    let q = fs_store::Query::new().of_type("freesynergy.net:MatrixStoreSegment");
+    let segments = person.keys.query(&q).await.unwrap();
+    let mut newest = None;
+    let mut segments: Vec<_> = segments.iter().map(|s| &s.content).collect();
+    segments.sort_by_key(|c| c["ops"].as_array().map(Vec::len));
+    for segment in segments {
+        for op in segment["ops"].as_array().unwrap() {
+            if op["p"][0] == key {
+                newest = Some(op["p"][1].as_str().unwrap().to_owned());
+            }
+        }
+    }
+    serde_json::from_str(&newest.expect("the record is in the store")).unwrap()
 }
 
 fn contains(haystack: &[u8], needle: &str) -> bool {
@@ -72,23 +71,43 @@ fn contains(haystack: &[u8], needle: &str) -> bool {
         .any(|w| w == needle.as_bytes())
 }
 
+/// Every secret the rule names: token, password, passphrase, a Megolm key, an Olm key.
+async fn needles(alice: &Person, passphrase: &str, export: &Path) -> Vec<(&'static str, String)> {
+    let session = record(alice, "session").await;
+    let token = session["access_token"].as_str().unwrap().to_owned();
+    assert!(token.len() > 8, "the test found the real token");
+
+    let file = std::fs::File::open(export).unwrap();
+    let keys = decrypt_room_key_export(file, passphrase).unwrap();
+    let megolm = keys.first().expect("a room key").session_key.to_base64();
+    assert!(megolm.len() > 100, "the test found a real Megolm key");
+
+    // The account's secret part as its pickle holds it. Long enough to be nothing else.
+    let account = record(alice, "[\"account\"]").await;
+    let olm = serde_json::to_string(&account["pickle"]).unwrap();
+    assert!(olm.len() > 100, "the test found a real Olm pickle");
+    let olm = olm[olm.len() / 2..olm.len() / 2 + 48].to_owned();
+
+    vec![
+        ("the access token", token),
+        ("the password", alice.password.clone()),
+        ("the export passphrase", passphrase.to_owned()),
+        ("a Megolm key", megolm),
+        ("an Olm key", olm),
+    ]
+}
+
 #[tokio::test]
 #[ignore = "needs a homeserver; see tests/server/main.rs"]
-async fn no_secret_in_debug_logs_activity_log_or_on_disk() {
+async fn no_secret_in_activity_hub_path_debug_error_log_or_file() {
     let log = captured();
     let alice = Person::new("alice").await;
     let bob = Person::new("bob").await;
     let room = encrypted_room(&alice, &bob).await;
-    let needle = format!("SecretText-{}", token());
-    alice.send(&[&room], &needle).await.expect("send");
-    bob.wait_for(&needle).await;
+    let text = format!("SecretText-{}", token());
+    alice.send(&[&room], &text).await.expect("send");
+    bob.wait_for(&text).await;
 
-    let access = access_token(&alice).await;
-    assert!(
-        access.len() > 8,
-        "the test found the real token: {} chars",
-        access.len()
-    );
     let passphrase = format!("export-phrase-{}", token());
     let export = alice.file("export.txt");
     let phrase = Password::new(passphrase.clone());
@@ -97,24 +116,34 @@ async fn no_secret_in_debug_logs_activity_log_or_on_disk() {
         .export_room_keys(export.clone(), &phrase)
         .await
         .unwrap();
+    let needles = needles(&alice, &passphrase, &export).await;
+    let refuse = |place: &str, haystack: &[u8]| {
+        for (what, secret) in &needles {
+            assert!(!contains(haystack, secret), "{what} is in {place}");
+        }
+    };
 
-    // Debug.
+    // Debug, and an error from every way that can fail here.
     let shown = format!("{:?} {:#?} {:?}", alice.provider, alice.provider, phrase);
-    for secret in [
-        access.as_str(),
-        alice.password.as_str(),
-        passphrase.as_str(),
-    ] {
-        assert!(!shown.contains(secret), "Debug shows a secret: {shown}");
-    }
-    let wrong = MatrixProvider::login(
+    refuse("Debug", shown.as_bytes());
+    let wrong_password = MatrixProvider::login(
         MatrixAccount::new(http::base(), crate::common::mxid("nobody-here")),
         &Password::new(alice.password.clone()),
         Arc::new(crate::common::open_keys(&alice.file("other.db")).await),
     )
     .await
     .unwrap_err();
-    assert!(!format!("{wrong:?} {wrong}").contains(alice.password.as_str()));
+    refuse(
+        "an error",
+        format!("{wrong_password:?} {wrong_password}").as_bytes(),
+    );
+    let foreign = fs_messenger_core::ProviderCursor(alice.password.clone());
+    let refused = fs_messenger_core::Provider::fetch(alice.provider.as_ref(), Some(&foreign));
+    let refused = refused.await.unwrap_err();
+    refuse(
+        "a cursor error",
+        format!("{refused:?} {refused}").as_bytes(),
+    );
 
     // Every log line of every crate, down to TRACE.
     let lines = log.0.lock().unwrap().clone();
@@ -123,49 +152,40 @@ async fn no_secret_in_debug_logs_activity_log_or_on_disk() {
         "the capture works: {} bytes",
         lines.len()
     );
-    for secret in [
-        access.as_str(),
-        alice.password.as_str(),
-        passphrase.as_str(),
-    ] {
-        assert!(!contains(&lines, secret), "a secret is in the log");
-    }
+    refuse("the log", &lines);
+    assert!(!contains(&lines, &text), "the message text is in the log");
 
-    assert!(!contains(&lines, &needle), "the message text is in the log");
-
-    // The activity log of the key store is empty.
-    let entries = alice
+    // The whole activity log of both stores, read through the store's API. `unsynced_only` is what
+    // the hub reads, and it is a part of this.
+    let key_log = alice
         .keys
         .activities(&ActivityFilter::default())
         .await
         .unwrap();
     assert!(
-        entries.is_empty(),
+        key_log.is_empty(),
         "{} activities in the key store",
-        entries.len()
+        key_log.len()
+    );
+    let core_log = alice
+        .messages
+        .activities(&ActivityFilter::default())
+        .await
+        .unwrap();
+    assert!(!core_log.is_empty(), "the core's log was read");
+    refuse(
+        "the activity log",
+        serde_json::to_string(&core_log).unwrap().as_bytes(),
     );
 
-    // The core's log has the account and its cursor, and none of the secrets.
-    let core_log = fs_store::traits::ActivityLog::activities(
-        alice.messages.as_ref(),
-        &fs_store::ActivityFilter::default(),
-    )
-    .await
-    .unwrap();
-    assert!(!core_log.is_empty());
-    let core_log = serde_json::to_string(&core_log).unwrap();
-    for secret in [
-        access.as_str(),
-        alice.password.as_str(),
-        passphrase.as_str(),
-    ] {
-        assert!(
-            !core_log.contains(secret),
-            "a secret is in the activity log"
-        );
-    }
+    // Nothing of the session or the keys is an object the hub could be handed: all are unlogged.
+    let unsynced = ActivityFilter {
+        unsynced_only: true,
+        ..ActivityFilter::default()
+    };
+    assert!(alice.keys.activities(&unsynced).await.unwrap().is_empty());
 
-    // The file holds none of it, nor the room, nor a key's name, readable.
+    // The raw files: encrypted, so none of it is readable, nor the room or the words around a key.
     drop(alice.provider);
     drop(alice.repo);
     drop(alice.messages);
@@ -177,13 +197,8 @@ async fn no_secret_in_debug_logs_activity_log_or_on_disk() {
         }
         let bytes = std::fs::read(&path).unwrap();
         seen += bytes.len();
-        for plain in [
-            access.as_str(),
-            &needle,
-            room.as_str(),
-            "access_token",
-            "pickle",
-        ] {
+        refuse(&path.display().to_string(), &bytes);
+        for plain in [text.as_str(), room.as_str(), "access_token", "pickle"] {
             assert!(
                 !contains(&bytes, plain),
                 "{plain} is readable in {}",
@@ -197,4 +212,5 @@ async fn no_secret_in_debug_logs_activity_log_or_on_disk() {
         exported.contains("BEGIN MEGOLM SESSION DATA"),
         "an encrypted export"
     );
+    refuse("the export file", exported.as_bytes());
 }

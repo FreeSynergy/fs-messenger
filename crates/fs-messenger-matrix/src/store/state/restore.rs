@@ -16,6 +16,7 @@ use matrix_sdk_base::store::{MemoryStore, StateStoreDataKey, StateStoreDataValue
 use super::kind;
 use super::store::FsStateStore;
 use crate::error::StoreFail;
+use crate::secret::SecretText;
 use crate::store::Journal;
 use crate::store::hex::decode_bytes;
 use crate::store::keys::parts;
@@ -43,7 +44,7 @@ impl FsStateStore {
 
 async fn restore(
     memory: &MemoryStore,
-    records: &BTreeMap<String, String>,
+    records: &BTreeMap<String, SecretText>,
 ) -> Result<(), StoreFail> {
     let mut c = StateChanges::default();
     let mut filters = Vec::new();
@@ -51,6 +52,7 @@ async fn restore(
     let mut key_uploaded = false;
 
     for (key, value) in records {
+        let value = value.expose();
         let p = parts(key)?;
         match (p[0].as_str(), &p[1..]) {
             (kind::SYNC_TOKEN, _) => c.sync_token = Some(read(value)?),

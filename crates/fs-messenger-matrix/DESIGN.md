@@ -11,12 +11,13 @@ Version 0.1.0, not tagged. Tested against the pinned tuwunel 1.9.4 only; see "No
 | Login with password, session restore, same device and identity after a restart | done, against the server |
 | Stores: `CryptoStore` and `StateStore` over an encrypted `fs-store`, pure Rust, no SQLite | done: the SDK's own suites pass (35 and 28 tests; one more is `#[ignore]`d by the suite itself), restart against the server |
 | Sync into the core: rooms are conversations, `m.room.message` are messages, event id is the alias, `m.in_reply_to` threads, cursor persists in the core, replay does not duplicate, own copy recognised | done, against the server |
-| Gaps: a limited `/sync` and a newly joined room are read through `/messages` | done, against the server; at most 5000 events per room per gap |
+| Gaps: a limited `/sync`, a newly joined room and a replay are read through `/messages`, 500 events per fetch, going on in the next (`more`) | done, against the server |
 | Original: the event JSON as received; see "Originals" | done |
 | Sending: `m.room.message` only into a room with `m.room.encryption`; plan and provider both check | done, against the server |
 | Incoming marks: `megolm` only after real decryption; plain is `none`; undecrypted is `unknown` | done, against the server |
 | Undecrypted, then the key arrives: replaced in place, same message, same original | done, against the server; see "Late keys" |
-| Secrets: not in `Debug`, not in logs at TRACE, not in either activity log, not readable on disk | done, tested |
+| Secrets: see "Secrets" | done, tested with needles from the real secrets |
+| A hostile server: the token stays at the configured origin, requests end, memory is bounded where this crate can bound it; see "What a server cannot do" | done, tested |
 
 ### `Unsupported`, or not built
 
@@ -55,7 +56,7 @@ Version 0.1.0, not tagged. Tested against the pinned tuwunel 1.9.4 only; see "No
 | `store/forward.rs` | Decorator, the plain half | nearly a hundred methods only pass on |
 | `store/journal.rs`, `store/fs_journal.rs` | Strategy, Adapter | atomic log of changes, over `fs-store` |
 | `store/keys.rs`, `store/hex.rs`, `store/read_back.rs` | Strategy (pure functions) | unambiguous keys, whatever a server puts in them |
-| `secret.rs` | Newtype | a secret cannot be printed |
+| `secret.rs` | Newtype | `Password`, `SecretText`: a secret cannot be printed |
 
 ## Stores: pure Rust, and how
 
@@ -65,7 +66,7 @@ Version 0.1.0, not tagged. Tested against the pinned tuwunel 1.9.4 only; see "No
 
 **One `save_changes` is one object**, written by `put_unlogged` in one transaction, so it is all or nothing. After 512 segments the journal folds into a base segment, and whatever lies before the newest base is ignored.
 
-**Why `put_unlogged`.** A logged `put` keeps the old image in the activity log until compaction, and compaction only removes what the hub acknowledged. For a crypto store that would keep every old ratchet state on disk. **Limits:** `fs-store` says that old pages can stay in the file until reused, so old states may linger inside the encrypted file. Keys are not zeroed in RAM in the journal's text values.
+**Why `put_unlogged`.** A logged `put` keeps the old image in the activity log until compaction, and compaction only removes what the hub acknowledged. For a crypto store that would keep every old ratchet state on disk. **Limits:** `fs-store` says that old pages can stay in the file until reused, so old states may linger inside the encrypted file. A value is wiped from RAM as a `SecretText`, but the plain `serde_json::Value` of a segment on its way to the store, and the SDK's memory store, are not.
 
 **Everything is in RAM** while the provider runs: the SDK's memory stores hold it all, as `MemoryStore` was built to. Fine for one person's account; not measured at scale. Folding reads everything.
 
@@ -82,6 +83,24 @@ Version 0.1.0, not tagged. Tested against the pinned tuwunel 1.9.4 only; see "No
 | `simsimd` | C | `turso_core`, so already in `fs-store` and in the core |
 
 `aegis` (through `turso_core`) is built with its `pure-rust` feature (`cargo tree -e features`), so its C is not compiled, though `cc` is listed for it. No `libsqlite3-sys`, `rusqlite`, `aws-lc`, `openssl-sys` or `native-tls` in `cargo tree -e normal`.
+
+## Secrets (blocker before merge)
+
+No access token, password, passphrase, Olm or Megolm key in an activity, a hub path, `Debug`, `Display`, an error or a log line. There is no recovery key: no backup, no recovery. There is no store passphrase of the SDK: the key comes from `fs-store`'s `KeyProvider`, and this crate never holds it.
+
+* **Own redacting types.** `Password`, and `SecretText` for every journal value, whatever it holds, so no code decides which one is secret. No `Display`, `Debug` prints a placeholder, memory is wiped on drop, readable only inside this crate. `Debug` of `MatrixProvider` shows ids, and does not ask the client.
+* **Errors.** A `serde_json` message quotes what it read: `invalid type: string "..."`. So errors give the kind and position only, and a pickle that fails says which and not why. Tested with a damaged record.
+* **Activity and hub.** All stores write through `put_unlogged`: nothing in the activity log, no change-feed event, nothing the hub reads. The core's own log holds the account and its cursor, whose waiting list holds **ciphertext**, never a key.
+* **The test** (`tests/server/secrets.rs`) takes needles from the real secrets: the token from the store, a real Megolm session key from a decrypted export, a piece of the real Olm pickle, the password, the passphrase. It looks in `Debug`, in errors, in every log line of every crate at TRACE, in the whole activity log of both stores through the store's API, in what the hub reads, and in the raw files. The Olm needle is a text piece of the pickle: a log printing the same bytes in another form would pass it.
+* **It refuses an unencrypted store**, also one that opted out and an in-memory one, before anything is sent. Tested at the provider.
+
+## What a server cannot do
+
+Found in the review of the mail crate, and all three were true here, by the SDK's defaults:
+
+* **Move the token.** The SDK follows `well_known` in a login answer, and `reqwest` follows redirects. Both are off: `respect_login_well_known(false)` and `redirect::Policy::none()`. **A homeserver behind a redirect does not work**; configure its real URL. Both tests were seen to fail with the protection removed.
+* **Hold a request for ever.** The SDK retries indefinitely by default. Now: a time limit per request, a stall limit per read, 3 retries, 4 times the limit in all; `MatrixAccount::request_timeout`, 30 s. Provisional.
+* **Fill memory, as far as this crate can tell.** 500 events per fetch through `/messages`, going on in the next; the waiting list holds 256 events and 1 MiB; an event over the specification's 64 KiB does not wait. **Not bounded: the size of one HTTP answer.** The SDK reads it whole and offers no limit, and the core's 25 MiB stub only helps after that; only the time limit stands in the way. The number of rooms in one `/sync` is not bounded either. Wanted from the SDK.
 
 ## Originals (ADR 0030)
 
@@ -134,12 +153,11 @@ What the SDK does by default, unchanged:
 Worked around here, nothing changed there:
 
 1. **Replacing a readable message** (`RawMessage.replaces`, or an `Ingest` method). Only an undecrypted one can be replaced today. Without it: edits and redactions.
-2. **`fs-store` v0.3.0.** The core pins v0.2.0; `UnloggedObjects` is in v0.3.0. This crate depends on both, renamed, so `fs-store` is built twice, and the two stores are of different types. Both use turso `=0.8.3`.
-3. **`encryption_plan` should get the conversation.** It only sees recipients: see "Sending and the two checks". Today a reply into a plain room can pass the plan and end in `failed`.
-4. **A second original or a cleartext field**, so that what was decrypted can be derived anew.
-5. **The sender's verification state.** `RawMessage.signature` now exists, and stays unset here: `not verified`. It speaks of signatures, and whether a verified Megolm sender is `Valid` is for the core to say.
-6. **Rooms in the model:** invitations, joining.
-7. **`Outgoing` could carry the client's own id** (transaction id), which would close the echo race for all providers.
+2. **`encryption_plan` should get the conversation.** It only sees recipients: see "Sending and the two checks". Today a reply into a plain room can pass the plan and end in `failed`.
+3. **A second original or a cleartext field**, so that what was decrypted can be derived anew.
+4. **The sender's verification state.** `RawMessage.signature` now exists, and stays unset here: `not verified`. It speaks of signatures, and whether a verified Megolm sender is `Valid` is for the core to say.
+5. **Rooms in the model:** invitations, joining.
+6. **`Outgoing` could carry the client's own id** (transaction id), which would close the echo race for all providers.
 
 ## Not verified
 
@@ -158,8 +176,10 @@ Worked around here, nothing changed there:
 
 `cargo test -p fs-messenger-matrix`: offline, unit tests, the SDK's two conformance suites over our stores and `store_restart`, all on encrypted files. The suites read from memory, so they prove little about persistence alone; `store_restart` and the server tests do that.
 
+`hostile_server` runs the real provider against a small raw HTTP server that misbehaves on purpose; that server is no stand-in for Matrix, and no claim about Matrix rests on it.
+
 The server tests are `#[ignore]`d; `tests/server/main.rs` says how to run them. No test double: real provider, real core, real server, and what the server holds read by plain HTTP.
 
 ## Crates
 
-`matrix-sdk`, `matrix-sdk-base` (`=0.19.1`, Apache-2.0), `rustls` with ring (TLS, as in the mail crate). `matrix_sdk::crypto` is not re-exported, hence `matrix-sdk-base`. `fs-store` twice (see above), `fs-interfaces`, `fs-messenger-core`, `async-trait`, `chrono`, `serde`, `serde_json`, `thiserror`, `tokio`, `tracing`, `zeroize`.
+`matrix-sdk`, `matrix-sdk-base` (`=0.19.1`, Apache-2.0), `rustls` with ring (TLS, as in the mail crate). `matrix_sdk::crypto` is not re-exported, hence `matrix-sdk-base`. `fs-store`, `fs-interfaces`, `fs-messenger-core`, `async-trait`, `chrono`, `serde`, `serde_json`, `thiserror`, `tokio`, `tracing`, `zeroize`.

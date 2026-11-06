@@ -12,7 +12,12 @@ pub(super) fn read<T: DeserializeOwned>(text: &str) -> Result<T, StoreFail> {
     Ok(serde_json::from_str(text)?)
 }
 
-/// A record that cannot be what it says.
+/// A record of key material that cannot be read. Says which, and not why: a parser's reason can quote.
+pub(super) fn unreadable(what: &str) -> StoreFail {
+    StoreFail::Record(format!("{what}: cannot be read"))
+}
+
+/// A record that cannot be what it says. Only for ids, which are no secret.
 pub(super) fn bad(what: &str, why: impl std::fmt::Display) -> StoreFail {
     StoreFail::Record(format!("{what}: {why}"))
 }

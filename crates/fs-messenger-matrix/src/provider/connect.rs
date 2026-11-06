@@ -3,14 +3,21 @@
 //! Pattern: Factory: builds the SDK client over the stores of `fs-store`. The session lives in the
 //! same encrypted store as the keys. A stored session always wins over a password: a new login would
 //! be a new device, with new keys, and the old messages would stay unreadable.
+//!
+//! The token only ever goes to the configured origin: a homeserver cannot move it, neither with the
+//! `well_known` of a login answer, which the SDK follows by default, nor with a redirect, which
+//! `reqwest` follows by default. Requests have a time limit and a retry limit: the SDK's default is to
+//! retry for ever.
 
 use std::sync::Arc;
+use std::time::Duration;
 
-use fs_store_unlogged::TursoStore;
+use fs_store::TursoStore;
 use matrix_sdk::Client;
 use matrix_sdk::authentication::matrix::MatrixSession;
-use matrix_sdk::config::StoreConfig;
+use matrix_sdk::config::{RequestConfig, StoreConfig};
 use matrix_sdk::cross_process_lock::CrossProcessLockConfig;
+use matrix_sdk::reqwest;
 use matrix_sdk::store::RoomLoadSettings;
 
 use super::{MatrixAccount, MatrixProvider};
@@ -24,6 +31,20 @@ const SESSION_KEY: &str = "session";
 /// not an error: whoever came first stays.
 fn install_tls() {
     let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
+/// How many times a failed request is tried again, and how long that may go on in all.
+const RETRIES: usize = 3;
+
+fn http_client(timeout: Duration) -> Result<reqwest::Client> {
+    let client = reqwest::Client::builder()
+        .user_agent("FreeSynergy.Messenger")
+        .redirect(reqwest::redirect::Policy::none())
+        .min_tls_version(reqwest::tls::Version::TLS_1_2)
+        .connect_timeout(timeout)
+        .read_timeout(timeout)
+        .build();
+    client.map_err(|e| MatrixError::Sdk(e.to_string()))
 }
 
 struct Opened {
@@ -40,14 +61,22 @@ async fn open(account: &MatrixAccount, store: Arc<TursoStore>) -> Result<Opened>
     let state = FsJournal::open(store.clone(), name("state")).await?;
     let sessions = FsJournal::open(store, name("session")).await?;
     let saved = match sessions.load().await?.get(SESSION_KEY) {
-        Some(text) => Some(serde_json::from_str(text).map_err(crate::StoreFail::from)?),
+        Some(text) => Some(serde_json::from_str(text.expose()).map_err(crate::StoreFail::from)?),
         None => None,
     };
     let config = StoreConfig::new(CrossProcessLockConfig::SingleProcess)
         .state_store(FsStateStore::open(Arc::new(state)).await?)
         .crypto_store(FsCryptoStore::open(Arc::new(crypto)).await?);
+    let timeout = account.request_timeout;
+    let requests = RequestConfig::new()
+        .timeout(timeout)
+        .retry_limit(RETRIES)
+        .max_retry_time(timeout * 4);
     let client = Client::builder()
         .homeserver_url(&account.homeserver)
+        .http_client(http_client(timeout)?)
+        .request_config(requests)
+        .respect_login_well_known(false)
         .store_config(config)
         .build()
         .await
@@ -95,7 +124,7 @@ impl MatrixProvider {
             .session()
             .ok_or_else(|| MatrixError::Sdk("logged in, and no session".into()))?;
         let text = serde_json::to_string(&session).map_err(crate::StoreFail::from)?;
-        let op = Op::Put(SESSION_KEY.to_owned(), text);
+        let op = Op::Put(SESSION_KEY.to_owned(), text.into());
         opened.sessions.append(vec![op]).await?;
         Self::started(account, client).await
     }

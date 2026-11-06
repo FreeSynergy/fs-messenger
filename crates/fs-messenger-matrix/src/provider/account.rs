@@ -3,10 +3,13 @@
 //! Pattern: Specification + Value object. A token over plain HTTP is readable on the way, so `http://`
 //! passes only for loopback: the local test server, or a tunnel.
 
+use std::time::Duration;
+
 use crate::error::MatrixError;
 
 /// Timeline events per room in one `/sync`. More are fetched separately if a room has more.
 const DEFAULT_TIMELINE_LIMIT: u32 = 100;
+const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Who logs in, and where.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -19,6 +22,8 @@ pub struct MatrixAccount {
     pub device_name: String,
     /// Timeline events per room in one `/sync`.
     pub timeline_limit: u32,
+    /// How long one request may take, and one read of its answer may stall.
+    pub request_timeout: Duration,
 }
 
 impl MatrixAccount {
@@ -29,6 +34,7 @@ impl MatrixAccount {
             user_id: user_id.into(),
             device_name: "FreeSynergy.Messenger".to_owned(),
             timeline_limit: DEFAULT_TIMELINE_LIMIT,
+            request_timeout: DEFAULT_REQUEST_TIMEOUT,
         }
     }
 

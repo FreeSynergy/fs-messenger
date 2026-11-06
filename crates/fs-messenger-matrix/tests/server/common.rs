@@ -17,8 +17,8 @@ fn key() -> Vec<u8> {
 }
 
 /// The store the SDK's keys live in.
-pub async fn open_keys(path: &Path) -> fs_store_unlogged::TursoStore {
-    use fs_store_unlogged::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
+pub async fn open_keys(path: &Path) -> fs_store::TursoStore {
+    use fs_store::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
     let options = OpenOptions {
         key_provider: Some(Arc::new(StaticKeyProvider(EncryptionKey {
             cipher: Cipher::Aes256Gcm,
@@ -56,7 +56,7 @@ pub struct Person {
     pub provider: Arc<MatrixProvider>,
     pub repo: MessengerRepo,
     pub account: Account,
-    pub keys: Arc<fs_store_unlogged::TursoStore>,
+    pub keys: Arc<fs_store::TursoStore>,
     pub messages: Arc<fs_store::TursoStore>,
 }
 

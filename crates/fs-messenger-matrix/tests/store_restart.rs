@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use fs_messenger_matrix::StoreFail;
 use fs_messenger_matrix::store::{FsCryptoStore, FsJournal, FsStateStore};
-use fs_store_unlogged::traits::ActivityLog;
-use fs_store_unlogged::{ActivityFilter, TursoStore};
+use fs_store::traits::ActivityLog;
+use fs_store::{ActivityFilter, TursoStore};
 use matrix_sdk_base::deserialized_responses::RawAnySyncOrStrippedState;
 use matrix_sdk_base::store::StateStoreDataKey;
 use matrix_sdk_base::{RoomInfo, RoomState, StateChanges, StateStore};

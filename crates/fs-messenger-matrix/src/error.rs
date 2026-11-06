@@ -1,7 +1,8 @@
 //! Errors of the Matrix provider.
 //!
-//! Pattern: none (plain error enum via `thiserror`). Every variant carries text from a transport or a
-//! parser, never a secret: passwords and tokens are only held where they cannot be printed.
+//! Pattern: none (plain error enum via `thiserror`). Every variant carries text from a transport, or
+//! a parser's position, never a secret: passwords, tokens and keys are only held where they cannot be
+//! printed, and a parser's own message is not used, because it can quote what it read.
 
 /// Everything that can go wrong in this crate.
 #[derive(Debug, thiserror::Error)]
@@ -49,7 +50,7 @@ pub enum StoreFail {
     NotEncrypted,
     /// `fs-store` failed.
     #[error("fs-store: {0}")]
-    Backend(#[from] fs_store_unlogged::Error),
+    Backend(#[from] fs_store::Error),
     /// A record could not be read or written. The value is not named.
     #[error("record: {0}")]
     Record(String),
@@ -57,9 +58,19 @@ pub enum StoreFail {
 
 impl From<serde_json::Error> for StoreFail {
     fn from(e: serde_json::Error) -> Self {
-        // `Display` of a serde_json error names a position and a type, not the data.
-        Self::Record(e.to_string())
+        Self::Record(where_json_failed(&e))
     }
+}
+
+/// Where a parser failed. Never its message: `invalid type: string "..."` quotes the value, and the
+/// value can be key material.
+pub(crate) fn where_json_failed(e: &serde_json::Error) -> String {
+    format!(
+        "{:?} at line {} column {}",
+        e.classify(),
+        e.line(),
+        e.column()
+    )
 }
 
 impl From<std::convert::Infallible> for StoreFail {

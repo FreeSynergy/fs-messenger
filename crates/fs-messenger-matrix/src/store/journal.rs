@@ -10,13 +10,15 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::error::StoreFail;
+use crate::secret::SecretText;
 
-/// One change. Keys and values are text; what they mean is the store's business.
-#[derive(Clone, Serialize, Deserialize)]
+/// One change. Keys and values are text; what they mean is the store's business. A value can be key
+/// material, so it is a [`SecretText`], and a key must never hold a secret.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Op {
     /// Set a key.
     #[serde(rename = "p")]
-    Put(String, String),
+    Put(String, SecretText),
     /// Remove a key.
     #[serde(rename = "r")]
     Remove(String),
@@ -25,19 +27,8 @@ pub enum Op {
     RemovePrefix(String),
 }
 
-impl std::fmt::Debug for Op {
-    // Values can be key material: only the key is ever shown.
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Put(k, _) => write!(f, "Put({k:?}, <redacted>)"),
-            Self::Remove(k) => write!(f, "Remove({k:?})"),
-            Self::RemovePrefix(k) => write!(f, "RemovePrefix({k:?})"),
-        }
-    }
-}
-
 /// Apply `ops`, in order, to `map`.
-pub(crate) fn apply(map: &mut BTreeMap<String, String>, ops: Vec<Op>) {
+pub(crate) fn apply(map: &mut BTreeMap<String, SecretText>, ops: Vec<Op>) {
     for op in ops {
         match op {
             Op::Put(k, v) => {
@@ -57,7 +48,7 @@ pub trait Journal: Send + Sync {
     /// Write `ops` as one atomic step. When this answers `Ok`, they survive a crash.
     async fn append(&self, ops: Vec<Op>) -> Result<(), StoreFail>;
     /// All keys as they stand now.
-    async fn load(&self) -> Result<BTreeMap<String, String>, StoreFail>;
+    async fn load(&self) -> Result<BTreeMap<String, SecretText>, StoreFail>;
 }
 
 #[cfg(test)]
@@ -70,9 +61,9 @@ mod tests {
         apply(
             &mut m,
             vec![
-                Op::Put("a/1".into(), "x".into()),
-                Op::Put("a/2".into(), "x".into()),
-                Op::Put("b".into(), "x".into()),
+                Op::Put("a/1".into(), "x".to_owned().into()),
+                Op::Put("a/2".into(), "x".to_owned().into()),
+                Op::Put("b".into(), "x".to_owned().into()),
                 Op::RemovePrefix("a/".into()),
             ],
         );
@@ -81,7 +72,10 @@ mod tests {
 
     #[test]
     fn debug_never_shows_a_value() {
-        let shown = format!("{:?}", Op::Put("k".into(), "secret-value".into()));
+        let shown = format!(
+            "{:?}",
+            Op::Put("k".into(), "secret-value".to_owned().into())
+        );
         assert!(!shown.contains("secret-value"));
     }
 }

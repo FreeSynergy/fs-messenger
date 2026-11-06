@@ -9,13 +9,14 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use fs_store_unlogged::traits::{ObjectQuery, UnloggedObjects};
-use fs_store_unlogged::{Envelope, Query, StoredObject, TursoStore};
+use fs_store::traits::{ObjectQuery, UnloggedObjects};
+use fs_store::{Envelope, Query, StoredObject, TursoStore};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use super::journal::{Journal, Op, apply};
 use crate::error::StoreFail;
+use crate::secret::SecretText;
 
 const SEGMENT: &str = "freesynergy.net:MatrixStoreSegment";
 const SENSITIVE: &str = "pd:Communication";
@@ -116,7 +117,7 @@ fn seq_of(object: &StoredObject) -> Result<u64, StoreFail> {
         .ok_or_else(|| StoreFail::Record("a journal segment without a sequence".into()))
 }
 
-fn merge(objects: &[StoredObject]) -> Result<BTreeMap<String, String>, StoreFail> {
+fn merge(objects: &[StoredObject]) -> Result<BTreeMap<String, SecretText>, StoreFail> {
     let mut map = BTreeMap::new();
     for object in objects {
         let segment: Segment = serde_json::from_value(object.content.clone())?;
@@ -145,7 +146,7 @@ impl Journal for FsJournal {
         Ok(())
     }
 
-    async fn load(&self) -> Result<BTreeMap<String, String>, StoreFail> {
+    async fn load(&self) -> Result<BTreeMap<String, SecretText>, StoreFail> {
         let _position = self.position.lock().await;
         merge(&self.segments().await?)
     }

@@ -43,7 +43,7 @@ decorate_memory! {
             let _saving = self.saving.lock().await;
             self.remember_account(account.static_data().clone());
             let pickle = serde_json::to_string(&account.pickle())?;
-            self.journal.append(vec![Op::Put(key(&[kind::ACCOUNT]), pickle)]).await?;
+            self.journal.append(vec![Op::Put(key(&[kind::ACCOUNT]), pickle.into())]).await?;
             let pending = PendingChanges { account: Some(account) };
             Ok(self.memory.save_pending_changes(pending).await?)
         }
@@ -81,7 +81,7 @@ decorate_memory! {
             let mut ops = Vec::new();
             for (room, session) in room_and_session_ids {
                 let k = key(&[kind::INBOUND_BACKED_UP, room.as_str(), session]);
-                ops.push(Op::Put(k, version.clone()));
+                ops.push(Op::Put(k, version.clone().into()));
                 // The session's own flag, in the pickle, has to agree after a restart.
                 if let Some(s) = self.memory.get_inbound_group_session(room, session).await? {
                     s.mark_as_backed_up();
@@ -112,7 +112,7 @@ decorate_memory! {
             let mut ops = Vec::with_capacity(users.len());
             for (user, dirty) in users {
                 let value = serde_json::to_string(dirty)?;
-                ops.push(Op::Put(key(&[kind::TRACKED, user.as_str()]), value));
+                ops.push(Op::Put(key(&[kind::TRACKED, user.as_str()]), value.into()));
             }
             self.journal.append(ops).await?;
             Ok(self.memory.save_tracked_users(users).await?)

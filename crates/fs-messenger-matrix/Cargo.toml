@@ -9,11 +9,7 @@ rust-version = "1.96"
 
 [dependencies]
 fs-messenger-core = { path = "../fs-messenger-core" }
-# What the core speaks: `Blob`, `ObjectId`.
-fs-store = { git = "https://github.com/FreeSynergy/fs-store", tag = "v0.2.0" }
-# The stores of the SDK need writes without the activity log, which v0.3.0 brings; see DESIGN.md,
-# "Wanted from core". Both tags use the same exact turso, so only fs-store itself is built twice.
-fs-store-unlogged = { package = "fs-store", git = "https://github.com/FreeSynergy/fs-store", tag = "v0.3.0" }
+fs-store = { git = "https://github.com/FreeSynergy/fs-store", tag = "v0.3.0" }
 fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.16.0" }
 
 # Pinned exactly: 0.x, and its store traits change with every release. No default features: those

@@ -14,7 +14,7 @@ use crate::store::hex::encode_bytes;
 use crate::store::keys::key;
 
 fn put<T: Serialize>(parts: &[&str], value: &T) -> Result<Op, StoreFail> {
-    Ok(Op::Put(key(parts), serde_json::to_string(value)?))
+    Ok(Op::Put(key(parts), serde_json::to_string(value)?.into()))
 }
 
 /// The entry of one inbound Megolm session, and of the backup it is in, if any.
@@ -104,7 +104,7 @@ pub(super) async fn change_ops(changes: &Changes) -> Result<Vec<Op>, StoreFail> 
     }
     for secret in &changes.secrets {
         let name = secret.secret_name.to_string();
-        let unique = fs_store_unlogged::ObjectId::new().to_string();
+        let unique = fs_store::ObjectId::new().to_string();
         ops.push(put(&[kind::SECRET, &name, &unique], &*secret.secret)?);
     }
     if let Some(token) = &changes.next_batch_token {

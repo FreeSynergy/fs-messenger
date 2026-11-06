@@ -1,48 +1,58 @@
-//! Closing a gap: a `/sync` said its timeline is limited, so events are missing before it.
+//! Reading what `/sync` did not bring: a limited timeline, a newly joined room, a replay.
 //!
-//! Pattern: Iterator over the pages of `/messages`, oldest result first. Bounded, because a room can
-//! be years long; what lies beyond the bound stays on the server (`DESIGN.md`).
+//! Pattern: Iterator over the pages of `/messages`, resumable: where it stands is in the cursor. One
+//! fetch reads a bounded number of events and says `more`, so a long room does not sit in memory whole.
 
 use matrix_sdk::deserialized_responses::TimelineEvent;
 use matrix_sdk::room::MessagesOptions;
-use matrix_sdk::ruma::{RoomId, UInt};
+use matrix_sdk::ruma::{OwnedRoomId, RoomId, UInt};
 
 use super::MatrixProvider;
-use crate::error::Result;
+use crate::error::{MatrixError, Result};
+use crate::receive::MatrixCursor;
 
-/// Events fetched per room to close one gap.
-const MAX_EVENTS: usize = 5000;
+/// Events read through `/messages` in one fetch.
+const EVENTS_PER_FETCH: u32 = 500;
 const PAGE: u32 = 100;
 
 impl MatrixProvider {
-    /// What lies between `since` (or the start of the room) and `from`, oldest first.
-    pub(super) async fn missing_events(
+    /// One fetch's worth of the planned gaps, each page oldest first.
+    pub(super) async fn read_gaps(
         &self,
-        room_id: &RoomId,
-        from: Option<String>,
-        since: Option<&str>,
-    ) -> Result<Vec<TimelineEvent>> {
-        let (Some(mut from), Some(room)) = (from, self.client.get_room(room_id)) else {
-            return Ok(vec![]);
-        };
+        cursor: &mut MatrixCursor,
+    ) -> Result<Vec<(OwnedRoomId, Vec<TimelineEvent>)>> {
         let mut events = Vec::new();
-        while events.len() < MAX_EVENTS {
-            let mut options = MessagesOptions::backward().from(from.as_str());
-            options.to = since.map(ToOwned::to_owned);
-            options.limit = UInt::from(PAGE);
+        let mut budget = EVENTS_PER_FETCH;
+        while budget > 0 {
+            let Some(gap) = cursor.gaps.last().cloned() else {
+                break;
+            };
+            let room_id = <&RoomId>::try_from(gap.room.as_str())
+                .map_err(|e| MatrixError::Cursor(e.to_string()))?;
+            let Some(room) = self.client.get_room(room_id) else {
+                cursor.gaps.pop();
+                continue;
+            };
+            let mut options = MessagesOptions::backward().from(gap.from.as_str());
+            options.to = gap.to;
+            options.limit = UInt::from(budget.min(PAGE));
             let page = room.messages(options).await?;
-            let empty = page.chunk.is_empty();
-            events.extend(page.chunk);
+            let count = u32::try_from(page.chunk.len()).unwrap_or(u32::MAX);
+            budget = budget.saturating_sub(count.max(1));
             match page.end {
-                Some(end) if !empty => from = end,
+                Some(end) if count > 0 => {
+                    if let Some(open) = cursor.gaps.last_mut() {
+                        open.from = end;
+                    }
+                }
                 _ => {
-                    events.reverse();
-                    return Ok(events);
+                    cursor.gaps.pop();
                 }
             }
+            let mut chunk = page.chunk;
+            chunk.reverse();
+            events.push((room_id.to_owned(), chunk));
         }
-        tracing::warn!(room = %room_id, "gap larger than {MAX_EVENTS} events; older ones not fetched");
-        events.reverse();
         Ok(events)
     }
 }
