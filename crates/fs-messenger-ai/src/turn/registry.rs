@@ -76,12 +76,6 @@ impl Registry {
         })
     }
 
-    /// Whether a turn runs in this conversation.
-    pub(crate) fn is_running(&self, conversation: &str) -> bool {
-        let turns = self.turns.lock().unwrap_or_else(PoisonError::into_inner);
-        turns.contains_key(conversation)
-    }
-
     /// End what `scope` names, and answer when their connections are closed. Nothing running is fine.
     pub(crate) async fn stop(&self, scope: &TurnScope) -> Result<(), AiError> {
         let chosen: Vec<Arc<Running>> = {

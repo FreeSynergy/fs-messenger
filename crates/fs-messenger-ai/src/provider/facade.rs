@@ -94,12 +94,6 @@ impl ModelProvider {
         self.shared.live.turn(message)
     }
 
-    /// Whether a turn runs in a conversation this provider calls by this alias.
-    pub fn is_running(&self, conversation: &ExternalId) -> bool {
-        conversation.scheme == CONVERSATION_SCHEME
-            && self.shared.registry.is_running(&conversation.id)
-    }
-
     async fn begin(&self, message: &Outgoing) -> Result<SendReceipt, AiError> {
         let shared = &self.shared;
         deliverable(message, &shared.config.profile)?;

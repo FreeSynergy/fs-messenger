@@ -6,7 +6,6 @@
 
 use std::sync::{Arc, Weak};
 
-use async_trait::async_trait;
 use fs_messenger_core::{Ingest, Messenger};
 use fs_messenger_guard::Gate;
 use fs_store::ObjectId;
@@ -17,10 +16,8 @@ use crate::error::AiError;
 const PAGES: usize = 8;
 
 /// What this provider asks of the messenger.
-#[async_trait]
 pub trait Host: Messenger + Ingest {}
 
-#[async_trait]
 impl<T: Messenger + Ingest> Host for T {}
 
 /// What a provider is attached to.

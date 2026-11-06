@@ -5,7 +5,7 @@
 //! `sender_kind` from the guard's lookup. This code says neither. A message that failed has to say so in
 //! its name, because the core gives a provider no way to store `failed` (`DESIGN.md`, "Wanted").
 
-use fs_messenger_core::{Ingested, Kind, RawMessage, RawToolCall, ToolCall, Usage};
+use fs_messenger_core::{ExternalId, Ingested, Kind, RawMessage, TextPart, ToolCall, Usage};
 use fs_store::ObjectId;
 
 use super::failure::TurnFailure;
@@ -13,7 +13,6 @@ use super::run::{Said, TurnInput};
 use super::shared::Shared;
 use crate::provider::Host;
 use crate::wire::TurnUsage;
-use fs_messenger_core::{ExternalId, TextPart};
 
 const TURN_SCHEME: &str = "model-turn";
 const MEDIA_TYPE: &str = "text/markdown";
@@ -97,13 +96,7 @@ async fn store(
 /// Each goes through the core's one way in. A call the core refuses stays unshown; the message is there.
 async fn record_calls(host: &dyn Host, message: ObjectId, calls: Vec<(String, ToolCall)>) {
     for (reference, call) in calls {
-        let raw = RawToolCall {
-            agent_ref: reference,
-            call,
-        };
-        let _ = host
-            .record_tool_call(message, &raw.agent_ref, raw.call)
-            .await;
+        let _ = host.record_tool_call(message, &reference, call).await;
     }
 }
 
