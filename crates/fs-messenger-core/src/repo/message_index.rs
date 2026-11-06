@@ -15,7 +15,7 @@ use super::text::indexable;
 use crate::model::Message;
 
 fn searchable(m: &Message) -> String {
-    if m.summary.undecrypted || m.too_large.is_some() {
+    if m.summary.undecrypted || m.summary.too_large > 0 {
         return String::new();
     }
     match (&m.stored.body_blob, &m.stored.indexed_text) {

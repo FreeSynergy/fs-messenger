@@ -15,6 +15,8 @@ use super::draft_data::DraftData;
 use super::handle::Inner;
 use crate::draft::Draft;
 use crate::error::{Error, Result};
+use crate::gate;
+use crate::ingest_rules::printable;
 use crate::model::EncryptionPlan;
 
 pub(super) struct StoredDraft {
@@ -56,6 +58,7 @@ impl Draft for StoredDraft {
         bcc: Vec<String>,
     ) -> Result<Vec<String>> {
         self.check_open()?;
+        gate::check_recipients(&[to.as_slice(), &cc, &bcc].concat())?;
         self.data.to = to;
         self.data.cc = cc;
         self.data.bcc = bcc;
@@ -87,7 +90,7 @@ impl Draft for StoredDraft {
 
     async fn set_subject(&mut self, subject: String) -> Result<()> {
         self.check_open()?;
-        self.data.subject = subject.replace('\0', "");
+        self.data.subject = printable(&subject);
         Ok(())
     }
 

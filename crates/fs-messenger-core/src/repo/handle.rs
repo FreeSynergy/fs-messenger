@@ -113,8 +113,10 @@ impl MessengerRepo {
 /// The stores open in this process, by address.
 static OPEN_STORES: Mutex2<BTreeSet<usize>> = Mutex2::new(BTreeSet::new());
 
-/// RAII guard: the claim on a store ends with the last clone of its repo. It lives no longer than
-/// the `Arc` beside it in `Inner`, so an address cannot be reused while it is claimed.
+/// RAII guard: the claim on a store ends with the last clone of its repo. `_handle` is declared after
+/// `store` in `Inner`, so it drops after it: for a moment the address is claimed though the store has
+/// gone. A new store at that address is then refused, which fails safe. A provider holding a repo
+/// clone keeps the claim for as long as it is registered; see `DESIGN.md`.
 struct StoreHandle(usize);
 
 impl StoreHandle {

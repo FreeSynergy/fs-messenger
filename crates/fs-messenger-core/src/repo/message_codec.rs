@@ -58,7 +58,7 @@ struct Content {
     signature: SignatureCheck,
     arrival: u64,
     sort_at: Option<DateTime<Utc>>,
-    too_large: Option<u64>,
+    too_large: u64,
     body_blob: Option<ObjectId>,
 }
 
@@ -86,6 +86,7 @@ pub(super) fn message_from(o: StoredObject) -> Result<Message> {
             arrival: c.arrival,
             undecrypted: c.undecrypted,
             signature: c.signature,
+            too_large: c.too_large,
         },
         body_text: c.body_text,
         body_html: String::new(),
@@ -107,7 +108,6 @@ pub(super) fn message_from(o: StoredObject) -> Result<Message> {
         pending_reply: c.pending_reply,
         references: c.references,
         sort_at: c.sort_at,
-        too_large: c.too_large,
         stored: StoredForm {
             body_blob: c.body_blob,
             indexed_text,
@@ -153,7 +153,7 @@ pub(super) fn message_to(m: &Message) -> Result<StoredObject> {
         signature: s.signature,
         arrival: s.arrival,
         sort_at: m.sort_at,
-        too_large: m.too_large,
+        too_large: s.too_large,
         body_blob: m.stored.body_blob,
     };
     let mut env = s.envelope.clone();

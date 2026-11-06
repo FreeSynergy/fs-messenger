@@ -6,7 +6,7 @@ original (ADR 0020, 0030), stored through `fs-store`. Frontends never see protoc
 
 ## State
 
-Version 0.1.0, not tagged. Mirrors `messenger.capnp` draft 0.2 of `fs-interfaces` v0.16.0 (consumers: 0 of 2). Generated types are not in the public API.
+Version 0.1.0, not tagged. Mirrors the `messenger.capnp` contract, version 0.3 (`CONTRACT_VERSION`), with the dependency on `fs-interfaces` v0.16.0 (consumers: 0 of 2). Generated types are not in the public API.
 
 | Area | State |
 |---|---|
@@ -27,7 +27,7 @@ Version 0.1.0, not tagged. Mirrors `messenger.capnp` draft 0.2 of `fs-interfaces
 | Tool calls as stored data: store, update in place, read; engine id and revision; `settled` final; an outside question is `working` | done |
 | What a connector found: `RawMessage.undecrypted` and `signature` (`SignatureCheck`, unset is `notVerified`, and always `notVerified` without a sender or readable content), kept on `MessageSummary` as typed fields, not in the text, mirroring `msg-contract-2`. The fingerprint of a good signature stays with the provider | done |
 | Mail threading: `RawMessage.references`, sender-chosen, newest 64 kept, only link. `Outgoing::references` gives the parent's chain, and a sent message continues it | done |
-| Size limits at ingest and in `record_tool_call`: see "Limits". Over the limit a stub stays (`Ingested::TooLarge`, `Message.too_large`), so the mail is visible, not gone (ADR 0030): aliases, sender, date, subject, size, no content | done, provisional |
+| Size limits at ingest and in `record_tool_call`: see "Limits". Over the limit a stub stays (`Ingested::TooLarge`, `MessageSummary.too_large`, 0 = it is not), so the mail is visible, not gone (ADR 0030): aliases, links, sender, date, subject, size, no content | done, provisional |
 | Large bodies: over 64 KiB in a store object of their own, see "What a large body costs" | done, with a limit named there |
 | An undecrypted message: no ciphertext in preview, name or search; it cannot be forwarded; delivered again under a provider-issued id in readable form it is replaced under the same id, keeping what the person did | done |
 | Tests | 149 against real `TursoStore` (in memory, or temp files where encryption matters); the `Provider` doubles only feed core logic |
@@ -116,9 +116,9 @@ Types: `Note`, `Tombstone`, `Document` (attachment), `Collection` (conversation)
 
 The limit, 25 MiB by default, applies to **metadata + the larger of (the original, what was decoded)**. Metadata is subject, conversation name, sender, recipients, job and task references, links, references, aliases, tool calls with their results, attachment names and types. Decoded is body, reasoning and attachment bytes. So a mail's decoded parts are not counted on top of the original they came from, and they cannot hide behind a small original either.
 
-At most 256 attachments: more is treated as too large, whatever they weigh. At most 64 links (the first) and 64 references (the newest). An id may have 2048 bytes. In `record_tool_call`, the limit applies to the tool calls of a message plus its inline body, and a report over it is refused with `Error::TooLarge` and changes nothing.
+At most 256 attachments: more is treated as too large, whatever they weigh. **Metadata other than tool calls over 64 KiB is treated as too large too**, since it stays in the message: every change logs it again, and a list page carries the name. Tool calls are outside that cap, because what a tool returned can rightly be larger; they count towards the 25 MiB. A conversation name has at most 200 characters. At most 64 links (the first) and 64 references (the newest). An id may have 2048 bytes. In `record_tool_call`, the limit applies to the tool calls of a message plus its inline body, and a report over it is refused with `Error::TooLarge` and changes nothing.
 
-Search reads the first 256 KiB of a body and stops there; the message itself stays whole. NUL is taken out of text; the original keeps every byte.
+Search reads the first 256 KiB of a body and stops there; the message itself stays whole. NUL is taken out of text, and every control character out of sender, recipients, subject and names, because they go on into replies and mail headers; `set_subject` strips them and `set_recipients` refuses them. The original keeps every byte.
 
 ## What a large body costs
 
@@ -135,11 +135,22 @@ Each change of a message logs a before and an after image of it, content and ind
 A record this version cannot read at all is store damage or a bug, not a state of the program. It is handled so that it fails nothing else, and this is where it shows:
 
 * Pages report it in `skipped`, and asking for it by id answers `Error::Json`.
+* A message whose body object has gone still lists; reading it answers `Error::BodyMissing`, and forward refuses with the same error instead of sending an empty mail.
 * `next_unread`, `mark_read`, the newest message of a conversation and threading go past it. An unreadable unread message stays counted in `unread_count`.
 * A sync counts an `Error::Json` as `rejected` and goes on; a conversation that cannot be read is replaced by a new one for the same thread, so no mail is lost.
 * `drafts()` and `accounts()` leave it out **without reporting it**. Their result is a plain list. A later version should report it there too.
 
 An account that cannot be read stops its sync with `Error::Json`, because nothing can be said about it.
+
+A record that lost its sort keys is neither listed nor reported.
+
+## Known limits
+
+* **The ciphertext attachment stays.** When a readable version replaces an undecrypted one, the attachments it brings are added, and what the undecrypted version had stays beside them, because the core cannot tell which of them is the ciphertext.
+* **A stub stays a stub.** A later delivery of the same message that would fit, for example after the limit is raised, does not replace it. `fs-store` refuses to add an original to an object that has none (ADR 0030), so this cannot reuse the path of an undecrypted message, which already has its original.
+* **A stub keeps only the first 8 aliases.** A replay known only by a later one is stored again: a duplicate beats a lost mail.
+* **A provider holding a repo clone keeps the claim on its store** for as long as it is registered, so the store cannot be opened again until then. It fails safe: the open is refused.
+* **A crash can orphan a `Document`.** A body or attachment is stored before the message that names it. After a crash in between, an unreferenced object holds that text. It is encrypted at rest, and nothing removes it yet.
 
 ## Decisions
 
@@ -157,7 +168,7 @@ An account that cannot be read stops its sync with `Error::Json`, because nothin
 * **`outgoing` on a delivered message:** a connector sets it from its own Sent folder only, and the core believes it only if the sender is the account's own address; otherwise it is an ordinary incoming mail.
 * **A body type other than plain or markdown falls back to `text/plain`.**
 * **A bad tool call goes alone:** one with an empty reference is dropped, the message stays. `record_tool_call` refuses it.
-* **`Kind`, `DeliveryState`, `ToolCallState` have `unknown` as in `msg-contract-2`.** `ToolCallOutcome` has it here only, for a value this version cannot read: see the open points.
+* **`Kind`, `DeliveryState`, `ToolCallState` have `unknown` as in the contract.** `ToolCallOutcome` has it here only, for a value this version cannot read; the server sends that as `open`, which the contract reads as "not known" on a settled call.
 * **Delete = delete + tombstone.** The original cannot be removed by an update (immutable), so the object is deleted and an AS2 `Tombstone` under the same id keeps aliases and order.
 * **A message gets its own id at sending, not the draft's**, because the store keeps `published` of an existing object and a message must sort by when it was sent. Its id stays through edits.
 * **Provisional: message order.** Newest first by `published`, which the sender writes and can forge within the limits above. Page size 50, configurable: the contract has none.
@@ -172,9 +183,7 @@ Contract, for the owner:
 2. `Draft.setSubject` is on branch `msg-contract-2` of `fs-interfaces`, not tagged. `Draft::set_subject` mirrors the name with no dependency change; `Outgoing::subject` exposes it.
 3. No page size, and no direction for `messages`.
 4. `MessageSummary.arrival`, `undecrypted`, `signature`, `MessagePage.skipped` and `unknown` on `Kind`, `ToolCallState`, `DeliveryState` are on `msg-contract-2`, not tagged. The core mirrors them; `skipped` is a count there and the ids here. The dependency stays on v0.16.0.
-5. `ToolCallOutcome` has no `unknown` on the wire. The server can only send a value this version cannot read as `open`, which the contract reads as "not known" on a settled call.
-6. "Read all I see" (see "Reading").
-7. A stub has no wire field: `Message.too_large` is the core's.
+5. "Read all I see" (see "Reading").
 
 Code:
 
@@ -192,4 +201,4 @@ Code:
 
 Feature `test-support`: `MessengerRepo::open`, off unless a build asks for it.
 
-`fs-store` (git tag v0.2.0), `fs-interfaces` (git tag v0.16.0): `Capabilities`, `Unsupported`. `serde`, `serde_json`, `chrono`, `thiserror`, `async-trait`, `tokio`; dev: `tempfile`. No network crates in this crate. `scripts/test-servers` belongs to the connector work, not to this crate.
+`fs-store` (git tag v0.3.0), `fs-interfaces` (git tag v0.16.0): `Capabilities`, `Unsupported`. `serde`, `serde_json`, `chrono`, `thiserror`, `async-trait`, `tokio`; dev: `tempfile`. No network crates in this crate. `scripts/test-servers` belongs to the connector work, not to this crate.

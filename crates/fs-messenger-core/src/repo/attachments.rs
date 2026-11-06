@@ -9,6 +9,7 @@ use fs_store::{Blob, Envelope, ObjectId, Query, StoredObject};
 use super::consts::{CONTENT_TYPE, DOCUMENT, IDX_BLOB, SENSITIVE};
 use super::handle::Inner;
 use crate::error::{Error, Result};
+use crate::ingest_rules::printable;
 use crate::model::Attachment;
 use crate::provider::OutgoingAttachment;
 
@@ -22,8 +23,7 @@ impl Inner {
         data: Vec<u8>,
     ) -> Result<Attachment> {
         // A name is shown and saved under; a sender writes it.
-        let printable = |t: String| t.chars().filter(|c| !c.is_control()).collect::<String>();
-        let (name, media_type) = (printable(name), printable(media_type));
+        let (name, media_type) = (printable(&name), printable(&media_type));
         let media_type = if media_type.is_empty() {
             OCTETS.to_string()
         } else {

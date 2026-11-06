@@ -42,6 +42,9 @@ pub struct MessageSummary {
     pub undecrypted: bool,
     /// What the provider's signature check found.
     pub signature: SignatureCheck,
+    /// The size of a message refused as too large, of which only this stub stays, without content.
+    /// 0 = it is not.
+    pub too_large: u64,
 }
 
 /// A whole message.
@@ -87,9 +90,6 @@ pub struct Message {
     pub pending_reply: Option<ExternalId>,
     /// The chain of ancestors the sender named, oldest first; these only link. Not in the contract.
     pub references: Vec<ExternalId>,
-    /// The size of a message refused as too large: only this stub stays, without content. Not in
-    /// the contract.
-    pub too_large: Option<u64>,
     /// When to sort it instead of `published`, if the sender dated it in the future. Not in the
     /// contract.
     pub sort_at: Option<DateTime<Utc>>,

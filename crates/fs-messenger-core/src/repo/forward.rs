@@ -17,7 +17,7 @@ impl Inner {
         recipients: Vec<String>,
     ) -> Result<()> {
         let source = self.read_message(conversation, id).await?;
-        if source.summary.undecrypted || source.too_large.is_some() {
+        if source.summary.undecrypted || source.summary.too_large > 0 {
             return Err(Error::Conflict(
                 "this message has no readable content to forward".into(),
             ));

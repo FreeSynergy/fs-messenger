@@ -48,7 +48,7 @@ async fn n17_what_stays_of_a_mail_too_large_is_visible_and_has_no_content() {
 
     let conv = conversation_of(&repo).await;
     let stub = repo.message(conv, id).await.unwrap();
-    assert_eq!(stub.too_large, Some(size as u64));
+    assert_eq!(stub.summary.too_large, size as u64);
     assert_eq!(stub.aliases, [alias("big")]);
     assert_eq!(
         stub.summary.envelope.attributed_to.as_deref(),

@@ -57,6 +57,14 @@ pub enum Error {
         /// The limit.
         limit: usize,
     },
+    /// The object holding this message's text has gone: store damage. Its summary still lists.
+    #[error("the text of message {message} is missing from the store (object {body})")]
+    BodyMissing {
+        /// The message.
+        message: ObjectId,
+        /// The object that should hold the text.
+        body: ObjectId,
+    },
     /// The input breaks a rule.
     #[error("invalid: {0}")]
     Invalid(String),
