@@ -16,6 +16,7 @@ use fs_messenger_core::{Encryption, SignatureCheck};
 use tokio::runtime::Handle;
 
 use super::facade::MailProvider;
+use super::opened::{check_of, opened_mail, plain, undecrypted};
 use crate::address::normalise_address;
 use crate::autocrypt::{Offer, offered_for};
 use crate::error::{MailError, Result};
@@ -46,12 +47,16 @@ impl ReadMail {
     }
 }
 
-fn offer_of(values: &[Vec<u8>], sender: &str) -> Option<PublicCert> {
+pub(super) fn offer_of(values: &[Vec<u8>], sender: &str) -> Option<PublicCert> {
     let header = offered_for(values.iter().map(Vec::as_slice), sender)?;
     PublicCert::from_binary(&header.keydata).ok()
 }
 
-fn offering(sender: &str, cert: Option<PublicCert>, proven: bool) -> Option<(String, Offer)> {
+pub(super) fn offering(
+    sender: &str,
+    cert: Option<PublicCert>,
+    proven: bool,
+) -> Option<(String, Offer)> {
     cert.map(|cert| {
         let offer = Offer {
             cert,
@@ -182,96 +187,6 @@ impl Reader {
             (_, Some((content, signature))) => verify_detached(signature, content, &signers.certs),
         };
         Ok(opened_mail(outer, covered.fields, &state, signers.known))
-    }
-}
-
-/// What the state means for the sender: `Valid` only with a key known before this mail, over a part that
-/// names the sender itself. A mail that vouches for itself, or a bare body, is not verified.
-fn check_of(state: &SignatureState, known: bool, names_sender: bool) -> SignatureCheck {
-    match state {
-        SignatureState::NotSigned => SignatureCheck::NotSigned,
-        SignatureState::Valid { .. } if known && names_sender => SignatureCheck::Valid,
-        SignatureState::Valid { .. } | SignatureState::Unverified => SignatureCheck::NotVerified,
-    }
-}
-
-/// The payload is open. Inner headers win if a signature covers them or they declare Header Protection;
-/// otherwise the headers stay the outer ones, and only body and files come from inside.
-fn opened_mail(
-    outer: MailFields,
-    inner: MailFields,
-    state: &SignatureState,
-    known: bool,
-) -> ReadMail {
-    let signature = check_of(state, known, inner.from.is_some());
-    let verified = signature == SignatureCheck::Valid;
-    let believed = verified || inner.header_protected;
-    let sender = if believed { inner.from.clone() } else { None };
-    let sender = sender.or_else(|| outer.from.clone()).unwrap_or_default();
-    // The rule of `autocrypt::rule`: only an offer inside a payload the known key signed is a proof.
-    let inner_offer = offer_of(&inner.autocrypt, &sender);
-    let offer = match inner_offer {
-        Some(cert) => offering(&sender, Some(cert), verified),
-        None => offering(&sender, offer_of(&outer.autocrypt, &sender), false),
-    };
-    let message_id = if believed {
-        inner
-            .message_id
-            .clone()
-            .or_else(|| outer.message_id.clone())
-    } else {
-        outer.message_id.clone()
-    };
-    ReadMail {
-        fields: merged(outer, inner, believed),
-        message_id,
-        encryption: Encryption::Openpgp,
-        undecrypted: false,
-        signature,
-        offer,
-    }
-}
-
-fn plain(fields: MailFields, signature: SignatureCheck) -> ReadMail {
-    let sender = fields.from.clone().unwrap_or_default();
-    let offer = offering(&sender, offer_of(&fields.autocrypt, &sender), false);
-    ReadMail {
-        message_id: fields.message_id.clone(),
-        fields,
-        encryption: Encryption::None,
-        undecrypted: false,
-        signature,
-        offer,
-    }
-}
-
-fn undecrypted(outer: MailFields, message_id: Option<String>) -> ReadMail {
-    let sender = outer.from.clone().unwrap_or_default();
-    let offer = offering(&sender, offer_of(&outer.autocrypt, &sender), false);
-    ReadMail {
-        fields: MailFields {
-            text_body: String::new(),
-            text_media_type: "text/plain".to_string(),
-            attachments: vec![],
-            ..outer
-        },
-        message_id,
-        encryption: Encryption::None,
-        undecrypted: true,
-        signature: SignatureCheck::NotVerified,
-        offer,
-    }
-}
-
-fn merged(outer: MailFields, inner: MailFields, believed: bool) -> MailFields {
-    if believed {
-        return inner;
-    }
-    MailFields {
-        text_body: inner.text_body,
-        text_media_type: inner.text_media_type,
-        attachments: inner.attachments,
-        ..outer
     }
 }
 

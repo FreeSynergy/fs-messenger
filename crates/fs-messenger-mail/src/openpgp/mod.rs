@@ -16,4 +16,6 @@ pub use usable::{KeyRefusal, unix_now, usable_encryption_key};
 #[cfg(test)]
 mod roundtrip_tests;
 #[cfg(test)]
+mod subkey_tests;
+#[cfg(test)]
 mod usable_tests;
