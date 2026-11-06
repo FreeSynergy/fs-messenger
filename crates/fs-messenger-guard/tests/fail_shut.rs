@@ -163,3 +163,35 @@ async fn the_state_object_is_marked_sensitive() {
     assert!(!object.envelope.sensitive.is_empty());
     let _ = Envelope::new("x", "y");
 }
+
+#[tokio::test]
+async fn a_whole_record_of_a_newer_version_reads_as_stopped() {
+    let w = World::with_ai().await;
+    w.release(AI, ToolCallRisk::ReadsOnly, "readsOnly").await;
+    w.tamper(|doc| doc["version"] = json!(2)).await;
+    assert!(w.engine.damage().await.is_some());
+    stopped_after(&w).await;
+}
+
+#[tokio::test]
+async fn every_recovery_has_an_identity_of_its_own_so_no_proof_outlives_one() {
+    let w = World::open().await;
+    w.tamper(|doc| *doc = json!("oops")).await;
+    w.enrolment
+        .recover_damaged(&w.owner.public())
+        .await
+        .unwrap();
+    let first = w.engine.engine_identity().await.unwrap();
+    assert_eq!(first.len(), 32);
+    let old = w.owner.proof(&first, Method::Reopen, &[]);
+    w.tamper(|doc| *doc = json!("oops")).await;
+    w.enrolment
+        .recover_damaged(&w.owner.public())
+        .await
+        .unwrap();
+    assert_ne!(w.engine.engine_identity().await.unwrap(), first);
+    assert!(matches!(
+        w.engine.reopen(&old).await,
+        Err(GuardError::Refused(Refusal::BadProof))
+    ));
+}

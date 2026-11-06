@@ -139,3 +139,25 @@ async fn what_is_shown_is_the_whole_input_and_cannot_hide_text() {
     assert_eq!(w.shown(&q).await.detail, q.call.detail);
     assert_eq!(q.call.summary, "", "agent text does not go here");
 }
+
+#[test]
+fn the_digest_is_exactly_these_bytes_with_an_explicit_no_input() {
+    use sha2::{Digest, Sha256};
+    let hash = |fields: &[&[u8]]| {
+        let mut h = Sha256::new();
+        for f in fields {
+            h.update((f.len() as u64).to_be_bytes());
+            h.update(f);
+        }
+        h.finalize().to_vec()
+    };
+    let context: &[u8] = b"FreeSynergy.Messenger tool call digest v1";
+    assert_eq!(
+        arguments_digest("me", "t", &Arguments::none()),
+        hash(&[context, b"me", b"t", b"no input"])
+    );
+    assert_eq!(
+        arguments_digest("me", "t", &Arguments::from_text("[1]").unwrap()),
+        hash(&[context, b"me", b"t", b"input", b"[1]"])
+    );
+}

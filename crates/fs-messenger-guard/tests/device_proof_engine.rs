@@ -199,3 +199,45 @@ async fn an_invited_ai_gets_no_device_and_a_removed_key_stops_counting() {
         Err(GuardError::Refused(Refusal::BadProof))
     ));
 }
+
+#[tokio::test]
+async fn only_a_key_of_the_owner_can_add_or_remove_a_device() {
+    let w = World::open().await;
+    let friend = Device::new(FRIEND, 2);
+    let key = hex(&friend.public());
+    let add = w.owner.proof(
+        &w.identity,
+        Method::AddDevice,
+        &[FRIEND.as_bytes(), key.as_bytes()],
+    );
+    w.enrolment
+        .add_device(FRIEND, &friend.public(), &add)
+        .await
+        .unwrap();
+
+    // A person with a good key of their own, adding a key for the owner.
+    let thief = Device::new(OWNER, 66);
+    let thief_key = hex(&thief.public());
+    let proof = friend.proof(
+        &w.identity,
+        Method::AddDevice,
+        &[OWNER.as_bytes(), thief_key.as_bytes()],
+    );
+    assert!(matches!(
+        w.enrolment.add_device(OWNER, &thief.public(), &proof).await,
+        Err(GuardError::Refused(Refusal::NotPermitted))
+    ));
+    let owner_key = hex(&w.owner.public());
+    let proof = friend.proof(
+        &w.identity,
+        Method::RemoveDevice,
+        &[OWNER.as_bytes(), owner_key.as_bytes()],
+    );
+    assert!(matches!(
+        w.enrolment
+            .remove_device(OWNER, &w.owner.public(), &proof)
+            .await,
+        Err(GuardError::Refused(Refusal::NotPermitted))
+    ));
+    w.engine.stop(&w.stop_proof()).await.unwrap();
+}

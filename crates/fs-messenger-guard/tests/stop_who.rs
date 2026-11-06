@@ -144,3 +144,22 @@ async fn a_group_stop_answers_unsupported() {
     use fs_messenger_guard::{OwnerOnly, StopPermission};
     assert!(OwnerOnly.may_stop_group("g", OWNER).is_err());
 }
+
+#[tokio::test]
+async fn a_stop_proof_works_once_also_after_a_restart() {
+    let w = World::open().await;
+    let stop = w.stop_proof();
+    w.engine.stop(&stop).await.unwrap();
+    w.engine.reopen(&w.reopen_proof()).await.unwrap();
+    let w = w.restart().await;
+    let again = w.engine.stop(&stop).await;
+    assert!(
+        matches!(again, Err(GuardError::Refused(Refusal::Replayed))),
+        "{again:?}"
+    );
+    assert_eq!(
+        w.engine.state().await.mode,
+        GuardMode::Open,
+        "an old proof stops nothing"
+    );
+}

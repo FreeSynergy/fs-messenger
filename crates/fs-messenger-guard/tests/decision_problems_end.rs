@@ -194,3 +194,20 @@ async fn an_ai_as_the_person_asked_cannot_decide_even_with_a_key() {
         "{result:?}"
     );
 }
+
+#[tokio::test]
+async fn stopped_refuses_a_good_decision_on_a_call_a_record_shows_as_open() {
+    let w = World::with_ai().await;
+    let q = w.ask("message.delete", args("/m")).await;
+    let good = w
+        .owner
+        .decide(&w.identity, q.message, &q.call, "allow-once");
+    w.engine.stop(&w.stop_proof()).await.unwrap();
+    w.tamper(|doc| {
+        doc["calls"][0]["stage"] = serde_json::json!("question");
+        doc["calls"][0]["revision"] = serde_json::json!(1);
+        doc["calls"][0]["expiresAt"] = serde_json::json!("2999-01-01T00:00:00Z");
+    })
+    .await;
+    refused_as(&w, &q, good, P::Invalid).await;
+}
