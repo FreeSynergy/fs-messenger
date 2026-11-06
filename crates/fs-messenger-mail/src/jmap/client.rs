@@ -53,6 +53,19 @@ async fn read_limited(mut response: reqwest::Response, limit: usize) -> Result<V
     Ok(body)
 }
 
+/// The body of `response` up to one byte past `limit`, and whether there was more than `limit`.
+async fn read_start(mut response: reqwest::Response, limit: usize) -> Result<(Vec<u8>, bool)> {
+    let keep = limit.saturating_add(1);
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(err)? {
+        body.extend_from_slice(&chunk[..chunk.len().min(keep - body.len())]);
+        if body.len() == keep {
+            return Ok((body, true));
+        }
+    }
+    Ok((body, false))
+}
+
 /// A method answered with an error (RFC 8620 section 3.6.2).
 #[derive(Debug)]
 pub(super) struct MethodError {
@@ -158,8 +171,9 @@ impl JmapClient {
             .ok_or_else(|| err("the upload answered no blobId"))
     }
 
-    /// Download a blob, byte for byte, up to `limit`. More is an error: the server said otherwise.
-    pub(super) async fn download(&self, blob: &str, limit: usize) -> Result<Vec<u8>> {
+    /// Download a blob, byte for byte. Of one over `limit` only the start, one byte past it, and
+    /// `true`: holding the rest would let a sender fill the memory.
+    pub(super) async fn download(&self, blob: &str, limit: usize) -> Result<(Vec<u8>, bool)> {
         let session = self.session().await?;
         let url = session
             .download_url
@@ -168,7 +182,7 @@ impl JmapClient {
             .replace("{name}", "mail.eml")
             .replace("{type}", "message/rfc822");
         let response = self.authed(self.http.get(url)).send().await.map_err(err)?;
-        read_limited(Self::checked(response)?, limit).await
+        read_start(Self::checked(response)?, limit).await
     }
 
     /// The arguments of the response with call id `id`, or the method's error.
@@ -206,5 +220,13 @@ mod tests {
     async fn a_body_past_the_limit_is_refused() {
         assert_eq!(read_limited(response(10), 10).await.unwrap().len(), 10);
         assert!(read_limited(response(11), 10).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn only_the_start_of_a_blob_past_the_limit_is_held() {
+        let (body, cut) = read_start(response(10), 10).await.unwrap();
+        assert_eq!((body.len(), cut), (10, false));
+        let (body, cut) = read_start(response(5000), 10).await.unwrap();
+        assert_eq!((body.len(), cut), (11, true));
     }
 }

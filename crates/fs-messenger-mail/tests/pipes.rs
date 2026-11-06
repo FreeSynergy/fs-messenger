@@ -77,3 +77,24 @@ References: <r|oot@e>\r\n\r\nsecond\r\n"
     assert!(text.contains("In-Reply-To: <c%hild@e>"), "{text}");
     assert!(text.contains("<r|oot@e>"), "the chain as written: {text}");
 }
+
+/// An id too long for the core, also as the root of a thread, must not lose the mail.
+#[tokio::test]
+async fn ids_the_core_cannot_take_do_not_cost_the_mail() {
+    let bob = person(BOB).await;
+    let (repo, account) = core_with(&bob).await;
+    let from = "a@example.org";
+    let long = "x".repeat(3000);
+    wire_in(
+        &bob,
+        format!("From: {from}\r\nSubject: s\r\nMessage-ID: <{long}@e>\r\n\r\nlong id\r\n"),
+    );
+    wire_in(
+        &bob,
+        format!(
+            "From: {from}\r\nSubject: s\r\nMessage-ID: <c@e>\r\nReferences: <{long}@e>\r\n\r\nlong root\r\n"
+        ),
+    );
+    let report = repo.sync(account).await.unwrap();
+    assert_eq!((report.stored, report.rejected), (2, 0), "{report:?}");
+}

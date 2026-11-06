@@ -82,6 +82,6 @@ async fn a_mail_for_a_lost_key_is_kept_and_marked() {
     assert_eq!(mine.summary.encryption, Encryption::None);
     let server = raw_by_message_id(Who::Bob, &id).await.unwrap();
     assert_eq!(mine.original.as_ref().unwrap().bytes, server);
-    assert!(mine.undecrypted);
+    assert!(mine.summary.undecrypted);
     assert_eq!(mine.body_text, "");
 }

@@ -273,3 +273,28 @@ async fn a_panic_while_reading_leaves_the_mail_stored_and_undecrypted() {
     assert_eq!(got.encryption, Encryption::None);
     assert_eq!(got.original.unwrap().bytes, raw);
 }
+
+/// Only the start of a mail over the limit was read: it says who and what, and teaches no key.
+#[tokio::test]
+async fn a_cut_off_mail_offers_no_key_and_is_not_opened() {
+    let bob = person(BOB).await;
+    let reader = bob.provider.ensure_own_key().await.unwrap().public();
+    let (alice, _) = key(ALICE);
+    let head = format!(
+        "{}Autocrypt: {}\r\n",
+        outer(ALICE, "cut@e"),
+        format_header(ALICE, &alice.public()).unwrap()
+    );
+    let raw = encrypted(&head, genuine(true).as_bytes(), &alice, &reader);
+    bob.wire
+        .cut_off
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let got = deliver(&bob, &raw).await;
+    assert_eq!(got.encryption, Encryption::None, "nothing was decrypted");
+    assert_eq!(got.subject.as_deref(), Some("[...]"));
+    assert_eq!(got.body_text, "");
+    assert!(
+        bob.provider.peer(ALICE).await.unwrap().is_none(),
+        "no key learned"
+    );
+}

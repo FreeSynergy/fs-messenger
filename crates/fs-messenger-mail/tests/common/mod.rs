@@ -3,6 +3,7 @@
 
 #![allow(dead_code)] // each test file uses a different subset
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -23,6 +24,8 @@ use fs_store::{ObjectId, Store, TursoStore};
 pub struct Wire {
     pub inbox: Mutex<Vec<Vec<u8>>>,
     pub sent: Mutex<Vec<(MailEnvelope, Vec<u8>)>>,
+    /// What is delivered counts as only the start of a mail over the limit.
+    pub cut_off: AtomicBool,
 }
 
 #[async_trait]
@@ -50,6 +53,7 @@ impl MailFetch for Wire {
             bytes,
             role: MailboxRole::Inbox,
             stable_id: format!("box/1/{}", last + 1 + u32::try_from(i).unwrap()),
+            truncated: self.cut_off.load(Ordering::SeqCst),
         });
         Ok(FetchedBatch {
             mails: delivered.collect(),

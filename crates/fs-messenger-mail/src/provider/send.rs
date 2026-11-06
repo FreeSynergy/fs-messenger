@@ -11,7 +11,7 @@ use fs_messenger_core::{
 };
 
 use super::facade::MailProvider;
-use super::ids::{decode_id, encode_id};
+use super::ids::{encode_id, header_id};
 use super::receive::{SCHEME_MESSAGE_ID, SCHEME_THREAD};
 use crate::address::normalise_address;
 use crate::autocrypt::format_header;
@@ -166,7 +166,7 @@ fn id_of(aliases: &[ExternalId], scheme: &str) -> Option<String> {
     aliases
         .iter()
         .find(|a| a.scheme == scheme)
-        .map(|a| decode_id(&a.id))
+        .and_then(|a| header_id(&a.id))
 }
 
 /// RFC 5322: the parent's chain, then the parent. The first entry stays the thread's root.
@@ -178,7 +178,7 @@ fn references_of(message: &Outgoing, parent: Option<&str>, root: &str) -> Vec<St
         .references()
         .iter()
         .filter(|r| r.is_sender_chosen())
-        .map(|r| decode_id(&r.id))
+        .filter_map(|r| header_id(&r.id))
         .collect();
     if root != parent && chain.first().map(String::as_str) != Some(root) {
         chain.insert(0, root.to_string());

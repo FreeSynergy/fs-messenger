@@ -41,6 +41,19 @@ pub(super) struct ReadMail {
 }
 
 impl ReadMail {
+    /// Only the start of a mail over the limit was read. Its headers are all that can be said; it is
+    /// not opened and offers no key. The core keeps a stub of it and not these bytes.
+    pub(super) fn cut_off(start: &[u8]) -> Self {
+        let mut read = plain(
+            MailFields::read(start).unwrap_or_default(),
+            SignatureCheck::NotVerified,
+        );
+        read.offer = None;
+        read.fields.text_body = String::new();
+        read.fields.attachments = vec![];
+        read
+    }
+
     /// Nothing could be read, not even the headers.
     fn unreadable() -> Self {
         undecrypted(MailFields::default(), None)

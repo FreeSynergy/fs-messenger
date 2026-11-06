@@ -154,24 +154,13 @@ impl ImapFetch {
                 .join(",");
             let sizes = Self::sizes(session, &set).await?;
             let bytes = u64::try_from(limits.bytes).unwrap_or(u64::MAX);
-            let wanted: Vec<u32> = uids
-                .iter()
-                .copied()
-                .filter(|uid| {
-                    let size = sizes.get(uid).copied().unwrap_or(0);
-                    let fits = u64::from(size) <= bytes;
-                    if !fits {
-                        tracing::warn!(
-                            mailbox = name,
-                            uid,
-                            size,
-                            "mail too large; left on the server"
-                        );
-                    }
-                    fits
-                })
-                .collect();
-            Self::read_bodies(session, name, uid_validity, role, &wanted, batch).await?;
+            let over = |uid: &u32| sizes.get(uid).is_some_and(|size| u64::from(*size) > bytes);
+            let (large, fitting): (Vec<u32>, Vec<u32>) = uids.iter().partition(|uid| over(uid));
+            let at = (name, uid_validity, role);
+            Self::read_bodies(session, at, &fitting, "BODY.PEEK[]", false, batch).await?;
+            // One byte past the limit, so that the core sees a mail over it.
+            let start = format!("BODY.PEEK[]<0.{}>", limits.bytes.saturating_add(1));
+            Self::read_bodies(session, at, &large, &start, true, batch).await?;
         }
         batch.more |= more;
         batch.cursor.mailboxes.insert(
@@ -186,10 +175,10 @@ impl ImapFetch {
 
     async fn read_bodies(
         session: &mut Session<Stream>,
-        name: &str,
-        uid_validity: u32,
-        role: MailboxRole,
+        (name, uid_validity, role): (&str, u32, MailboxRole),
         uids: &[u32],
+        section: &str,
+        truncated: bool,
         batch: &mut FetchedBatch,
     ) -> Result<()> {
         if uids.is_empty() {
@@ -201,7 +190,7 @@ impl ImapFetch {
             .collect::<Vec<_>>()
             .join(",");
         let fetched: Vec<_> = session
-            .uid_fetch(&set, "(UID BODY.PEEK[])")
+            .uid_fetch(&set, format!("(UID {section})"))
             .await
             .map_err(err)?
             .try_collect()
@@ -224,6 +213,7 @@ impl ImapFetch {
                 bytes,
                 role,
                 stable_id: format!("{name}/{uid_validity}/{uid}"),
+                truncated,
             });
         }
         Ok(())

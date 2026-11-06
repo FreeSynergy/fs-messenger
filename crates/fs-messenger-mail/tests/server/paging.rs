@@ -1,11 +1,12 @@
 //! JMAP listing under deletion, and mail over the size limit, on the real server.
 
+use fs_messenger_core::Ingest as _;
 use fs_messenger_mail::fetch::{FetchLimits, FetchedMail, MailCursor, MailFetch};
 use fs_messenger_mail::jmap::JmapFetch;
 
-use crate::common::{Who, contains, serial, smtp_raw, token};
+use crate::common::{Fetch, Person, Submit, Who, contains, serial, smtp_raw, token};
 use crate::env::destroy;
-use crate::wire::{imap_fetch, jmap_client};
+use crate::wire::jmap_client;
 
 const ONE: FetchLimits = FetchLimits {
     mails: 1,
@@ -103,40 +104,43 @@ async fn deleting_an_earlier_mail_between_pages_loses_no_mail() {
     assert!(has(&seen, &format!("M3-{t}")), "m3 must arrive");
 }
 
-async fn over_the_limit(fetch: &dyn MailFetch) {
+/// Through the core: a stub stays of the large one, visibly, and the small one arrives.
+async fn over_the_limit(fetch: Fetch) {
+    const LIMIT: usize = 100_000;
     let t = token();
-    smtp_raw(Who::Alice, Who::Bob, &mail(&t, 1, 200_000)).await;
+    smtp_raw(Who::Alice, Who::Bob, &mail(&t, 1, 2 * LIMIT)).await;
     smtp_raw(Who::Alice, Who::Bob, &mail(&t, 2, 0)).await;
     delivered(&format!("M2-{t}")).await;
     delivered(&format!("M1-{t}")).await;
-    let limits = FetchLimits {
-        mails: 50,
-        bytes: 100_000,
-    };
-    let batch = fetch
-        .fetch(&MailCursor::default(), &limits)
-        .await
-        .expect("fetch");
-    assert!(
-        has(&batch.mails, &format!("M2-{t}")),
+    let b = tempfile::tempdir().unwrap();
+    let bob = Person::open_limited(Who::Bob, b.path(), fetch, Submit::Smtp, LIMIT).await;
+    let report = bob.repo.sync(bob.account).await.expect("sync");
+    assert_eq!(report.rejected, 1, "{report:?}");
+    assert_eq!(
+        bob.find(&format!("M2-{t}")).await.len(),
+        1,
         "the small one arrives"
     );
-    assert!(
-        !has(&batch.mails, &format!("M1-{t}")),
-        "the large one is not downloaded"
-    );
+    let stub = bob
+        .find("m1")
+        .await
+        .pop()
+        .expect("a stub stays of the large one");
+    assert!(stub.too_large.is_some());
+    assert_eq!(stub.body_text, "");
+    assert_eq!(stub.original, None, "the cut-off start is not kept");
 }
 
 #[tokio::test]
 #[ignore = "needs scripts/test-servers/up.sh; run with --ignored"]
 async fn a_mail_over_the_limit_is_passed_over_imap() {
     let _one = serial().await;
-    over_the_limit(&imap_fetch(Who::Bob)).await;
+    over_the_limit(Fetch::Imap).await;
 }
 
 #[tokio::test]
 #[ignore = "needs scripts/test-servers/up.sh; run with --ignored"]
 async fn a_mail_over_the_limit_is_passed_over_jmap() {
     let _one = serial().await;
-    over_the_limit(&JmapFetch::new(jmap_client(Who::Bob))).await;
+    over_the_limit(Fetch::Jmap).await;
 }

@@ -77,11 +77,24 @@ pub struct Person {
 
 impl Person {
     pub async fn open(who: Who, dir: &Path, fetch: Fetch, submit: Submit) -> Self {
+        Self::open_limited(who, dir, fetch, submit, 25 * 1024 * 1024).await
+    }
+
+    /// With this limit on a mail, in the core and in the provider.
+    pub async fn open_limited(
+        who: Who,
+        dir: &Path,
+        fetch: Fetch,
+        submit: Submit,
+        limit: usize,
+    ) -> Self {
         let store = TursoStore::open_with(dir.join("messages.db"), encrypted())
             .await
             .unwrap();
         let actor = format!("https://local.invalid/users/{}", who.address());
-        let repo = MessengerRepo::open_turso(Arc::new(store), MessengerConfig::new(actor.clone()))
+        let mut config = MessengerConfig::new(actor.clone());
+        config.max_message_bytes = limit;
+        let repo = MessengerRepo::open_turso(Arc::new(store), config)
             .await
             .unwrap();
         // ADR 0018: keys in a store of their own, encrypted; never synchronised with the messages.
@@ -114,12 +127,15 @@ impl Person {
             Submit::Smtp => Arc::new(smtp_submit(who)),
             Submit::Jmap => Arc::new(JmapSubmit::new(client)),
         };
-        let provider = Arc::new(MailProvider::new(
-            MailIdentity::new(&address),
-            counting.clone(),
-            submitter,
-            keys.clone() as Arc<dyn KeyStore>,
-        ));
+        let provider = Arc::new(
+            MailProvider::new(
+                MailIdentity::new(&address),
+                counting.clone(),
+                submitter,
+                keys.clone() as Arc<dyn KeyStore>,
+            )
+            .with_max_message_bytes(limit),
+        );
         provider.ensure_own_key().await.unwrap();
         repo.register_provider(account.id, provider.clone());
         Self {

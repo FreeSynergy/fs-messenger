@@ -86,7 +86,7 @@ async fn the_highest_uid_is_no_overflow_and_asks_for_nothing() {
 }
 
 #[tokio::test]
-async fn a_mail_over_the_limit_is_not_downloaded_and_the_cursor_passes_it() {
+async fn of_a_mail_over_the_limit_only_the_start_is_asked_for() {
     let server = start(false).await;
     let small = FetchLimits {
         mails: 50,
@@ -96,12 +96,17 @@ async fn a_mail_over_the_limit_is_not_downloaded_and_the_cursor_passes_it() {
         .fetch(&MailCursor::default(), &small)
         .await
         .unwrap();
-    assert!(batch.mails.is_empty());
+    assert_eq!(batch.mails.len(), 1);
+    assert!(batch.mails[0].truncated);
+    assert_eq!(batch.mails[0].bytes.len(), 5, "one byte past the limit");
     let expected = MailboxCursor::Imap {
         uid_validity: 1,
         last_uid: 7,
     };
     assert_eq!(batch.cursor.mailboxes.get("INBOX"), Some(&expected));
     let commands = server.commands.lock().unwrap();
-    assert!(!commands.iter().any(|c| c.contains("BODY")), "{commands:?}");
+    assert!(
+        !commands.iter().any(|c| c.contains("BODY.PEEK[])")),
+        "{commands:?}"
+    );
 }

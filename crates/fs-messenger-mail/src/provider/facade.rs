@@ -72,8 +72,9 @@ impl MailProvider {
         }
     }
 
-    /// The largest mail, and the largest plaintext after decrypting, for a program that set
-    /// `MessengerConfig::max_message_bytes` to something else.
+    /// The largest mail, and the largest plaintext after decrypting. A program that sets
+    /// `MessengerConfig::max_message_bytes` must set the same here: the core keeps a stub only of what
+    /// is over ITS limit, so a lower value here would store the cut-off start as an original.
     #[must_use]
     pub fn with_max_message_bytes(mut self, bytes: usize) -> Self {
         self.limits.bytes = bytes;

@@ -60,7 +60,7 @@ async fn round_trip(submit: Submit, fetch: Fetch) {
     assert_eq!(got.original.as_ref().unwrap().bytes, on_server);
 
     // First contact: the key came with the mail, so it is learned and the signature proves nothing yet.
-    assert_eq!(got.signature, SignatureCheck::NotVerified);
+    assert_eq!(got.summary.signature, SignatureCheck::NotVerified);
     let learned = bob
         .provider
         .peer(&Who::Alice.address())

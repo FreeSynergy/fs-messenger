@@ -142,7 +142,7 @@ impl JmapFetch {
         Ok(Some((ids, cursor, args["hasMoreChanges"] == true)))
     }
 
-    /// Download those of `ids` that are in `mailbox` and fit. Ids that vanished meanwhile are simply gone.
+    /// Download those of `ids` that are in `mailbox`. Ids that vanished meanwhile are simply gone.
     async fn download(
         &self,
         ids: Vec<String>,
@@ -155,7 +155,7 @@ impl JmapFetch {
             return Ok(());
         }
         let call = json!([["Email/get", {"accountId": self.account().await?, "ids": ids,
-            "properties": ["id", "blobId", "mailboxIds", "size"]}, "g"]]);
+            "properties": ["id", "blobId", "mailboxIds"]}, "g"]]);
         let answers = self.client.call(&[MAIL], call).await?;
         let list = JmapClient::answer(&answers, "g")?["list"]
             .as_array()
@@ -165,15 +165,12 @@ impl JmapFetch {
             let (Some(id), Some(blob)) = (email["id"].as_str(), email["blobId"].as_str()) else {
                 return Err(err("Email/get answered a mail without id or blobId"));
             };
-            let size = email["size"].as_u64().unwrap_or(0);
-            if size > u64::try_from(limit).unwrap_or(u64::MAX) {
-                tracing::warn!(mailbox, id, size, "mail too large; left on the server");
-                continue;
-            }
+            let (bytes, truncated) = self.client.download(blob, limit).await?;
             out.push(FetchedMail {
-                bytes: self.client.download(blob, limit).await?,
+                bytes,
                 role,
                 stable_id: format!("{mailbox}/{id}"),
+                truncated,
             });
         }
         Ok(())

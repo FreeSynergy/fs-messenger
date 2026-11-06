@@ -52,6 +52,9 @@ fn answer(line: &str) -> String {
             "* 1 FETCH (UID 7 RFC822.SIZE {})\r\n{tag} OK done\r\n",
             MAIL.len()
         )
+    } else if upper.contains("BODY.PEEK[]<0.") {
+        let body = String::from_utf8_lossy(&MAIL[..5]);
+        format!("* 1 FETCH (UID 7 BODY[]<0> {{5}}\r\n{body})\r\n{tag} OK done\r\n")
     } else if upper.starts_with("UID FETCH") {
         let body = String::from_utf8_lossy(MAIL);
         format!(

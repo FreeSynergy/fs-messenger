@@ -29,8 +29,11 @@ pub struct FetchedMail {
     pub bytes: Vec<u8>,
     /// Which mailbox it is from.
     pub role: MailboxRole,
-    /// Stable within the account: mailbox and the server's own id. For a mail without `Message-ID`.
+    /// Stable within the account: mailbox and the server's own id.
     pub stable_id: String,
+    /// `bytes` is only the start of a mail over the limit, one byte past it. So the core sees a mail
+    /// over its limit and keeps a stub, without anyone holding the rest.
+    pub truncated: bool,
 }
 
 /// One answer of a strategy.
@@ -49,8 +52,8 @@ pub struct FetchedBatch {
 pub struct FetchLimits {
     /// Mails per mailbox.
     pub mails: usize,
-    /// Bytes per mail. A larger one is skipped, logged and left on the server: holding it just to
-    /// have the core refuse it would let a sender fill the memory.
+    /// Bytes per mail. Of a larger one only the start is read, so that a sender cannot fill the
+    /// memory; the core keeps a stub, and the mail itself stays on the server.
     pub bytes: usize,
 }
 
@@ -65,7 +68,7 @@ pub(crate) fn sent_is_optional(result: Result<(), MailError>) {
 /// How mail is read from a server, and how a sent copy gets there.
 #[async_trait]
 pub trait MailFetch: Send + Sync {
-    /// What comes after `cursor`, within `limits`. May repeat a mail; skips only one over the limit.
+    /// What comes after `cursor`, within `limits`. May repeat a mail; never skips one.
     async fn fetch(
         &self,
         cursor: &MailCursor,
