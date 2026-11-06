@@ -138,7 +138,8 @@ fn on_subkey(key: &SecretCert, typ: SignatureType, signs: bool, embedded: Signat
     config.hashed_subpackets = hashed;
     config.unhashed_subpackets =
         vec![Subpacket::regular(SubpacketData::EmbeddedSignature(Box::new(embedded))).unwrap()];
-    let subkey = &key.0.public_subkeys[0].key;
+    let public = key.public();
+    let subkey = &public.0.public_subkeys[0].key;
     config
         .sign_subkey_binding(primary, primary.public_key(), &Password::empty(), subkey)
         .unwrap()
@@ -156,9 +157,10 @@ fn real_back(key: &SecretCert) -> Signature {
 }
 
 fn kept(key: &SecretCert, signature: &Signature) -> usize {
+    let public = key.public();
     let compact = compact_binding(
         key.0.primary_key.public_key(),
-        &key.0.public_subkeys[0].key,
+        &public.0.public_subkeys[0].key,
         signature,
     )
     .unwrap();
