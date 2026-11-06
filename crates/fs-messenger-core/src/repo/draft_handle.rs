@@ -85,6 +85,12 @@ impl Draft for StoredDraft {
         Ok(())
     }
 
+    async fn set_subject(&mut self, subject: String) -> Result<()> {
+        self.check_open()?;
+        self.data.subject = subject.replace('\0', "");
+        Ok(())
+    }
+
     async fn attach(&mut self, name: String, media_type: String, data: Vec<u8>) -> Result<()> {
         self.check_open()?;
         let a = self.inner.store_attachment(name, media_type, data).await?;

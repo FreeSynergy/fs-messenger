@@ -25,8 +25,10 @@ Version 0.1.0, not tagged. Mirrors `messenger.capnp` draft 0.2 of `fs-interfaces
 | Encrypted only, incoming: stored and marked with what the provider says; `none`, `transport-only` and `unknown` are never end-to-end; no quarantine | done |
 | Encrypted only, at rest: see "Encryption at rest" | done |
 | Tool calls as stored data: store, update in place, read; engine id and revision; `settled` final; an outside question is `working` | done |
+| What a connector found: `RawMessage.undecrypted` and `signature` (`SignatureCheck`, unset is `notVerified`), kept on the `Message` as typed fields, not in the text, and not in the contract yet. The fingerprint of a good signature stays with the provider | done |
+| Mail threading: `RawMessage.references`, sender-chosen, newest 64 kept, only link. `Outgoing::references` gives the parent's chain, and a sent message continues it | done |
 | Size limits at ingest: 25 MiB a message, named refusal `TooLarge`; search reads 256 KiB of a body | done, provisional |
-| Tests | 113 against real `TursoStore` (in memory, or temp files where encryption matters); the `Provider` doubles only feed core logic |
+| Tests | 120 against real `TursoStore` (in memory, or temp files where encryption matters); the `Provider` doubles only feed core logic |
 
 ### Local only: says so here, and claims nothing more
 
@@ -129,10 +131,11 @@ Types: `Note`, `Tombstone`, `Document` (attachment), `Collection` (conversation)
 Contract, for the owner:
 
 1. `Compose.draft(replyTo)` has no account: with several accounts nothing says which one sends. The core adds `Draft::set_account` (provisional, refused on a reply); with exactly one account, it is taken.
-2. `Draft` has no subject: a new mail's name comes from its text.
+2. `Draft.setSubject` is on branch `msg-contract-2` of `fs-interfaces`, not tagged. `Draft::set_subject` mirrors the name with no dependency change; `Outgoing::subject` exposes it.
 3. No page size, and no direction for `messages`.
 4. `Kind`, `DeliveryState`, `ToolCallState`, `ToolCallOutcome` have no `unknown` on the wire. The server can't send what the core holds without a guess, so these need the same ordinal-0 treatment as `Encryption`, or a decision.
-5. `MessageSummary` has no arrival, so a frontend cannot tell which message on screen arrived last (see "Reading").
+5. `Message` holds `undecrypted` and `signature`, which the contract has no field for.
+6. `MessageSummary` has no arrival, so a frontend cannot tell which message on screen arrived last (see "Reading").
 
 Code:
 

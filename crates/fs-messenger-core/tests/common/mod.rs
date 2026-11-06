@@ -165,7 +165,6 @@ impl Provider for TestProvider {
     }
 }
 
-/// A listener that forwards what it hears.
 pub struct Collector(pub mpsc::UnboundedSender<Event>);
 
 #[async_trait]
@@ -187,7 +186,6 @@ pub async fn next_event(rx: &mut mpsc::UnboundedReceiver<Event>) -> Event {
         .expect("the channel is open")
 }
 
-/// Silence: nothing in time, or the channel closed because the subscription ended.
 pub async fn no_event(rx: &mut mpsc::UnboundedReceiver<Event>) {
     let got = tokio::time::timeout(Duration::from_millis(150), rx.recv()).await;
     if let Ok(Some(event)) = got {

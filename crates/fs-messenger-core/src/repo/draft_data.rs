@@ -23,6 +23,7 @@ pub(super) struct DraftData {
     pub(super) to: Vec<String>,
     pub(super) cc: Vec<String>,
     pub(super) bcc: Vec<String>,
+    pub(super) subject: String,
     pub(super) text: String,
     pub(super) media_type: String,
     pub(super) attachments: Vec<Attachment>,
@@ -38,6 +39,7 @@ impl DraftData {
             to: vec![],
             cc: vec![],
             bcc: vec![],
+            subject: String::new(),
             text: String::new(),
             media_type: TEXT_PLAIN.to_string(),
             attachments: vec![],
@@ -50,7 +52,7 @@ impl DraftData {
     }
 
     fn to_object(&self) -> Result<StoredObject> {
-        let mut env = Envelope::new(DRAFT, display_name(None, &self.text));
+        let mut env = Envelope::new(DRAFT, display_name(Some(&self.subject), &self.text));
         env.id = self.id;
         env.to.clone_from(&self.to);
         env.cc.clone_from(&self.cc);

@@ -11,7 +11,9 @@ use super::handle::Inner;
 use super::message_codec::message_to;
 use super::text::{display_name, preview};
 use crate::error::{Error, Result};
-use crate::model::{DeliveryState, EncryptionPlan, Kind, Message, MessageSummary, SenderKind};
+use crate::model::{
+    DeliveryState, EncryptionPlan, Kind, Message, MessageSummary, SenderKind, SignatureCheck,
+};
 use crate::provider::OutgoingBody;
 
 impl Inner {
@@ -25,13 +27,18 @@ impl Inner {
         let (_, sender) = self.load_account(account).await?;
         let scope = sender.scope();
         let parent = match data.reply_to {
-            Some(id) => self
-                .reload(id)
-                .await?
-                .map(|m| [m.aliases, m.links, m.receipts].concat())
-                .unwrap_or_default(),
-            None => vec![],
+            Some(id) => self.reload(id).await?,
+            None => None,
         };
+        let (references, chain, in_reply_to) = parent.map_or_else(Default::default, |m| {
+            let mut chain = m.references.clone();
+            chain.extend(m.links.iter().chain(&m.receipts).cloned());
+            (
+                m.references,
+                chain,
+                [m.aliases, m.links, m.receipts].concat(),
+            )
+        });
         // Before anything is stored: without the files there is nothing to send.
         let attachments = self.outgoing_attachments(&data.attachments).await?;
         let conversation = if let Some(id) = data.conversation {
@@ -48,7 +55,7 @@ impl Inner {
                 .await?
         };
         let conversation_id = conversation.envelope.id;
-        let mut env = Envelope::new(NOTE, display_name(None, &data.text));
+        let mut env = Envelope::new(NOTE, display_name(Some(&data.subject), &data.text));
         env.iri = self.iri(env.id);
         env.attributed_to = Some(sender.address);
         env.to.clone_from(&data.to);
@@ -86,6 +93,9 @@ impl Inner {
             account: Some(account),
             outgoing: true,
             pending_reply: None,
+            references: chain,
+            undecrypted: false,
+            signature: SignatureCheck::default(),
             arrival: self.next_arrival(),
             sort_at: None,
         };
@@ -99,7 +109,9 @@ impl Inner {
             media_type: data.media_type.clone(),
             attachments,
             conversation: conversation.content.aliases,
-            in_reply_to: parent,
+            in_reply_to,
+            references,
+            subject: data.subject.clone(),
         };
         Ok((message, body))
     }

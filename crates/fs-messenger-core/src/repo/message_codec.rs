@@ -20,9 +20,11 @@ use super::text::{body_media_type, indexable};
 use crate::error::Result;
 use crate::model::{
     Attachment, DeliveryState, Encryption, ExternalId, Kind, Message, MessageSummary, Reaction,
-    SenderKind, ToolCall,
+    SenderKind, SignatureCheck, ToolCall,
 };
 
+// The stored form of independent facts about a message, not a state machine in disguise.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 struct Content {
@@ -53,6 +55,9 @@ struct Content {
     account: Option<ObjectId>,
     outgoing: bool,
     pending_reply: Option<ExternalId>,
+    references: Vec<ExternalId>,
+    undecrypted: bool,
+    signature: SignatureCheck,
     arrival: u64,
     sort_at: Option<DateTime<Utc>>,
 }
@@ -95,6 +100,9 @@ pub(super) fn message_from(o: StoredObject) -> Result<Message> {
         account: c.account,
         outgoing: c.outgoing,
         pending_reply: c.pending_reply,
+        references: c.references,
+        undecrypted: c.undecrypted,
+        signature: c.signature,
         arrival: c.arrival,
         sort_at: c.sort_at,
     })
@@ -127,6 +135,9 @@ pub(super) fn message_to(m: &Message) -> Result<StoredObject> {
         account: m.account,
         outgoing: m.outgoing,
         pending_reply: m.pending_reply.clone(),
+        references: m.references.clone(),
+        undecrypted: m.undecrypted,
+        signature: m.signature,
         arrival: m.arrival,
         sort_at: m.sort_at,
     };
