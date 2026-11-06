@@ -27,10 +27,10 @@ Version 0.1.0. Mirrors the `messenger.capnp` contract, version 0.3 (`CONTRACT_VE
 | Tool calls as stored data: store, update in place, read; engine id and revision; `settled` final; an outside question is `working` | done |
 | What a connector found: `RawMessage.undecrypted` and `signature` (`SignatureCheck`, unset is `notVerified`, and always `notVerified` without a sender or readable content), kept on `MessageSummary` as typed fields, not in the text, mirroring the contract. The fingerprint of a good signature stays with the provider | done |
 | Mail threading: `RawMessage.references`, sender-chosen, newest 64 kept, only link. `Outgoing::references` gives the parent's chain, and a sent message continues it | done |
-| Size limits at ingest and in `record_tool_call`: see "Limits". Over the limit a stub stays (`Ingested::TooLarge`, `MessageSummary.too_large`, 0 = it is not), so the mail is visible, not gone (ADR 0030): aliases, links, sender, date, subject, size, no content | done, provisional |
+| Size limits at ingest and in `record_tool_call`: see "Limits". Over the limit a stub stays (`Ingested::TooLarge`, `MessageSummary.too_large`, 0 = it is not), so the mail is visible, not gone (ADR 0030): aliases, links, sender, date, subject, size, no content. A connector that only holds a cut-off start says so with `RawMessage.too_large`: the core stubs it whatever the limit and never stores those bytes as the original | done, provisional |
 | Large bodies: over 64 KiB in a store object of their own, see "What a large body costs" | done, with a limit named there |
 | An undecrypted message: no ciphertext in preview, name or search; it cannot be forwarded; delivered again under a provider-issued id in readable form it is replaced under the same id, keeping what the person did | done |
-| Tests | 162 against real `TursoStore` (in memory, or temp files where encryption matters); the `Provider` doubles only feed core logic |
+| Tests | 167 against real `TursoStore` (in memory, or temp files where encryption matters); the `Provider` doubles only feed core logic |
 
 ### Local only: says so here, and claims nothing more
 
@@ -135,7 +135,7 @@ Each change of a message logs a before and an after image of it, content and ind
 A record this version cannot read at all is store damage or a bug, not a state of the program. It is handled so that it fails nothing else, and this is where it shows:
 
 * Pages report it in `skipped`, and asking for it by id answers `Error::Json`.
-* A message whose body object has gone still lists; reading it answers `Error::BodyMissing`, and forward refuses with the same error instead of sending an empty mail.
+* A message whose body object has gone still lists; reading it answers `Error::BodyMissing`, and forward refuses with the same error instead of sending an empty mail. Deleting such a message works.
 * `next_unread`, `mark_read`, the newest message of a conversation and threading go past it. An unreadable unread message stays counted in `unread_count`.
 * A sync counts an `Error::Json` as `rejected` and goes on; a conversation that cannot be read is replaced by a new one for the same thread, so no mail is lost.
 * `drafts()` and `accounts()` leave it out **without reporting it**. Their result is a plain list. A later version should report it there too.
@@ -151,7 +151,6 @@ A record that lost its sort keys is neither listed nor reported.
 * **A stub keeps only the first 8 aliases.** A replay known only by a later one is stored again: a duplicate beats a lost mail.
 * **A provider holding a repo clone keeps the claim on its store** for as long as it is registered, so the store cannot be opened again until then. It fails safe: the open is refused.
 * **A crash can orphan a `Document`.** A body or attachment is stored before the message that names it. After a crash in between, an unreferenced object holds that text. It is encrypted at rest, and nothing removes it yet. The same holds for a crash between the tombstone and the release of a body when deleting.
-* **Deleting a message whose body object is already gone answers an error,** although the delete happens; the unread count is only correct after the next change. This needs store damage.
 * **A connector that fills `tool_calls` or `reasoning` from remote content must cap them itself.** They count towards the 25 MiB but not towards the 64 KiB for metadata, so a 5 MiB result adds 40 MiB of log over 4 changes (measured). Mail and Matrix fill neither.
 
 ## Decisions
