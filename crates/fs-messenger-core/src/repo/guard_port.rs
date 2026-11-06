@@ -14,7 +14,7 @@ use super::handle::{Inner, MessengerRepo};
 use super::message_codec::{message_from, message_to};
 use crate::error::{Error, Result};
 use crate::guard_hook::{EngineGuard, SenderLookup};
-use crate::model::{SenderKind, ToolCall, ToolCallOutcome, ToolCallState};
+use crate::model::{Event, SenderKind, ToolCall, ToolCallChange, ToolCallOutcome, ToolCallState};
 
 const AGENT_ACCOUNT: &str = "agent";
 
@@ -142,6 +142,31 @@ impl GuardPort {
         *held = call;
         held.detail = detail;
         inner.store.put(message_to(&m)?, ENGINE_ACTOR).await?;
+        Ok(())
+    }
+
+    /// Tell listeners how a call really stands, without writing anything: a refused decision changes
+    /// nothing. An empty `detail` takes the one shown, if the message can still be read.
+    pub async fn announce_call(
+        &self,
+        conversation: ObjectId,
+        message: ObjectId,
+        mut call: ToolCall,
+    ) -> Result<()> {
+        let inner = self.inner()?;
+        if call.detail.is_empty() {
+            if let Ok(m) = inner.load_note(message).await {
+                if let Some(held) = m.tool_calls.iter().find(|c| c.id == call.id) {
+                    call.detail.clone_from(&held.detail);
+                }
+            }
+        }
+        // Nobody listening is no failure.
+        let _ = inner.announcements.send(Event::ToolCall(ToolCallChange {
+            message,
+            call,
+            conversation,
+        }));
         Ok(())
     }
 

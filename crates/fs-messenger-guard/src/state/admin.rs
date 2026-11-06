@@ -9,15 +9,16 @@ use fs_messenger_core::ToolCallRisk;
 
 use super::doc::{DeviceKey, GuardDoc, Invitation};
 use super::stage::CallStage;
+use crate::arguments::hides_text;
 use crate::error::Refusal;
 use crate::model::{AiGrant, GuardMode};
 use crate::risk::can_be_released;
 
 const MAX_NAME_BYTES: usize = 2048;
 
-/// A name that goes into what a person reads and signs.
+/// A name that goes into what a person reads and signs: nothing in it can hide or reorder text.
 pub(crate) fn usable_name(name: &str) -> bool {
-    !name.is_empty() && name.len() <= MAX_NAME_BYTES && !name.contains(char::is_control)
+    !name.is_empty() && name.len() <= MAX_NAME_BYTES && !name.contains(hides_text)
 }
 
 /// Who pulled the stop, and when.

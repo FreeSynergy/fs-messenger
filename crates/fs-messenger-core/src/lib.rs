@@ -30,7 +30,7 @@ mod repo;
 
 pub use draft::{Draft, DraftInfo};
 pub use error::{Error, Result};
-pub use guard_hook::{EngineGuard, SenderLookup};
+pub use guard_hook::{DecisionProblem, EngineGuard, SenderLookup};
 pub use ingest::{Ingest, Ingested, SyncReport};
 pub use listener::{Listener, Subscription};
 pub use messenger::{CONTRACT_VERSION, Messenger};

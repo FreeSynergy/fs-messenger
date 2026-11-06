@@ -2,15 +2,17 @@
 //!
 //! Pattern: Template method over the pure `GuardDoc::apply_decision`: on a copy, written whole or not
 //! at all. Nothing but a written decision changes anything; a refusal touches neither the state nor
-//! the log. What a message shows is written afterwards and decides nothing.
+//! the log. What a message shows is written afterwards and decides nothing. On a stale or settled
+//! refusal listeners hear how the call stands, from memory only.
 
-use fs_messenger_core::{ToolCallChoice, ToolCallDecision};
+use fs_messenger_core::{DecisionProblem, ToolCallChoice, ToolCallDecision};
 use fs_store::ObjectId;
 
-use super::core::GuardEngine;
-use crate::error::GuardError;
+use super::core::{GuardEngine, View};
+use crate::error::{GuardError, Refusal};
 use crate::log::GuardLogEntry;
-use crate::state::DecideInput;
+use crate::model::GuardMode;
+use crate::state::{DecideInput, GuardDoc};
 
 fn choice_name(choice: ToolCallChoice) -> &'static str {
     match choice {
@@ -21,6 +23,28 @@ fn choice_name(choice: ToolCallChoice) -> &'static str {
 }
 
 impl GuardEngine {
+    /// Stale and settled are answered with the state as it really is, so a card can show it. Nothing
+    /// is written; if it cannot be told, the card still has the refusal.
+    async fn announce_on_refusal(
+        &self,
+        doc: &GuardDoc,
+        decision: &ToolCallDecision,
+        refusal: &Refusal,
+    ) {
+        if !matches!(
+            refusal.decision_problem(),
+            DecisionProblem::Stale | DecisionProblem::Settled
+        ) {
+            return;
+        }
+        let call = doc.calls.iter().find(|c| c.id == decision.tool_call);
+        if let (Some(call), Some(port)) = (call, self.port.get()) {
+            let _ = port
+                .announce_call(call.conversation, call.message, call.shown(""))
+                .await;
+        }
+    }
+
     pub(super) async fn decide_call(
         &self,
         conversation: ObjectId,
@@ -28,7 +52,13 @@ impl GuardEngine {
         decision: &ToolCallDecision,
     ) -> Result<(), GuardError> {
         let _ops = self.ops.lock().await;
-        let mut doc = self.open_doc().await?;
+        // Not `open_doc`: a stopped program still says how a call ended.
+        let View::Doc(mut doc) = self.view().await else {
+            return Err(Refusal::Damaged.into());
+        };
+        if self.is_latched() {
+            doc.mode = GuardMode::Stopped;
+        }
         let limits = self.limits();
         let input = DecideInput {
             conversation,
@@ -37,7 +67,13 @@ impl GuardEngine {
             now: self.clock.now(),
             limits: &limits,
         };
-        let decided = doc.apply_decision(&input, self.verifier.as_ref())?;
+        let decided = match doc.apply_decision(&input, self.verifier.as_ref()) {
+            Ok(decided) => decided,
+            Err(refusal) => {
+                self.announce_on_refusal(&doc, decision, &refusal).await;
+                return Err(refusal.into());
+            }
+        };
         self.save(&doc).await.map_err(GuardError::NotPersisted)?;
         let mut problems = vec![];
         if let Err(why) = self.show(&decided.call, "").await {

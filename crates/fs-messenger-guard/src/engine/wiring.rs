@@ -10,7 +10,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use fs_messenger_core::{
-    EngineGuard, MessengerRepo, Result as CoreResult, SenderKind, SenderLookup, ToolCallDecision,
+    EngineGuard, Error, MessengerRepo, Result as CoreResult, SenderKind, SenderLookup,
+    ToolCallDecision,
 };
 use fs_store::ObjectId;
 
@@ -28,7 +29,13 @@ impl EngineGuard for Route {
         message: ObjectId,
         decision: ToolCallDecision,
     ) -> CoreResult<()> {
-        Ok(self.0.decide_call(conversation, message, &decision).await?)
+        match self.0.decide_call(conversation, message, &decision).await {
+            Err(GuardError::Refused(refusal)) => Err(Error::DecisionRefused {
+                problem: refusal.decision_problem(),
+                detail: refusal.to_string(),
+            }),
+            other => Ok(other?),
+        }
     }
 
     async fn stop_conversation(&self, conversation: ObjectId) -> CoreResult<()> {

@@ -144,6 +144,7 @@ impl Messenger for MessengerRepo {
     ) -> Result<Subscription> {
         Ok(subscription::start(
             self.inner.store.clone(),
+            self.inner.announcements.subscribe(),
             filter,
             listener,
         ))

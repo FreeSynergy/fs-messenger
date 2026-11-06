@@ -1,7 +1,7 @@
 # fs-messenger – Design
 
 `fs-messenger` is one program for mail, chat and agents (ADR 0018, 0054). This repo holds the **program core**
-(`crates/fs-messenger-core`: no GUI, no RPC, no real connectors). A message is an AS2 **`Note`** envelope + content + immutable
+(`crates/fs-messenger-core`: no GUI, no RPC, no real connectors) and the **AI guard** (`crates/fs-messenger-guard`, its own `DESIGN.md`). A message is an AS2 **`Note`** envelope + content + immutable
 original (ADR 0020, 0030), stored through `fs-store`. Frontends never see protocols; connectors plug in as `Provider`s (ADR 0045).
 
 ## State
@@ -25,6 +25,7 @@ Version 0.1.0. Mirrors the `messenger.capnp` contract, version 0.3 (`CONTRACT_VE
 | Encrypted only, incoming: stored and marked with what the provider says; `none`, `transport-only` and `unknown` are never end-to-end; no quarantine | done |
 | Encrypted only, at rest: see "Encryption at rest" | done |
 | Tool calls as stored data: store, update in place, read; engine id and revision; `settled` final; an outside question is `working` | done |
+| Hooks of the guard: `EngineGuard`, `SenderLookup`, `install_guard` (once) and its `GuardPort`, `Provider::stop_turns`, `ToolCallDecision.revision`, `Error::DecisionRefused`, `Error::GuardRefused`, `DecisionProblem`, index `open_call`, announcements beside the store feed. An account of kind `agent` stores nothing without a guard's word | done, see `crates/fs-messenger-guard/DESIGN.md` |
 | What a connector found: `RawMessage.undecrypted` and `signature` (`SignatureCheck`, unset is `notVerified`, and always `notVerified` without a sender or readable content), kept on `MessageSummary` as typed fields, not in the text, mirroring the contract. The fingerprint of a good signature stays with the provider | done |
 | Mail threading: `RawMessage.references`, sender-chosen, newest 64 kept, only link. `Outgoing::references` gives the parent's chain, and a sent message continues it | done |
 | Size limits at ingest and in `record_tool_call`: see "Limits". Over the limit a stub stays (`Ingested::TooLarge`, `MessageSummary.too_large`, 0 = it is not), so the mail is visible, not gone (ADR 0030): aliases, links, sender, date, subject, size, no content. A connector that only holds a cut-off start says so with `RawMessage.too_large`: the core stubs it whatever the limit and never stores those bytes as the original | done, provisional |
@@ -41,14 +42,13 @@ Flag, read and unread state, pin, folder and delete are this device's own state:
 | What | How it shows |
 |---|---|
 | Edit and react | `Unsupported("message.edit" / "message.react")`, nothing changes: `Provider` has no method to carry them, and a local success would be a claim that nothing reached the other side. Answering them needs a provider method first. Taking a reaction back cannot log AS2 `Undo` with `fs-store` as it is: `Undo` is state-changing, and it refuses that as a log entry |
-| AI guard: release, brake, emergency stop. `MessageAction::Decide` | `Unsupported("toolcall.decide")`; the guard follows, handled by the engine, never by a provider |
-| `Conversation.stop` | `Unsupported("turn.stop")` |
+| `MessageAction::Decide` and `Conversation.stop` without an installed guard | `Unsupported("toolcall.decide")`, `Unsupported("turn.stop")`, which is the safe default. With `fs-messenger-guard` installed they go there |
 | Live text (`Event::Text`, `TextChunk`) | the type exists, nothing emits it; `text.stream` reported unsupported |
 | Rules (Sieve) | `Unsupported("rule.read" / "rule.write")` |
 | Scheduled send | a future `at` is `Unsupported("message.schedule")`; the draft is saved, nothing left |
 | Account secrets | a non-empty secret is `Unsupported("account.secret")`, because there is no key vault (ADR 0024); the core stores none |
 | `bodyHtml` | always empty: there is no sanitiser and the field promises sanitised HTML; the raw form stays in `original` |
-| `senderKind` from the sender's card | not built: always `unknown`, and `RawMessage` has no such field, so no remote can claim `person` |
+| `senderKind` from the sender's card | `SenderLookup` is the hook; the guard answers `ai` for the invited. Without it always `unknown`, and `RawMessage` has no such field, so no remote can claim `person` |
 | Reactions of others | no path in |
 | Key discovery, key verification, devices, groups, presence, notifications, import/export, Cap'n Proto server, MCP, GUI, real connectors, Telegram, own mail server, ratings | not in this step |
 | Link to the library guide for unencrypted mail (ADR 0031) | a frontend's job; the core gives the mark |
@@ -62,6 +62,7 @@ Public contract: `Messenger`, `Draft`, `Provider`, `Ingest`, `Listener`, small v
 | `messenger.rs` | Repository (interface) + Null Object | the program's contract; every method exists, the default says `Unsupported` |
 | `draft.rs`, `repo/draft_handle.rs` | State | open until sent or discarded; a refused send leaves it open |
 | `provider/traits.rs` | Strategy | one trait for mail, Matrix, MIMI, agents (ADR 0045) |
+| `guard_hook.rs`, `repo/guard_port.rs`, `repo/guard_note.rs`, `repo/guard_turns.rs` | Strategy, Capability object, Adapter, Template method | what the core asks of a guard; the one port back, handed out once |
 | `provider/outgoing.rs` | Newtype as proof | `Outgoing` can only be built after the check, so no caller can hand a provider anything else |
 | `gate.rs` | Specification | the rule of ADR 0018 in one place, as pure functions |
 | `ingest.rs`, `repo/ingest.rs` | Template method | fixed flow, store-backed steps |
@@ -86,7 +87,7 @@ Public contract: `Messenger`, `Draft`, `Provider`, `Ingest`, `Listener`, small v
 
 Types: `Note`, `Tombstone`, `Document` (attachment), `Collection` (conversation), `freesynergy.net:Draft`, `freesynergy.net:Account`, `freesynergy.net:StoreCheck`. Content type `application/activity+json`; `content` = body text, `mediaType` = its type.
 
-`fs-store` has no tables of ours, so the alias table of `data/messages/technical.md` is three index fields, `alias` (provider-issued), `link` (sender-chosen) and `receipt` (from sending), each `<kind>:<normalised address>|<scheme>|<external id>`. Other index fields: `arrival`, `arrival_desc`, `desc`, `unread`, `flagged`, `attachment`, `blob`, `from`, `text`, `encryption`, `kind`, `job`, `task`, `account`; conversations: `sort`, `unread`, `folder`, `conv_alias`.
+`fs-store` has no tables of ours, so the alias table of `data/messages/technical.md` is three index fields, `alias` (provider-issued), `link` (sender-chosen) and `receipt` (from sending), each `<kind>:<normalised address>|<scheme>|<external id>`. Other index fields: `arrival`, `arrival_desc`, `desc`, `unread`, `flagged`, `open_call`, `attachment`, `blob`, `from`, `text`, `encryption`, `kind`, `job`, `task`, `account`; conversations: `sort`, `unread`, `folder`, `conv_alias`.
 
 ## Encryption at rest (ADR 0018, 0024, 0029)
 

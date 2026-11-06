@@ -60,9 +60,6 @@ impl GuardDoc {
     ) -> Result<Decided, Refusal> {
         let d = input.decision;
         refuse_empty(d)?;
-        if self.mode != GuardMode::Open {
-            return Err(Refusal::Stopped);
-        }
         let at = self
             .calls
             .iter()
@@ -72,8 +69,15 @@ impl GuardDoc {
         if call.conversation != input.conversation || call.message != input.message {
             return Err(Refusal::UnknownCall);
         }
-        if call.stage != CallStage::Question {
+        if call.stage.is_settled() {
             return Err(Refusal::SettledCall);
+        }
+        if self.mode != GuardMode::Open {
+            return Err(Refusal::Stopped);
+        }
+        // Answered already and not over: what was shown has moved on.
+        if call.stage != CallStage::Question {
+            return Err(Refusal::RevisionMismatch);
         }
         if call.asked_of.is_empty() {
             return Err(Refusal::Empty("askedOf"));

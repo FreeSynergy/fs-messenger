@@ -182,7 +182,7 @@ impl Arguments {
 }
 
 /// Bidirectional controls, zero-width and other format characters, line separators, tag characters.
-fn hides_text(c: char) -> bool {
+pub(crate) fn hides_text(c: char) -> bool {
     c.is_control()
         || matches!(c as u32,
             0x00AD | 0x061C | 0x180E | 0x200B..=0x200F | 0x2028..=0x202E | 0x2060..=0x206F

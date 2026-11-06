@@ -203,3 +203,15 @@ async fn the_guard_itself_is_never_for_an_ai_and_no_person_is_asked() {
         );
     }
 }
+
+#[tokio::test]
+async fn a_tool_name_that_could_hide_text_from_the_person_is_refused() {
+    let w = World::with_ai().await;
+    for name in ["", "x\ny", "message.open\u{202e}eteled", "a\u{200b}b"] {
+        assert_eq!(
+            w.check(name, args("/")).await,
+            Verdict::Refuse(Refusal::BadName),
+            "{name:?}"
+        );
+    }
+}

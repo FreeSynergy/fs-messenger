@@ -4,7 +4,7 @@
 //! A [`GuardError`] is about the rest: what is not built, and what the store did.
 
 use fs_interfaces::provider::Unsupported;
-use fs_messenger_core::ToolCallRisk;
+use fs_messenger_core::{DecisionProblem, ToolCallRisk};
 
 /// Why something was refused. Nothing changed.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -96,6 +96,19 @@ pub enum Refusal {
     /// This key cannot be enrolled this way.
     #[error("not on this path: {0}")]
     NotEnrollable(&'static str),
+}
+
+impl Refusal {
+    /// The named problem of the contract, when this refuses a decision. Whatever has no name of its
+    /// own (an id that is no call here, a stopped program with a call still open) is `Invalid`.
+    pub fn decision_problem(&self) -> DecisionProblem {
+        match self {
+            Self::DigestMismatch | Self::RevisionMismatch => DecisionProblem::Stale,
+            Self::SettledCall => DecisionProblem::Settled,
+            Self::SignerNotAskedOf => DecisionProblem::NotAskedOf,
+            _ => DecisionProblem::Invalid,
+        }
+    }
 }
 
 /// What can go wrong apart from a refusal.

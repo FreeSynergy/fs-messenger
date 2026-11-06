@@ -10,15 +10,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as Mutex2, OnceLock, PoisonError, RwLock};
 
 use fs_store::{ObjectId, Query, Store, StoredObject, TursoStore};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, broadcast};
 
 use super::consts::IDX_ARRIVAL_DESC;
 use super::guard_port::Wiring;
 use super::keys::arrival_of_desc_key;
 use super::store_check;
 use crate::error::{Error, Result};
+use crate::model::Event;
 use crate::provider::Provider;
 
+const ANNOUNCEMENTS: usize = 64;
 const DEFAULT_PAGE_SIZE: usize = 50;
 const DEFAULT_MAX_MESSAGE_BYTES: usize = 25 * 1024 * 1024;
 
@@ -64,6 +66,8 @@ pub(super) struct Inner {
     providers: RwLock<HashMap<ObjectId, Arc<dyn Provider>>>,
     /// Set once, by `install_guard`.
     pub(super) wiring: OnceLock<Wiring>,
+    /// Events that come from no store write: a refused decision changes nothing.
+    pub(super) announcements: broadcast::Sender<Event>,
 }
 
 impl MessengerRepo {
@@ -100,6 +104,7 @@ impl MessengerRepo {
                 _handle: handle,
                 providers: RwLock::new(HashMap::new()),
                 wiring: OnceLock::new(),
+                announcements: broadcast::channel(ANNOUNCEMENTS).0,
             }),
         })
     }

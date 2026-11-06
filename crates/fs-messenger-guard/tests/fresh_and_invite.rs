@@ -178,6 +178,20 @@ async fn over_another_transport_the_uninvited_is_stored_and_marked_as_not_known(
             .sender_kind,
         SenderKind::Ai
     );
+    // A stored message is no action, and mail is not lost: stopped, it still arrives, marked.
+    w.engine.stop(&w.stop_proof()).await.unwrap();
+    let Ingested::Stored(late) = w.deliver(mail.id, "m4", AI).await.unwrap() else {
+        panic!()
+    };
+    assert_eq!(
+        w.repo
+            .message(conv, late)
+            .await
+            .unwrap()
+            .summary
+            .sender_kind,
+        SenderKind::Ai
+    );
     let Ingested::Stored(friend) = w.deliver(mail.id, "m3", FRIEND).await.unwrap() else {
         panic!()
     };

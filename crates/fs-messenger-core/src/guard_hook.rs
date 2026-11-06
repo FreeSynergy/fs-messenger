@@ -10,6 +10,32 @@ use fs_store::ObjectId;
 use crate::error::Result;
 use crate::model::{SenderKind, ToolCallDecision};
 
+/// Why a decision was refused: `Problem.type` of the contract (draft 0.4). On `Stale` and `Settled` a
+/// `toolCall` event with the state as it really is follows, so a card can show it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DecisionProblem {
+    /// Digest or revision no longer match.
+    Stale,
+    /// The call is settled.
+    Settled,
+    /// The signer is not the person asked.
+    NotAskedOf,
+    /// Empty field, unknown option; bad, replayed or expired proof.
+    Invalid,
+}
+
+impl DecisionProblem {
+    /// The URI for `Problem.type`.
+    pub fn type_uri(self) -> &'static str {
+        match self {
+            Self::Stale => "https://freesynergy.net/problems/decision-stale",
+            Self::Settled => "https://freesynergy.net/problems/decision-settled",
+            Self::NotAskedOf => "https://freesynergy.net/problems/decision-not-asked-of-you",
+            Self::Invalid => "https://freesynergy.net/problems/decision-invalid",
+        }
+    }
+}
+
 /// What `Messenger::act` and `Messenger::stop` hand over. Installed with `install_guard`.
 #[async_trait]
 pub trait EngineGuard: Send + Sync {

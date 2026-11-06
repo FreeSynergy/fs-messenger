@@ -5,6 +5,7 @@
 
 use fs_store::ObjectId;
 
+use crate::guard_hook::DecisionProblem;
 use crate::model::Encryption;
 
 /// Result of every fallible operation of this crate.
@@ -74,6 +75,14 @@ pub enum Error {
     /// A provider failed.
     #[error("provider: {0}")]
     Provider(String),
+    /// A decision was refused. Nothing changed; `problem` is what a machine goes by.
+    #[error("decision refused: {detail}")]
+    DecisionRefused {
+        /// Which of the contract's named problems this is.
+        problem: DecisionProblem,
+        /// What a person reads.
+        detail: String,
+    },
     /// The guard refused it (ADR 0054). Nothing changed, unless the text says otherwise.
     #[error("guard: {0}")]
     GuardRefused(String),
