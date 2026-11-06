@@ -1,7 +1,8 @@
 //! Building the `RawMessage`: aliases, threading, the encryption mark, the original.
 //!
 //! Pattern: Adapter. The mark says what really happened to this event, never what the room promises:
-//! a plain event in an encrypted room is `none`, an event nobody could decrypt is `unknown`.
+//! a plain event in an encrypted room is `none`, an event nobody could decrypt is `unknown`. When the
+//! key comes, the same event id with `undecrypted` unset makes the core replace the text in place.
 
 use fs_messenger_core::{Encryption, ExternalId, Kind, RawMessage};
 use fs_store::Blob;
@@ -12,8 +13,6 @@ use super::event::ParsedEvent;
 pub const SCHEME_EVENT: &str = "matrix";
 /// Scheme of a room id: the conversation.
 pub const SCHEME_ROOM: &str = "matrix-room";
-/// Scheme of the text of an event whose key arrived after it was stored; see `DESIGN.md`.
-pub const SCHEME_LATE: &str = "matrix-decrypted";
 /// The body of a message that could not be decrypted. The original is kept with it.
 pub const UNDECRYPTED_MARK: &str =
     "[This message could not be decrypted: its key has not arrived.]";
@@ -41,9 +40,8 @@ fn build(
     original: Option<&str>,
 ) -> RawMessage {
     let conversation = ExternalId::new(SCHEME_ROOM, &room.room_id);
-    let mut raw = RawMessage::new(alias, conversation, &event.sender, body);
+    let mut raw = RawMessage::new(alias, conversation, Kind::Chat, &event.sender, body);
     raw.conversation_name.clone_from(&room.name);
-    raw.kind = Kind::Chat;
     raw.encryption = encryption;
     // A room has no list of recipients in an event. The room is who it went to, so that answering
     // one's own message goes back there.
@@ -84,21 +82,6 @@ pub(crate) fn placeholder(room: &RoomContext, event: &ParsedEvent, original: &st
     );
     raw.undecrypted = true;
     raw
-}
-
-/// The text of an event stored earlier as a placeholder. The core cannot replace a message, so this
-/// is a new one that answers the placeholder (`DESIGN.md`, "Wanted from core").
-pub(crate) fn late_message(
-    room: &RoomContext,
-    event: &ParsedEvent,
-    encryption: Encryption,
-    original: &str,
-) -> Option<RawMessage> {
-    let body = event.body.clone()?;
-    let alias = ExternalId::new(SCHEME_LATE, &event.event_id);
-    let mut raw = build(room, event, alias, body, encryption, Some(original));
-    raw.in_reply_to = Some(event_alias(&event.event_id));
-    Some(raw)
 }
 
 #[cfg(test)]
@@ -150,10 +133,13 @@ mod tests {
     }
 
     #[test]
-    fn late_text_has_its_own_alias_and_answers_the_placeholder() {
-        let raw = late_message(&room(), &event("@a:x"), Encryption::Megolm, "{}").unwrap();
-        assert_eq!(raw.aliases, [ExternalId::new(SCHEME_LATE, "$e")]);
-        assert!(!raw.undecrypted);
-        assert_eq!(raw.in_reply_to, Some(ExternalId::new(SCHEME_EVENT, "$e")));
+    fn the_readable_version_is_the_same_message() {
+        let locked = placeholder(&room(), &event("@a:x"), "{}");
+        let open = message(&room(), &event("@a:x"), Encryption::Megolm, Some("{}")).unwrap();
+        assert_eq!(
+            locked.aliases, open.aliases,
+            "so the core replaces it in place"
+        );
+        assert!(!open.undecrypted);
     }
 }

@@ -12,9 +12,7 @@ use matrix_sdk::ruma::{OwnedEventId, RoomId};
 
 use super::MatrixProvider;
 use crate::error::{MatrixError, Result};
-use crate::receive::{
-    MatrixCursor, Pending, RoomContext, late_message, message, parse, placeholder,
-};
+use crate::receive::{MatrixCursor, Pending, RoomContext, message, parse, placeholder};
 
 const ROOM_MESSAGE: &str = "m.room.message";
 const ROOM_ENCRYPTED: &str = "m.room.encrypted";
@@ -87,7 +85,8 @@ impl MatrixProvider {
         Ok(response.event.json().get().to_owned())
     }
 
-    /// Try again what had no key, without the network. What opens now leaves the list.
+    /// Try again what had no key, without the network. What opens now leaves the list, and goes to the
+    /// core under the same event id, which replaces the placeholder in place.
     pub(super) async fn retry_pending(&self, cursor: &mut MatrixCursor) -> Result<Vec<RawMessage>> {
         let mut messages = Vec::new();
         let mut still = Vec::new();
@@ -109,7 +108,7 @@ impl MatrixProvider {
             let context = self.room_context(room_id);
             let json = event.raw().json().get().to_owned();
             if let Some(parsed) = parse(&json).filter(|p| p.event_type == ROOM_MESSAGE) {
-                messages.extend(late_message(&context, &parsed, encryption, &pending.raw));
+                messages.extend(message(&context, &parsed, encryption, Some(&pending.raw)));
             }
         }
         cursor.pending = still;

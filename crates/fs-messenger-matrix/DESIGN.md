@@ -15,7 +15,7 @@ Version 0.1.0, not tagged. Tested against the pinned tuwunel 1.9.4 only; see "No
 | Original: the event JSON as received; see "Originals" | done |
 | Sending: `m.room.message` only into a room with `m.room.encryption`; plan and provider both check | done, against the server |
 | Incoming marks: `megolm` only after real decryption; plain is `none`; undecrypted is `unknown` | done, against the server |
-| Undecrypted, then the key arrives: the text arrives **beside** the placeholder, not in its place | done, against the server; see "Late keys" |
+| Undecrypted, then the key arrives: replaced in place, same message, same original | done, against the server; see "Late keys" |
 | Secrets: not in `Debug`, not in logs at TRACE, not in either activity log, not readable on disk | done, tested |
 
 ### `Unsupported`, or not built
@@ -102,15 +102,13 @@ A recipient is a room (`!...`) or a person (`@...`). A person without a room get
 
 ## Late keys: what actually happens
 
-The SDK allows trying again: `Room::decrypt_event`. The core does not allow replacing: an alias it knows is `Duplicate`, and only aliases merge. So:
+The SDK allows trying again: `Room::decrypt_event`. The core replaces in place: a known provider-issued alias with `undecrypted` unset, on a message with it set. So:
 
-1. A message without a key is stored with body `UNDECRYPTED_MARK`, `undecrypted` set, encryption `unknown`, its original kept. **`unknown` and not `none`** as in `fs-messenger-mail`: it is known to be encrypted, and not known to whom it was readable. Neither reads as protected.
+1. A message without a key is stored with body `UNDECRYPTED_MARK`, `undecrypted` set, encryption `unknown`, its original kept. **`unknown` and not `none`:** it is known to be encrypted, and not known to be readable to whom. Neither reads as protected. The core shows no preview for it and does not find it by search.
 2. The event waits in the cursor, so the list moves with the batch. At most 256; an older one stays a placeholder for good.
-3. Every fetch tries again, without the network. What opens arrives as **a second message**, alias `matrix-decrypted:<event id>`, `megolm`, the same original, answering the placeholder.
+3. Every fetch tries again, without the network. What opens goes to the core under **the same event id**. Same message id, same original, `megolm`, the text in place. It counts as `duplicates` in a `SyncReport`, not as `stored`.
 
-**So the person sees the placeholder and the text.** A frontend can hide a placeholder that has such an answer. That is the visible workaround; see "Wanted from core".
-
-The events of type other than `m.room.message` that were encrypted also leave a placeholder, as nobody can tell before decrypting, and when they open, nothing follows.
+The same happens if a replay finds the event readable. Encrypted events of a type other than `m.room.message` also leave a placeholder, as nobody can tell before decrypting; when they open, nothing follows, so **such a placeholder stays**, and it leaves the waiting list. Provisional.
 
 ## Device trust (PROVISIONAL)
 
@@ -122,7 +120,7 @@ What the SDK does by default, unchanged:
 
 ## Decisions
 
-* **Provisional: schemes.** `matrix` event id, `matrix-room` room id, `matrix-decrypted` late text.
+* **Provisional: schemes.** `matrix` event id, `matrix-room` room id.
 * **The mark goes by the event.** A plain event in an encrypted room is `none`.
 * **The SDK's position, not the core's, is what `/sync` asks from.** The SDK drops an answer whose `next_batch` it has seen. Asking from an older cursor would answer nothing, and the cursor would move past the batch. So the difference comes from `/messages`. A server test caught this.
 * **What a newly joined room said before the join** is read once, by `/messages`. The list of rooms read is in the cursor.
@@ -135,7 +133,7 @@ What the SDK does by default, unchanged:
 
 Worked around here, nothing changed there:
 
-1. **Replacing a message in place** (`RawMessage.replaces`, or an `Ingest` method). Without it: "Late keys", edits and redactions.
+1. **Replacing a readable message** (`RawMessage.replaces`, or an `Ingest` method). Only an undecrypted one can be replaced today. Without it: edits and redactions.
 2. **`fs-store` v0.3.0.** The core pins v0.2.0; `UnloggedObjects` is in v0.3.0. This crate depends on both, renamed, so `fs-store` is built twice, and the two stores are of different types. Both use turso `=0.8.3`.
 3. **`encryption_plan` should get the conversation.** It only sees recipients: see "Sending and the two checks". Today a reply into a plain room can pass the plan and end in `failed`.
 4. **A second original or a cleartext field**, so that what was decrypted can be derived anew.

@@ -1,8 +1,8 @@
-//! A message without a key is stored visibly undecrypted; when the key comes, the text comes too.
+//! A message without a key is stored visibly undecrypted, and replaced in place when the key comes.
 //!
 //! The key comes as a real one: from another device of the same user, as an encrypted export file.
 
-use fs_messenger_core::{Encryption, Ingest};
+use fs_messenger_core::Encryption;
 use fs_messenger_matrix::{Password, SCHEME_EVENT, UNDECRYPTED_MARK};
 use serde_json::Value;
 
@@ -21,17 +21,17 @@ async fn undecrypted_then_the_key_arrives() {
 
     // A device that logged in after the message: nobody shared the key with it.
     let phone = bob.second_device().await;
-    let held = phone.find(UNDECRYPTED_MARK).await;
+    let held = phone.undecrypted().await;
     let [held] = held.as_slice() else {
         panic!("one placeholder, not {}", held.len());
     };
+    assert_eq!(held.body_text, UNDECRYPTED_MARK);
     assert_eq!(
         held.summary.encryption,
         Encryption::Unknown,
         "never megolm without decryption"
     );
     assert!(!held.summary.encryption.is_end_to_end());
-    assert!(held.undecrypted, "and the core is told, in its typed field");
     assert!(phone.find(&text).await.is_empty(), "the text is not here");
     let original: Value = serde_json::from_slice(&held.original.as_ref().unwrap().bytes).unwrap();
     assert_eq!(original["type"], "m.room.encrypted", "the original is kept");
@@ -39,8 +39,8 @@ async fn undecrypted_then_the_key_arrives() {
     assert_eq!(original["event_id"], event.as_str());
 
     // Nothing changes on its own.
-    let quiet = phone.sync().await;
-    assert_eq!(quiet.stored, 0);
+    assert_eq!(phone.sync().await.stored, 0);
+    assert_eq!(phone.undecrypted().await.len(), 1);
 
     // The key arrives.
     let file = phone.file("keys.txt");
@@ -58,30 +58,29 @@ async fn undecrypted_then_the_key_arrives() {
             >= 1
     );
 
+    // Replaced in place: the same message, the same original, now readable.
     let late = phone.wait_for(&text).await;
+    assert_eq!(late.id(), held.id(), "the same message, not a second one");
     assert_eq!(
         late.summary.encryption,
         Encryption::Megolm,
         "decryption really happened now"
     );
     assert_eq!(late.body_text, text);
-    assert!(!late.undecrypted);
+    assert!(!late.summary.undecrypted);
     assert_eq!(
-        late.summary.envelope.in_reply_to,
-        Some(held.id().to_string()),
-        "it answers the placeholder"
+        late.original, held.original,
+        "ADR 0030: the original never changes"
     );
-    assert_eq!(late.original, held.original, "same event, same original");
-
-    // What the core allows: not replaced. The placeholder stays beside the text. See DESIGN.md.
-    assert_eq!(phone.find(UNDECRYPTED_MARK).await.len(), 1);
+    assert!(
+        phone.undecrypted().await.is_empty(),
+        "no placeholder is left"
+    );
 
     // Replays add nothing, and the waiting list came back empty with the cursor.
-    let once_more = phone.sync().await;
-    assert_eq!(once_more.stored, 0);
+    assert_eq!(phone.sync().await.stored, 0);
     let phone = phone.restart().await;
     assert_eq!(phone.sync().await.stored, 0);
-    let replayed = phone.repo.sync(phone.account.id).await.unwrap();
-    assert_eq!(replayed.stored, 0);
     assert_eq!(phone.find(&text).await.len(), 1);
+    assert_eq!(phone.find(&text).await[0].id(), held.id());
 }

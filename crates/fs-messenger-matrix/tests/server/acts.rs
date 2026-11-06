@@ -55,6 +55,20 @@ impl Person {
         found
     }
 
+    /// All stored messages that could not be decrypted. Search does not find them: it holds no text.
+    pub async fn undecrypted(&self) -> Vec<Message> {
+        let mut found = Vec::new();
+        let list = self.repo.conversations(None, false, None).await.unwrap();
+        for conversation in list.items {
+            let page = self.repo.messages(conversation.id, None).await.unwrap();
+            for summary in page.items.into_iter().filter(|s| s.undecrypted) {
+                let id = summary.envelope.id;
+                found.push(self.repo.message(conversation.id, id).await.unwrap());
+            }
+        }
+        found
+    }
+
     /// Sync until `text` is here, or fail.
     pub async fn wait_for(&self, text: &str) -> Message {
         for _ in 0..80 {

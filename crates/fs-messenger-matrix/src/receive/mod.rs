@@ -7,7 +7,7 @@ mod adapter;
 mod cursor;
 mod event;
 
-pub(crate) use adapter::{RoomContext, late_message, message, placeholder};
-pub use adapter::{SCHEME_EVENT, SCHEME_LATE, SCHEME_ROOM, UNDECRYPTED_MARK};
+pub(crate) use adapter::{RoomContext, message, placeholder};
+pub use adapter::{SCHEME_EVENT, SCHEME_ROOM, UNDECRYPTED_MARK};
 pub(crate) use cursor::{MatrixCursor, Pending};
 pub(crate) use event::parse;
