@@ -37,9 +37,11 @@ async fn a_plain_event_arrives_marked_none_with_its_original() {
     assert!(!got.summary.encryption.is_end_to_end());
     assert_eq!(got.body_text, text);
     assert_eq!(alias_of(&got, SCHEME_EVENT), event);
-    // Byte for byte up to `unsigned.age`, which is different in every answer of the server.
+    // As /sync gave it, byte for byte. /event says the same, plus `room_id`, and its `unsigned.age`
+    // differs in every answer, so the comparison takes out the one and stops at the other.
     let original = String::from_utf8(got.original.unwrap().bytes).unwrap();
     let on_server = http::raw_event(&view, &room, &event).await;
+    let on_server = on_server.replace(&format!("\"room_id\":\"{room}\","), "");
     let until_age = |json: &str| json[..json.find("\"age\":").unwrap_or(json.len())].to_owned();
     assert_eq!(until_age(&original), until_age(&on_server));
     let parsed: Value = serde_json::from_str(&original).unwrap();

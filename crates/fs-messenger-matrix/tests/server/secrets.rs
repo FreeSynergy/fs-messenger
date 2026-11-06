@@ -145,9 +145,30 @@ async fn no_secret_in_debug_logs_activity_log_or_on_disk() {
         entries.len()
     );
 
+    // The core's log has the account and its cursor, and none of the secrets.
+    let core_log = fs_store::traits::ActivityLog::activities(
+        alice.messages.as_ref(),
+        &fs_store::ActivityFilter::default(),
+    )
+    .await
+    .unwrap();
+    assert!(!core_log.is_empty());
+    let core_log = serde_json::to_string(&core_log).unwrap();
+    for secret in [
+        access.as_str(),
+        alice.password.as_str(),
+        passphrase.as_str(),
+    ] {
+        assert!(
+            !core_log.contains(secret),
+            "a secret is in the activity log"
+        );
+    }
+
     // The file holds none of it, nor the room, nor a key's name, readable.
     drop(alice.provider);
     drop(alice.repo);
+    drop(alice.messages);
     let mut seen = 0;
     for entry in std::fs::read_dir(alice.dir.path()).unwrap() {
         let path = entry.unwrap().path();

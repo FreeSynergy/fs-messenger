@@ -57,6 +57,7 @@ pub struct Person {
     pub repo: MessengerRepo,
     pub account: Account,
     pub keys: Arc<fs_store_unlogged::TursoStore>,
+    pub messages: Arc<fs_store::TursoStore>,
 }
 
 /// A name for a new user.
@@ -103,6 +104,7 @@ impl Person {
         drop(self.repo);
         drop(self.provider);
         drop(self.keys);
+        drop(self.messages);
         tokio::time::sleep(Duration::from_millis(100)).await;
         Self::start(&local, password, dir, None, false).await
     }
@@ -133,7 +135,9 @@ impl Person {
         let provider = Arc::new(provider);
         let messages = Arc::new(open_messages(&dir.path().join("messages.db")).await);
         let config = MessengerConfig::new(format!("https://local.invalid/users/{local}"));
-        let repo = MessengerRepo::open_turso(messages, config).await.unwrap();
+        let repo = MessengerRepo::open_turso(messages.clone(), config)
+            .await
+            .unwrap();
         let account = match repo.accounts().await.unwrap().pop() {
             Some(account) => account,
             None => {
@@ -154,6 +158,7 @@ impl Person {
             repo,
             account,
             keys,
+            messages,
         };
         person.sync().await; // Uploads the device's keys.
         person

@@ -46,6 +46,11 @@ impl MatrixProvider {
             .map_err(|e| MatrixError::Sdk(e.to_string()))?
             .and_then(StateStoreDataValue::into_sync_token);
         let mut events = self.replay_since(&cursor, position.as_deref()).await?;
+        for (room_id, _) in &events {
+            if !cursor.rooms.iter().any(|r| r == room_id.as_str()) {
+                cursor.rooms.push(room_id.to_string());
+            }
+        }
 
         let settings = self.sync_settings(position.clone());
         let response = self.client.sync_once(settings).await?;
