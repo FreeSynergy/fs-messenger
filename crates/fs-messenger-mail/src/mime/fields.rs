@@ -219,7 +219,7 @@ References: <root@example.org> <parent@example.org>\r\nContent-Type: text/plain\
         let f = MailFields::read_covered(prose).unwrap();
         assert_eq!(f.from, None);
         assert_eq!(f.subject, None);
-        assert!(f.autocrypt.is_empty());
+        assert_eq!(f.autocrypt, Vec::<Vec<u8>>::new());
         assert!(
             f.text_body.starts_with("Dear all\nFrom: a@b"),
             "nothing is lost"
