@@ -169,7 +169,15 @@ fn neither_debug_nor_display_prints_a_secret() {
     let needles = secret_needles(&rpgp);
     let shown = format!("{secret} {secret:?} {secret:#?} {:?}", Some(&secret));
     assert!(!holds_any(shown.as_bytes(), &needles));
-    assert!(shown.contains("redacted"));
+    // Any other printed form, a list of numbers for one, matches no needle. A redacted form is short.
+    for form in [
+        format!("{secret}"),
+        format!("{secret:?}"),
+        format!("{secret:#?}"),
+    ] {
+        assert!(form.contains("redacted"), "{form}");
+        assert!(form.len() < 120, "{form}");
+    }
 }
 
 #[test]
