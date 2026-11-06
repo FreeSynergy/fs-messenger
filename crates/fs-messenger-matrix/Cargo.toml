@@ -45,3 +45,8 @@ tempfile = "3"
 tokio = { version = "1", features = ["full"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
+tracing = "0.1"
+
+[[test]]
+name = "server"
+path = "tests/server/main.rs"
