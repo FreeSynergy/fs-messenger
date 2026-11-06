@@ -68,11 +68,11 @@ pub fn raw(id: &str, thread: &str, text: &str) -> RawMessage {
     let mut m = RawMessage::new(
         alias(id),
         ExternalId::new("thread", thread),
+        Kind::Mail,
         "ada@example.org",
         text,
     );
     m.encryption = Encryption::Openpgp;
-    m.kind = Kind::Mail;
     m
 }
 

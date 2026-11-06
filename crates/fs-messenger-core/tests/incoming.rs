@@ -13,8 +13,14 @@ async fn delivered(encryption: Option<Encryption>) -> (Encryption, Encryption, b
     match encryption {
         Some(e) => m.encryption = e,
         None => {
-            m.encryption =
-                RawMessage::new(common::alias("a"), common::alias("c"), "s", "t").encryption
+            let silent = RawMessage::new(
+                common::alias("a"),
+                common::alias("c"),
+                fs_messenger_core::Kind::Mail,
+                "s",
+                "t",
+            );
+            m.encryption = silent.encryption;
         }
     }
     let Ingested::Stored(id) = repo.ingest(me.id, m).await.unwrap() else {

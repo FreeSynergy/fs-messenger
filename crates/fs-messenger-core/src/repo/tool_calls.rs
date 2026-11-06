@@ -77,6 +77,11 @@ impl Inner {
         let _writes = self.writes.lock().await;
         let mut message = self.load_note(id).await?;
         let (stored, changed) = apply(&mut message, agent_ref, call);
+        let size = message.body_text.len() + serde_json::to_string(&message.tool_calls)?.len();
+        let limit = self.config.max_message_bytes;
+        if changed && size > limit {
+            return Err(Error::TooLarge { size, limit });
+        }
         if changed {
             self.put(message_to(&message)?).await?;
         }

@@ -123,11 +123,12 @@ async fn c13_the_sequence_goes_on_after_a_restart() {
     let me = account(&repo, "me@example.org").await;
     let before = stored(&repo, me.id, raw_at("before", "t", 1)).await;
     let conv = conversation_of(&repo).await;
-    let first = repo.message(conv, before).await.unwrap().arrival;
+    let first = repo.message(conv, before).await.unwrap().summary.arrival;
 
+    drop(repo);
     let again = common::repo_over(store, 50).await;
     let after = stored(&again, me.id, raw_at("after", "t", 2)).await;
-    assert!(again.message(conv, after).await.unwrap().arrival > first);
+    assert!(again.message(conv, after).await.unwrap().summary.arrival > first);
     again.mark_read(conv, before).await.unwrap();
     assert!(unread(&again, conv, after).await);
 }

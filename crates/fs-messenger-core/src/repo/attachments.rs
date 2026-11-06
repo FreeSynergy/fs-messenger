@@ -21,6 +21,9 @@ impl Inner {
         media_type: String,
         data: Vec<u8>,
     ) -> Result<Attachment> {
+        // A name is shown and saved under; a sender writes it.
+        let printable = |t: String| t.chars().filter(|c| !c.is_control()).collect::<String>();
+        let (name, media_type) = (printable(name), printable(media_type));
         let media_type = if media_type.is_empty() {
             OCTETS.to_string()
         } else {

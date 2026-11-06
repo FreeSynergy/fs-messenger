@@ -64,7 +64,7 @@ impl Messenger for MessengerRepo {
         self.inner.messages_page(conversation, cursor).await
     }
     async fn message(&self, conversation: ObjectId, id: ObjectId) -> Result<Message> {
-        self.inner.load_in(conversation, id).await
+        self.inner.read_message(conversation, id).await
     }
     async fn mark_read(&self, conversation: ObjectId, up_to: ObjectId) -> Result<()> {
         self.inner.mark_read(conversation, up_to).await

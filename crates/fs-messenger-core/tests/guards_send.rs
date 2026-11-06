@@ -136,7 +136,7 @@ async fn c16_answering_a_message_deleted_meanwhile_still_works() {
     d.set_text("a".into(), "text/plain".into()).await.unwrap();
     repo.act(conv, parent, MessageAction::Delete).await.unwrap();
     d.send(None).await.unwrap();
-    assert!(provider.sent.lock().unwrap()[0].in_reply_to().is_empty());
+    assert_eq!(provider.sent.lock().unwrap()[0].in_reply_to().len(), 0);
 }
 
 #[tokio::test]

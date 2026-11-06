@@ -42,6 +42,7 @@ impl Inner {
         }
         self.put(tombstone).await?;
         self.release_attachments(&message.attachments).await?;
+        self.release_body(&message).await?;
         self.refresh(conversation).await
     }
 }

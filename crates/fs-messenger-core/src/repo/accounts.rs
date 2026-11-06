@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use super::consts::{ACCOUNT, CONTENT_TYPE, IDX_ADDRESS, IDX_KIND, SENSITIVE};
 use super::handle::Inner;
 use super::keys::{account_scope, normalised_address};
+use super::preserve::keep_unknown;
 use crate::error::{Error, Result};
 use crate::model::{Account, AccountSetup};
 use crate::provider::ProviderCursor;
@@ -119,7 +120,9 @@ impl Inner {
         let _writes = self.writes.lock().await;
         let (mut object, mut content) = self.load_account(id).await?;
         content.sync_cursor = Some(cursor);
+        let raw = object.content;
         object.content = serde_json::to_value(&content)?;
+        keep_unknown::<AccountContent>(&mut object.content, Some(&raw))?;
         self.put(object).await
     }
 }

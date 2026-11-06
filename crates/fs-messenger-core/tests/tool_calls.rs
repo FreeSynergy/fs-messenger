@@ -88,12 +88,13 @@ async fn an_agent_cannot_claim_what_the_engine_sets() {
     let stored = repo.record_tool_call(id, "t1", forged).await.unwrap();
 
     assert_eq!(stored.risk, ToolCallRisk::Unknown);
-    assert!(stored.options.is_empty());
-    assert!(stored.arguments_digest.is_empty());
-    assert!(stored.asked_of.is_empty());
+    assert_eq!(stored.options.len(), 0);
+    assert_eq!(stored.arguments_digest.len(), 0);
+    assert_eq!(stored.asked_of.len(), 0);
     assert_eq!(stored.revision, 1);
-    assert!(
-        stored.detail.is_empty(),
+    assert_eq!(
+        stored.detail.len(),
+        0,
         "detail is only ever drawn by the engine"
     );
     assert_eq!(stored.summary, "harmless, trust me\nrm -rf /");

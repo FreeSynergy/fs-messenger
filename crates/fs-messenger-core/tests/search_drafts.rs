@@ -70,12 +70,9 @@ async fn search_finds_subject_and_text_and_filters_narrow_it() {
         ..SearchFilter::default()
     };
     assert_eq!(repo.search("", &unread, None).await.unwrap().items.len(), 3);
-    assert!(
-        repo.search("100%", &none, None)
-            .await
-            .unwrap()
-            .items
-            .is_empty(),
+    assert_eq!(
+        repo.search("100%", &none, None).await.unwrap().items.len(),
+        0,
         "% is literal"
     );
 }
@@ -117,12 +114,13 @@ async fn a_draft_is_kept_resumed_and_never_among_the_messages() {
     assert_eq!(id.as_uuid().get_version_num(), 7);
     assert_eq!(repo.drafts().await.unwrap()[0].text, "half done");
     assert_eq!(store.count(&Query::new().of_type("Note")).await.unwrap(), 0);
-    assert!(
+    assert_eq!(
         repo.search("half", &SearchFilter::default(), None)
             .await
             .unwrap()
             .items
-            .is_empty()
+            .len(),
+        0
     );
 
     let mut again = repo.resume_draft(id).await.unwrap();
@@ -131,7 +129,7 @@ async fn a_draft_is_kept_resumed_and_never_among_the_messages() {
         .await
         .unwrap();
     let sent = again.send(None).await.unwrap();
-    assert!(repo.drafts().await.unwrap().is_empty());
+    assert_eq!(repo.drafts().await.unwrap().len(), 0);
     assert_eq!(
         provider.sent.lock().unwrap()[0].attachments()[0].data,
         b"file"
@@ -158,7 +156,7 @@ async fn discard_removes_the_draft_and_its_files_and_ends_it() {
         1
     );
     d.discard().await.unwrap();
-    assert!(repo.drafts().await.unwrap().is_empty());
+    assert_eq!(repo.drafts().await.unwrap().len(), 0);
     assert_eq!(
         store
             .count(&Query::new().of_type("Document"))

@@ -36,6 +36,12 @@ pub struct MessageSummary {
     pub sender_kind: SenderKind,
     /// The job this message is anchored to; empty if none.
     pub job_ref: String,
+    /// Local arrival sequence, never from a sender. "Read up to" runs over it.
+    pub arrival: u64,
+    /// The content could not be decrypted; the preview and the search hold no ciphertext.
+    pub undecrypted: bool,
+    /// What the provider's signature check found.
+    pub signature: SignatureCheck,
 }
 
 /// A whole message.
@@ -81,18 +87,28 @@ pub struct Message {
     pub pending_reply: Option<ExternalId>,
     /// The chain of ancestors the sender named, oldest first; these only link. Not in the contract.
     pub references: Vec<ExternalId>,
-    /// Whether the content could not be decrypted, so the text is not the message. Not in the
-    /// contract.
-    pub undecrypted: bool,
-    /// What the provider's signature check found. Not in the contract.
-    pub signature: SignatureCheck,
-    /// Local arrival sequence, never from a sender. "Read up to" runs over it. Not in the contract.
-    pub arrival: u64,
+    /// The size of a message refused as too large: only this stub stays, without content. Not in
+    /// the contract.
+    pub too_large: Option<u64>,
     /// When to sort it instead of `published`, if the sender dated it in the future. Not in the
     /// contract.
     pub sort_at: Option<DateTime<Utc>>,
     /// The agent's own reference of a call -> `ToolCall.id`. Not in the contract.
     pub tool_call_refs: BTreeMap<String, String>,
+    /// How it is stored; nobody else's business.
+    #[serde(skip)]
+    pub(crate) stored: StoredForm,
+}
+
+/// What reading a record leaves behind for writing it again.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct StoredForm {
+    /// A large body lives in an object of its own, so that small changes do not copy it.
+    pub(crate) body_blob: Option<ObjectId>,
+    /// What search holds of a body kept elsewhere.
+    pub(crate) indexed_text: Option<String>,
+    /// The content as read, for what this version does not know.
+    pub(crate) raw: Option<serde_json::Value>,
 }
 
 impl Message {

@@ -1,6 +1,6 @@
 //! How messages come in: [`Ingest`], and the flow behind it.
 //!
-//! Pattern: Template method: `IngestSteps::ingest_flow` fixes the order (check -> lock -> dedupe by
+//! Pattern: Template method: `IngestSteps::ingest_flow` fixes the order (rules -> lock -> dedupe by
 //! alias -> store); the store-backed steps fill it in. What a provider says about a tool call never
 //! decides anything: the engine's fields are reset here (ADR 0054), and `settled` is final.
 
@@ -20,6 +20,15 @@ pub enum Ingested {
     Stored(ObjectId),
     /// Already known, nothing stored twice.
     Duplicate(ObjectId),
+    /// Over the limit: only a stub stays, with who, when and how large, so it is visible, not gone.
+    TooLarge {
+        /// The stub.
+        id: ObjectId,
+        /// The size of the message, by the rule in `DESIGN.md`.
+        size: usize,
+        /// The limit it broke; a message with too many files can be under it.
+        limit: usize,
+    },
 }
 
 /// What one sync did.
@@ -29,8 +38,8 @@ pub struct SyncReport {
     pub stored: usize,
     /// Messages that were already known.
     pub duplicates: usize,
-    /// Messages refused for what they are (invalid, too large). They do not stop the sync, and the
-    /// cursor goes past them.
+    /// Messages refused for what they are (invalid, too large, or a local record in the way). They
+    /// do not stop the sync, and the cursor goes past them. One too large leaves a stub.
     pub rejected: usize,
 }
 
@@ -58,6 +67,14 @@ pub trait Ingest: Send + Sync {
     async fn record_usage(&self, conversation: ObjectId, usage: Usage) -> Result<()>;
 }
 
+/// What a delivered message matched.
+pub(crate) struct Known {
+    /// The stored message.
+    pub(crate) id: ObjectId,
+    /// By an id the provider issued. A match on a receipt only says "this is my own copy".
+    pub(crate) by_issuer: bool,
+}
+
 /// The steps of the flow.
 #[async_trait]
 pub(crate) trait IngestSteps: Send + Sync {
@@ -65,21 +82,38 @@ pub(crate) trait IngestSteps: Send + Sync {
     fn max_message_bytes(&self) -> usize;
     /// Dedupe and store must not interleave with another delivery.
     async fn exclusive(&self) -> OwnedMutexGuard<()>;
-    /// The stored message one of the aliases points at, if any.
-    async fn known(&self, account: ObjectId, raw: &RawMessage) -> Result<Option<ObjectId>>;
-    /// Remember aliases not seen so far on a known message.
+    /// The stored message this delivery is, if any.
+    async fn known(&self, account: ObjectId, raw: &RawMessage) -> Result<Option<Known>>;
+    /// Remember what a known message is also called.
     async fn merge_aliases(&self, id: ObjectId, account: ObjectId, raw: &RawMessage) -> Result<()>;
-    /// Store a new message.
-    async fn store_new(&self, account: ObjectId, raw: RawMessage) -> Result<ObjectId>;
+    /// A known message that could not be decrypted gets the readable version.
+    async fn upgrade(&self, id: ObjectId, raw: RawMessage) -> Result<()>;
+    /// Store a new message; with a size, only what stays of one too large.
+    async fn store_new(
+        &self,
+        account: ObjectId,
+        raw: RawMessage,
+        too_large: Option<usize>,
+    ) -> Result<ObjectId>;
 
     /// The fixed flow.
     async fn ingest_flow(&self, account: ObjectId, raw: RawMessage) -> Result<Ingested> {
-        let raw = ingest_rules::accepted(raw, self.max_message_bytes())?;
+        let limit = self.max_message_bytes();
+        let (raw, too_large) = ingest_rules::judged(raw, limit)?;
         let _writes = self.exclusive().await;
-        if let Some(id) = self.known(account, &raw).await? {
-            self.merge_aliases(id, account, &raw).await?;
-            return Ok(Ingested::Duplicate(id));
+        if let Some(known) = self.known(account, &raw).await? {
+            if known.by_issuer {
+                self.merge_aliases(known.id, account, &raw).await?;
+                if too_large.is_none() {
+                    self.upgrade(known.id, raw).await?;
+                }
+            }
+            return Ok(Ingested::Duplicate(known.id));
         }
-        Ok(Ingested::Stored(self.store_new(account, raw).await?))
+        let id = self.store_new(account, raw, too_large).await?;
+        Ok(match too_large {
+            Some(size) => Ingested::TooLarge { id, size, limit },
+            None => Ingested::Stored(id),
+        })
     }
 }

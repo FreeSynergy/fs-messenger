@@ -7,22 +7,25 @@
 use std::collections::BTreeMap;
 
 use chrono::Utc;
-use fs_store::{Cond, Envelope, ObjectId, Op, Query};
+use fs_store::{Envelope, ObjectId};
 
-use super::consts::{IDX_ALIAS, IDX_LINK, IDX_RECEIPT, IDX_REPLY_ALIAS, NOTE};
+use super::consts::NOTE;
 use super::handle::Inner;
-use super::keys::{alias_key, same_address};
-use super::message_codec::{message_from, message_to};
+use super::keys::same_address;
+use super::message_codec::message_to;
 use super::text::{body_media_type, display_name, preview};
 use super::tool_calls;
 use crate::error::Result;
-use crate::model::{DeliveryState, ExternalId, Message, MessageSummary, SenderKind};
+use crate::model::{DeliveryState, Message, MessageSummary, SenderKind, StoredForm};
 use crate::provider::RawMessage;
 
-const MAX_CHAIN: usize = 1000;
-
 impl Inner {
-    pub(super) async fn store_raw(&self, account: ObjectId, raw: RawMessage) -> Result<ObjectId> {
+    pub(super) async fn store_raw(
+        &self,
+        account: ObjectId,
+        raw: RawMessage,
+        too_large: Option<u64>,
+    ) -> Result<ObjectId> {
         let name = raw
             .conversation_name
             .as_deref()
@@ -43,7 +46,14 @@ impl Inner {
         // Only the account's own address can write as me: a stranger's claim is an ordinary mail.
         let outgoing = raw.outgoing && same_address(&raw.sender, &owner.address);
 
-        let mut env = Envelope::new(NOTE, display_name(raw.subject.as_deref(), &raw.body_text));
+        // Ciphertext is no name and no preview.
+        let shown = if raw.undecrypted {
+            ""
+        } else {
+            raw.body_text.as_str()
+        };
+        let mut env = Envelope::new(NOTE, display_name(raw.subject.as_deref(), shown));
+        let preview = preview(shown);
         env.iri = self.iri(env.id);
         env.attributed_to = (!raw.sender.is_empty()).then(|| raw.sender.clone());
         env.to = raw.to;
@@ -71,10 +81,13 @@ impl Inner {
                 },
                 unread: !outgoing,
                 flagged: false,
-                preview: preview(&raw.body_text),
+                preview,
                 // Nothing here can look at the sender's card yet, and a remote must not claim `person`.
                 sender_kind: SenderKind::Unknown,
                 job_ref: raw.job_ref,
+                arrival: self.next_arrival(),
+                undecrypted: raw.undecrypted,
+                signature: raw.signature,
             },
             body_text: raw.body_text,
             body_html: String::new(),
@@ -99,79 +112,18 @@ impl Inner {
             outgoing,
             pending_reply,
             references: raw.references,
-            undecrypted: raw.undecrypted,
-            signature: raw.signature,
-            arrival: self.next_arrival(),
+            too_large,
             sort_at,
+            stored: StoredForm::default(),
         };
         for t in raw.tool_calls {
             tool_calls::apply(&mut message, &t.agent_ref, t.call);
         }
         let id = message.id();
+        self.externalise_body(&mut message).await?;
         self.put(message_to(&message)?).await?;
         self.adopt_children(&scope, &message).await?;
         self.refresh(conversation_id).await?;
         Ok(id)
-    }
-
-    /// Our id of the parent if it is here, by anything it is known as; otherwise remember the claim.
-    async fn resolve_parent(
-        &self,
-        scope: &str,
-        parent: Option<ExternalId>,
-    ) -> Result<(Option<ObjectId>, Option<ExternalId>)> {
-        let Some(parent) = parent else {
-            return Ok((None, None));
-        };
-        let mut q = Query::new().limit(1);
-        for key in [IDX_ALIAS, IDX_LINK, IDX_RECEIPT] {
-            q = q.or(Cond::Index {
-                key: key.to_string(),
-                op: Op::Eq,
-                value: alias_key(scope, &parent),
-            });
-        }
-        Ok(match self.store.query(&q).await?.pop() {
-            Some(o) => (Some(o.envelope.id), None),
-            None => (None, Some(parent)),
-        })
-    }
-
-    /// Replies that arrived before their parent now learn its id; a re-sync can come in any order.
-    /// A link that would close a cycle is given up: the reply stays in the conversation, unlinked.
-    async fn adopt_children(&self, scope: &str, parent: &Message) -> Result<()> {
-        for alias in parent.aliases.iter().chain(&parent.links) {
-            let q = Query::new()
-                .of_type(NOTE)
-                .with_index(IDX_REPLY_ALIAS, alias_key(scope, alias));
-            for o in self.store.query(&q).await? {
-                let mut child = message_from(o)?;
-                child.pending_reply = None;
-                if !self.is_above(child.id(), parent).await? {
-                    child.summary.envelope.in_reply_to = Some(parent.id().to_string());
-                }
-                self.put(message_to(&child)?).await?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Whether `ancestor` is `from` or above it in the reply chain. A chain longer than anyone
-    /// writes counts as yes.
-    async fn is_above(&self, ancestor: ObjectId, from: &Message) -> Result<bool> {
-        let mut at = from.summary.envelope.in_reply_to.clone();
-        for _ in 0..MAX_CHAIN {
-            let Some(id) = at.and_then(|s| s.parse::<ObjectId>().ok()) else {
-                return Ok(false);
-            };
-            if id == ancestor {
-                return Ok(true);
-            }
-            let Some(m) = self.reload(id).await? else {
-                return Ok(false);
-            };
-            at = m.summary.envelope.in_reply_to;
-        }
-        Ok(true)
     }
 }

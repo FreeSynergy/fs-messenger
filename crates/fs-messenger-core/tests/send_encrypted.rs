@@ -124,7 +124,7 @@ async fn a_refused_draft_is_kept_and_goes_out_once_the_key_is_there() {
     assert_eq!(sent.media_type(), "text/markdown");
     assert_eq!(sent.id(), id);
 
-    assert!(repo.drafts().await.unwrap().is_empty());
+    assert_eq!(repo.drafts().await.unwrap().len(), 0);
     assert_eq!(notes(&store).await, 1);
     let conv = conversation_of(&repo).await;
     let m = repo.message(conv, id).await.unwrap();

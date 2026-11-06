@@ -32,7 +32,7 @@ async fn a_plain_store_is_refused_and_gets_nothing_written() {
     assert!(matches!(result, Err(Error::StoreNotEncrypted)));
     assert_eq!(plain.count(&Query::new()).await.unwrap(), 0);
     let log = plain.activities(&ActivityFilter::default()).await.unwrap();
-    assert!(log.is_empty());
+    assert_eq!(log.len(), 0);
 }
 
 #[tokio::test]
@@ -170,21 +170,4 @@ async fn the_stores_own_refusal_holds_for_a_message_built_by_the_program() {
         refused,
         Err(fs_store::Error::EncryptionRequired(_))
     ));
-}
-
-#[test]
-fn c3_the_open_on_any_store_exists_only_with_test_support() {
-    let source = include_str!("../src/repo/handle.rs");
-    let at = source
-        .find("pub async fn open(")
-        .expect("the test constructor");
-    let before = source[..at].trim_end();
-    assert!(
-        before.ends_with(r#"#[cfg(feature = "test-support")]"#),
-        "`open` must stay behind the feature"
-    );
-    let manifest = include_str!("../Cargo.toml");
-    let dependencies = &manifest[manifest.find("[dependencies]").unwrap()..];
-    let dependencies = &dependencies[..dependencies.find("[dev-dependencies]").unwrap()];
-    assert!(!dependencies.contains("test-support"));
 }

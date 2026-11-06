@@ -154,7 +154,7 @@ async fn accounts_refuse_secrets_and_duplicates_and_report_readiness() {
     repo.register_provider(a.id, common::TestProvider::new(Encryption::Mls, &[]));
     assert!(repo.accounts().await.unwrap()[0].encryption_ready);
     repo.remove_account(a.id).await.unwrap();
-    assert!(repo.accounts().await.unwrap().is_empty());
+    assert_eq!(repo.accounts().await.unwrap().len(), 0);
 }
 
 #[tokio::test]
@@ -163,11 +163,14 @@ async fn usage_is_stored_as_given_and_zero_means_not_known() {
     let me = account(&repo, "me@example.org").await;
     repo.ingest(me.id, raw("m1", "t", "x")).await.unwrap();
     let conv = conversation_of(&repo).await;
-    assert_eq!(repo.usage(conv).await.unwrap(), Default::default());
+    assert_eq!(
+        repo.usage(conv).await.unwrap(),
+        fs_messenger_core::Usage::default()
+    );
     let usage = fs_messenger_core::Usage {
         input_tokens: 5,
         currency: "EUR".into(),
-        ..Default::default()
+        ..fs_messenger_core::Usage::default()
     };
     repo.record_usage(conv, usage.clone()).await.unwrap();
     assert_eq!(repo.usage(conv).await.unwrap(), usage);

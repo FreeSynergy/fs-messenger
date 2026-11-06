@@ -7,7 +7,7 @@ use fs_store::ObjectId;
 
 use super::draft_data::DraftData;
 use super::handle::Inner;
-use crate::error::Result;
+use crate::error::{Error, Result};
 
 impl Inner {
     pub(super) async fn forward(
@@ -16,7 +16,12 @@ impl Inner {
         id: ObjectId,
         recipients: Vec<String>,
     ) -> Result<()> {
-        let source = self.load_in(conversation, id).await?;
+        let source = self.read_message(conversation, id).await?;
+        if source.summary.undecrypted || source.too_large.is_some() {
+            return Err(Error::Conflict(
+                "this message has no readable content to forward".into(),
+            ));
+        }
         let mut data = DraftData::new();
         data.account = self.load_conversation(conversation).await?.content.account;
         data.to = recipients;

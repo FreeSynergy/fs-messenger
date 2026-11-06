@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::{Encryption, ExternalId, Kind, SignatureCheck, ToolCall};
 
 /// Where a provider stands in its own stream. Opaque to the core.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ProviderCursor(pub String);
 
@@ -103,10 +103,12 @@ pub struct RawMessage {
 }
 
 impl RawMessage {
-    /// A message with what every message needs; the rest stays at its fail-safe default.
+    /// A message with what every message needs; the rest stays at its fail-safe default. `alias` is
+    /// an id the provider issued, and the provider knows the kind: nothing guesses it later.
     pub fn new(
         alias: ExternalId,
         conversation: ExternalId,
+        kind: Kind,
         sender: impl Into<String>,
         body_text: impl Into<String>,
     ) -> Self {
@@ -115,7 +117,7 @@ impl RawMessage {
             links: vec![],
             conversation,
             conversation_name: None,
-            kind: Kind::default(),
+            kind,
             encryption: Encryption::default(),
             sender: sender.into(),
             to: vec![],
