@@ -17,11 +17,16 @@ use fs_messenger_guard::{
 use fs_store::traits::UnloggedObjects;
 use fs_store::{ObjectId, TursoStore};
 use serde_json::{Value, json};
+use tokio::sync::Notify;
 /// The real repository, whose writes can fail and whose reads can stop answering.
 struct Faulty {
     real: TursoGuardRepository,
     fail_writes: AtomicBool,
     fail_reads: AtomicBool,
+    /// The next save tells `entered` and waits for `go` first.
+    hold_save: AtomicBool,
+    entered: Notify,
+    go: Notify,
 }
 
 #[async_trait]
@@ -35,6 +40,10 @@ impl GuardRepository for Faulty {
     async fn save(&self, record: &Value) -> Result<(), String> {
         if self.fail_writes.load(Ordering::SeqCst) {
             return Err("disk full".into());
+        }
+        if self.hold_save.swap(false, Ordering::SeqCst) {
+            self.entered.notify_one();
+            self.go.notified().await;
         }
         self.real.save(record).await
     }
@@ -69,6 +78,9 @@ async fn rig() -> Rig {
         real: TursoGuardRepository::open(store.clone()).unwrap(),
         fail_writes: AtomicBool::new(false),
         fail_reads: AtomicBool::new(false),
+        hold_save: AtomicBool::new(false),
+        entered: Notify::new(),
+        go: Notify::new(),
     });
     let (engine, enrolment) = GuardEngine::open_with(
         GuardConfig::new(OWNER),
@@ -218,5 +230,39 @@ async fn an_allow_once_that_cannot_be_used_up_in_the_state_is_refused() {
     assert_eq!(
         w.check("message.delete", args("/m")).await,
         Verdict::Refuse(Refusal::NotRecorded)
+    );
+}
+
+#[tokio::test]
+async fn a_stop_during_a_reopen_that_is_being_written_wins() {
+    let r = rig().await;
+    r.engine
+        .stop(&r.owner.proof(&r.identity, Method::Stop, &[]))
+        .await
+        .unwrap();
+    // A reopen is at its write, holding the lock. Now the owner pulls the stop again.
+    r.faulty.hold_save.store(true, Ordering::SeqCst);
+    let (engine, reopen) = (
+        r.engine.clone(),
+        r.owner.proof(&r.identity, Method::Reopen, &[]),
+    );
+    let reopening = tokio::spawn(async move { engine.reopen(&reopen).await });
+    r.faulty.entered.notified().await;
+    let (engine, stop) = (
+        r.engine.clone(),
+        r.owner.proof(&r.identity, Method::Stop, &[]),
+    );
+    let stopping = tokio::spawn(async move { engine.stop(&stop).await });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    r.faulty.go.notify_one();
+    reopening.await.unwrap().unwrap();
+    stopping.await.unwrap().unwrap();
+
+    assert_eq!(verdict(&r.engine).await, Verdict::Refuse(Refusal::Stopped));
+    let record = r.faulty.real.load().await.unwrap().unwrap();
+    assert_eq!(
+        World::doc_mode(&record),
+        "stopped",
+        "and it stays so after a restart"
     );
 }

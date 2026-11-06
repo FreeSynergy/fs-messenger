@@ -159,3 +159,34 @@ async fn a_stop_cannot_lose_a_race_with_decisions_or_a_check() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn after_a_stop_this_process_stays_stopped_even_if_a_record_says_open() {
+    let w = World::with_ai().await;
+    let q = w.ask("message.delete", args("/m")).await;
+    let click = w
+        .owner
+        .decide(&w.identity, q.message, &q.call, "allow-once");
+    w.engine.stop(&w.stop_proof()).await.unwrap();
+    w.tamper(|doc| {
+        doc["mode"] = json!("open");
+        doc["calls"][0]["stage"] = json!("question");
+        doc["calls"][0]["revision"] = json!(1);
+        doc["calls"][0]["expiresAt"] = json!("2999-01-01T00:00:00Z");
+    })
+    .await;
+    assert_eq!(
+        w.check("message.open", args("/")).await,
+        Verdict::Refuse(Refusal::Stopped)
+    );
+    assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);
+    let result = w
+        .repo
+        .act(q.conversation, q.message, MessageAction::Decide(click))
+        .await;
+    assert!(
+        matches!(result, Err(Error::DecisionRefused { .. })),
+        "{result:?}"
+    );
+    assert_eq!(w.engine.admit_message(AI).await, Err(Refusal::Stopped));
+}
