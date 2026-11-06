@@ -69,6 +69,21 @@ fn a_hidden_recipient_can_read_it_and_others_cannot_tell() -> Result<(), MailErr
         generate_key("h@x")?,
     );
     let armored = encrypt_to(&alice, &[&bob.public()], &[&hidden.public()]);
+    // What the others can read of the message: one named recipient, and one packet that names nobody.
+    let (message, _) = pgp::composed::Message::from_armor(armored.as_bytes())?;
+    let pgp::composed::Message::Encrypted { esk, .. } = &message else {
+        panic!("encrypted");
+    };
+    let named: Vec<bool> = esk
+        .iter()
+        .map(|e| match e {
+            pgp::composed::Esk::PublicKeyEncryptedSessionKey(
+                pgp::packet::PublicKeyEncryptedSessionKey::V6 { fingerprint, .. },
+            ) => fingerprint.is_some(),
+            other => panic!("a v6 packet, not {other:?}"),
+        })
+        .collect();
+    assert_eq!(named, [true, false]);
     let (text, _) = decrypt(armored.as_bytes(), &[hidden], &[])?;
     assert_eq!(text, b"the secret text");
     assert!(decrypt(armored.as_bytes(), &[bob], &[]).is_ok());

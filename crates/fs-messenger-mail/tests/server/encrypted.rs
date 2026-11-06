@@ -23,7 +23,7 @@ async fn round_trip(submit: Submit, fetch: Fetch) {
     let sent_id = alice
         .send(
             None,
-            &[bob_addr.clone()],
+            std::slice::from_ref(&bob_addr),
             &[],
             &text,
             &[("a.bin", "application/x-test", file)],

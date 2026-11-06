@@ -20,12 +20,14 @@ async fn refused(submit: Submit) {
     let Err(Error::EncryptionRefused {
         encryption,
         missing_keys,
-    }) = alice.send(None, &[keyless.clone()], &[], &text, &[]).await
+    }) = alice
+        .send(None, std::slice::from_ref(&keyless), &[], &text, &[])
+        .await
     else {
         panic!("must be refused");
     };
     assert_eq!(encryption, Encryption::None);
-    assert_eq!(missing_keys, [keyless.clone()]);
+    assert_eq!(missing_keys, std::slice::from_ref(&keyless));
 
     // Hidden recipients count, and only the one without a key is named.
     let stranger = "nobody@msgtest.test".to_string();
@@ -33,7 +35,7 @@ async fn refused(submit: Submit) {
         .send(
             None,
             &[Who::Alice.address()],
-            &[stranger.clone()],
+            std::slice::from_ref(&stranger),
             &text,
             &[],
         )
@@ -41,7 +43,7 @@ async fn refused(submit: Submit) {
     else {
         panic!("a hidden recipient without a key must refuse the mail");
     };
-    assert_eq!(missing_keys, [stranger]);
+    assert_eq!(missing_keys, std::slice::from_ref(&stranger));
 
     // Long enough for a delivery to show; a local one takes well under a second here.
     tokio::time::sleep(Duration::from_secs(3)).await;
