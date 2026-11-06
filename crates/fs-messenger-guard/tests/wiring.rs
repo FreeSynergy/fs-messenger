@@ -19,7 +19,7 @@ async fn a_second_guard_cannot_be_installed() {
             .await
             .unwrap(),
     );
-    let (intruder, _) = engine_on(&store, &w.clock);
+    let (intruder, _) = engine_on(&store, &w.clock, &w.dir.path().join("other.stopped"));
     assert!(intruder.attach(&w.repo).is_err());
     let again = w.engine.attach(&w.repo);
     assert!(again.is_err(), "and the same one not twice");

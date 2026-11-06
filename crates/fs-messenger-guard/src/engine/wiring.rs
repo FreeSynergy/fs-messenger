@@ -7,6 +7,7 @@
 //! so that crate cannot be a dependency here; it is what the card lookup replaces, provisional.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use fs_messenger_core::{
@@ -15,9 +16,11 @@ use fs_messenger_core::{
 };
 use fs_store::ObjectId;
 
-use super::core::{GuardEngine, View};
-use crate::api::Gate;
+use super::core::GuardEngine;
+use super::store_access::View;
 use crate::error::{GuardError, Refusal};
+use crate::identity::id_key;
+use crate::model::GuardMode;
 
 struct Route(Arc<GuardEngine>);
 
@@ -43,8 +46,9 @@ impl EngineGuard for Route {
     }
 
     async fn admit_agent_message(&self, sender: &str) -> CoreResult<()> {
+        let wait = self.0.config.sender_wait;
         self.0
-            .admit_message(sender)
+            .admission(sender, wait)
             .await
             .map_err(GuardError::from)?;
         Ok(())
@@ -54,27 +58,48 @@ impl EngineGuard for Route {
 #[async_trait]
 impl SenderLookup for Route {
     async fn sender_kind(&self, sender: &str) -> SenderKind {
-        match self.0.view().await {
-            View::Doc(doc) if doc.is_invited(sender) => SenderKind::Ai,
+        match self.0.view_within(self.0.config.sender_wait).await {
+            View::Doc(doc) if doc.is_invited(&id_key(sender)) => SenderKind::Ai,
             _ => SenderKind::Unknown,
         }
     }
 }
 
 impl GuardEngine {
-    /// Put this guard into a messenger: `decide` and `stop` go here from now on. Works once per
-    /// messenger and once per guard. Without it the stop still works; it has no message to settle and
-    /// no provider to ask, and says so in its report.
+    /// May this participant's message come in? No lock: the way in must not wait for the guard's own
+    /// writes. What cannot be said now is `Unavailable`: a sync stops there and loses nothing.
+    pub(super) async fn admission(&self, sender: &str, wait: Duration) -> Result<(), Refusal> {
+        if self.is_latched() {
+            return Err(Refusal::Stopped);
+        }
+        match self.view_within(wait).await {
+            View::Doc(doc) if doc.mode != GuardMode::Open => Err(Refusal::Stopped),
+            View::Doc(doc) if doc.is_invited(&id_key(sender)) => Ok(()),
+            View::Doc(_) => Err(Refusal::NotInvited),
+            View::Missing => Err(Refusal::Stopped),
+            View::Unreadable(_) | View::Corrupt(_) => Err(Refusal::Unavailable),
+        }
+    }
+
+    /// Put this guard into a messenger: `decide` and `stop` go here from now on. A failure is fatal for
+    /// the program: without it those answer `Unsupported`, and no question can be asked. Works once
+    /// per guard and messenger, before any provider is registered, and not on the messenger's own store:
+    /// the hub pushes a store's log. Without it the stop still works, and says what it could not reach.
     pub fn attach(self: &Arc<Self>, messenger: &MessengerRepo) -> Result<(), GuardError> {
         if self.port.get().is_some() {
-            return Err(Refusal::NotEnrollable("this guard is attached already").into());
+            return Err(GuardError::AttachRefused("attached already".into()));
+        }
+        if self.repo.store_address() == Some(messenger.store_address()) {
+            return Err(GuardError::AttachRefused(
+                "the guard needs a store of its own".into(),
+            ));
         }
         let route = Arc::new(Route(self.clone()));
         let port = messenger
             .install_guard(route.clone(), route)
-            .map_err(|e| GuardError::NotPersisted(e.to_string()))?;
+            .map_err(|e| GuardError::AttachRefused(e.to_string()))?;
         self.port
             .set(port)
-            .map_err(|_| Refusal::NotEnrollable("this guard is attached already").into())
+            .map_err(|_| GuardError::AttachRefused("attached already".into()))
     }
 }

@@ -6,9 +6,12 @@
 
 use async_trait::async_trait;
 
-use super::core::{GuardEngine, View};
+use super::core::GuardEngine;
+use super::marker;
+use super::store_access::View;
 use crate::api::Guard;
 use crate::error::{GuardError, Refusal};
+use crate::identity::id_key;
 use crate::log::GuardLogEntry;
 use crate::model::{AiGrant, GuardMode, GuardProof, GuardState, StopReport};
 use crate::signed::Method;
@@ -27,6 +30,49 @@ pub(crate) fn risk_name(risk: fs_messenger_core::ToolCallRisk) -> &'static str {
 }
 
 impl GuardEngine {
+    /// `revoke` and `uninvite`: what hangs on a participant goes, and what is shown follows.
+    async fn take_away(
+        &self,
+        method: Method,
+        event: &str,
+        profile: &str,
+        proof: &GuardProof,
+    ) -> Result<(), GuardError> {
+        let owner = self.config.owner.clone();
+        let (key, signer) = (id_key(profile), id_key(&proof.signer));
+        let entry = GuardLogEntry::new(event, &signer).about(&key);
+        let uninvite = method == Method::Uninvite;
+        let mut cancelled = vec![];
+        let doc = self
+            .signed_change(method, &[profile.as_bytes()], proof, entry, |doc| {
+                doc.check_revoke(&key, &signer, &owner)?;
+                cancelled = if uninvite {
+                    doc.apply_uninvite(&key)
+                } else {
+                    doc.apply_revoke(&key)
+                };
+                Ok(())
+            })
+            .await?;
+        self.show_all(&doc, &cancelled).await
+    }
+
+    pub(crate) async fn show_all(&self, doc: &GuardDoc, ids: &[String]) -> Result<(), GuardError> {
+        let mut problems = vec![];
+        for id in ids {
+            if let Some(call) = doc.calls.iter().find(|c| &c.id == id) {
+                if let Err(why) = self.show(call, "").await {
+                    problems.push(why);
+                }
+            }
+        }
+        if problems.is_empty() {
+            Ok(())
+        } else {
+            Err(GuardError::DoneNotShown(problems.join("; ")))
+        }
+    }
+
     /// The state to change, or why not. A fresh program has no keys yet, and damage cannot be checked.
     pub(crate) fn writable(view: View) -> Result<GuardDoc, Refusal> {
         match view {
@@ -47,15 +93,14 @@ impl GuardEngine {
     where
         F: FnOnce(&mut GuardDoc) -> Result<(), Refusal> + Send,
     {
-        let _ops = self.ops.lock().await;
+        let _ops = self.lock_ops().await?;
         let mut doc = Self::writable(self.view().await)?;
         let request = ProofRequest { method, arguments };
         let used = doc.check_proof(self.verifier.as_ref(), &request, proof)?;
         change(&mut doc)?;
         doc.used_proofs.insert(used);
         self.save(&doc).await.map_err(GuardError::NotPersisted)?;
-        self.repo
-            .append(&entry)
+        self.log_entry(&entry)
             .await
             .map_err(GuardError::DoneNotShown)?;
         Ok(doc)
@@ -80,10 +125,11 @@ impl Guard for GuardEngine {
     async fn invite(&self, profile: &str, proof: &GuardProof) -> Result<(), GuardError> {
         let now = self.clock.now();
         let owner = self.config.owner.clone();
-        let entry = GuardLogEntry::new("invite", &proof.signer).about(profile);
+        let (key, signer) = (id_key(profile), id_key(&proof.signer));
+        let entry = GuardLogEntry::new("invite", &signer).about(&key);
         self.signed_change(Method::Invite, &[profile.as_bytes()], proof, entry, |doc| {
-            doc.check_invite(profile, &owner)?;
-            doc.apply_invite(profile, &proof.signer, now);
+            doc.check_invite(&key, &owner)?;
+            doc.apply_invite(&key, &signer, now);
             Ok(())
         })
         .await?;
@@ -92,12 +138,17 @@ impl Guard for GuardEngine {
 
     async fn release(&self, grant: &AiGrant, proof: &GuardProof) -> Result<(), GuardError> {
         let owner = self.config.owner.clone();
-        let mut entry = GuardLogEntry::new("release", &proof.signer).about(&grant.profile);
+        let (key, signer) = (id_key(&grant.profile), id_key(&proof.signer));
+        let mut entry = GuardLogEntry::new("release", &signer).about(&key);
         entry.risk = Some(grant.risk);
+        let stored = AiGrant {
+            profile: key,
+            risk: grant.risk,
+        };
         let arguments: [&[u8]; 2] = [grant.profile.as_bytes(), risk_name(grant.risk).as_bytes()];
         self.signed_change(Method::Release, &arguments, proof, entry, |doc| {
-            doc.check_release(grant, &proof.signer, &owner)?;
-            doc.apply_grant(grant.clone());
+            doc.check_release(&stored, &signer, &owner)?;
+            doc.apply_grant(stored.clone());
             Ok(())
         })
         .await?;
@@ -105,47 +156,29 @@ impl Guard for GuardEngine {
     }
 
     async fn revoke(&self, profile: &str, proof: &GuardProof) -> Result<(), GuardError> {
-        let owner = self.config.owner.clone();
-        let entry = GuardLogEntry::new("revoke", &proof.signer).about(profile);
-        let mut cancelled = vec![];
-        let doc = self
-            .signed_change(Method::Revoke, &[profile.as_bytes()], proof, entry, |doc| {
-                doc.check_revoke(profile, &proof.signer, &owner)?;
-                cancelled = doc.apply_revoke(profile);
-                Ok(())
-            })
-            .await?;
-        let mut problems = vec![];
-        for id in &cancelled {
-            if let Some(call) = doc.calls.iter().find(|c| &c.id == id) {
-                if let Err(why) = self.show(call, "").await {
-                    problems.push(why);
-                }
-            }
-        }
-        if problems.is_empty() {
-            Ok(())
-        } else {
-            Err(GuardError::DoneNotShown(problems.join("; ")))
-        }
+        self.take_away(Method::Revoke, "revoke", profile, proof)
+            .await
+    }
+
+    async fn uninvite(&self, profile: &str, proof: &GuardProof) -> Result<(), GuardError> {
+        self.take_away(Method::Uninvite, "uninvite", profile, proof)
+            .await
     }
 
     async fn stop(&self, proof: &GuardProof) -> Result<StopReport, GuardError> {
-        self.pull_stop(proof).await
+        self.pull_stop(Some(proof.clone())).await
     }
 
     async fn reopen(&self, proof: &GuardProof) -> Result<(), GuardError> {
-        let _ops = self.ops.lock().await;
+        let _ops = self.lock_ops().await?;
         let mut doc = Self::writable(self.view().await)?;
         let request = ProofRequest {
             method: Method::Reopen,
             arguments: &[],
         };
         let used = doc.check_proof(self.verifier.as_ref(), &request, proof)?;
-        if !self
-            .permission
-            .may_reopen(&proof.signer, &self.config.owner)
-        {
+        let signer = id_key(&proof.signer);
+        if !self.permission.may_reopen(&signer, &self.config.owner) {
             return Err(Refusal::NotPermitted.into());
         }
         if doc.mode == GuardMode::Open && !self.is_latched() {
@@ -154,11 +187,20 @@ impl Guard for GuardEngine {
         doc.apply_reopen();
         doc.used_proofs.insert(used);
         self.save(&doc).await.map_err(GuardError::NotPersisted)?;
-        self.clear_stop();
-        let entry = GuardLogEntry::new("reopen", &proof.signer);
-        self.repo
-            .append(&entry)
+        // A marker that stays makes the next start stopped: fail-shut, and said.
+        let removing = marker::remove(self.config.stop_marker.clone());
+        let not_removed = tokio::time::timeout(self.config.store_wait, removing)
             .await
-            .map_err(GuardError::DoneNotShown)
+            .unwrap_or_else(|_| Err("the disk did not answer in time".into()))
+            .err();
+        self.clear_stop();
+        let not_logged = self
+            .log_entry(&GuardLogEntry::new("reopen", &signer))
+            .await
+            .err();
+        match not_removed.or(not_logged) {
+            Some(why) => Err(GuardError::DoneNotShown(why)),
+            None => Ok(()),
+        }
     }
 }

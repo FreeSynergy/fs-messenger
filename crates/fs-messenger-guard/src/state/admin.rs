@@ -6,6 +6,7 @@
 
 use chrono::{DateTime, Utc};
 use fs_messenger_core::ToolCallRisk;
+use serde::{Deserialize, Serialize};
 
 use super::doc::{DeviceKey, GuardDoc, Invitation};
 use super::stage::CallStage;
@@ -21,11 +22,13 @@ pub(crate) fn usable_name(name: &str) -> bool {
     !name.is_empty() && name.len() <= MAX_NAME_BYTES && !name.contains(hides_text)
 }
 
-/// Who pulled the stop, and when.
-#[derive(Clone, Debug)]
+/// Who pulled the stop, when, and the proof it used up: whatever is written later, that proof has
+/// been used.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct StopMark {
     pub(crate) by: String,
     pub(crate) at: DateTime<Utc>,
+    pub(crate) used: Option<String>,
 }
 
 /// A device key to add.
@@ -74,6 +77,9 @@ impl GuardDoc {
             Invitation {
                 by: by.to_string(),
                 at,
+                paused_until: None,
+                asked_since: None,
+                asked: 0,
             },
         );
     }
@@ -130,8 +136,18 @@ impl GuardDoc {
         cancelled
     }
 
+    /// Withdraws an invitation, with what hangs on it. Answers the calls it settled.
+    pub(crate) fn apply_uninvite(&mut self, profile: &str) -> Vec<String> {
+        let cancelled = self.apply_revoke(profile);
+        self.invited.remove(profile);
+        cancelled
+    }
+
     /// Stops: mode, releases, every open call. Answers how many calls it settled.
     pub(crate) fn apply_stop(&mut self, mark: &StopMark) -> usize {
+        if let Some(used) = &mark.used {
+            self.used_proofs.insert(used.clone());
+        }
         if self.mode == GuardMode::Open {
             self.stopped_by.clone_from(&mark.by);
             self.stopped_at = Some(mark.at);
@@ -157,14 +173,18 @@ impl GuardDoc {
         self.grants.clear();
     }
 
+    /// May this person get a key? It comes with the owner's signature, so a person's identity wins over
+    /// an invitation somebody else made of the same profile. An invitation by the owner stays: the
+    /// owner said it is an AI, and has to withdraw that first.
     pub(crate) fn check_device(&self, person: &str, owner: &str) -> Result<(), Refusal> {
         if !usable_name(person) {
             return Err(Refusal::BadName);
         }
-        if self.is_invited(person) || owner.is_empty() {
-            return Err(Refusal::IdentityConflict);
+        match self.invited.get(person) {
+            Some(invitation) if invitation.by == owner => Err(Refusal::IdentityConflict),
+            _ if owner.is_empty() => Err(Refusal::IdentityConflict),
+            _ => Ok(()),
         }
-        Ok(())
     }
 
     pub(crate) fn add_device(&mut self, change: DeviceChange<'_>) {
@@ -178,16 +198,24 @@ impl GuardDoc {
         }
     }
 
-    pub(crate) fn remove_device(&mut self, person: &str, public_key: &str) -> bool {
-        let Some(keys) = self.devices.get_mut(person) else {
-            return false;
-        };
-        let before = keys.len();
+    /// The owner's last key cannot go: that would leave a program nobody can stop by proof or open.
+    pub(crate) fn remove_device(
+        &mut self,
+        person: &str,
+        public_key: &str,
+        owner: &str,
+    ) -> Result<(), Refusal> {
+        let keys = self.devices.get_mut(person).ok_or(Refusal::BadKey)?;
+        if !keys.iter().any(|k| k.public_key == public_key) {
+            return Err(Refusal::BadKey);
+        }
+        if person == owner && keys.len() == 1 {
+            return Err(Refusal::LastOwnerKey);
+        }
         keys.retain(|k| k.public_key != public_key);
-        let removed = keys.len() != before;
         if keys.is_empty() {
             self.devices.remove(person);
         }
-        removed
+        Ok(())
     }
 }

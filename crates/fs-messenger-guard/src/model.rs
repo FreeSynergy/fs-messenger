@@ -123,7 +123,8 @@ pub enum Verdict {
     Refuse(Refusal),
 }
 
-/// What an emergency stop did. `check` refuses every AI whatever this says.
+/// What an emergency stop did. `check` refuses every AI whatever this says. Steps that are still running
+/// go on after this was answered, and say so here.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StopReport {
     /// Why it could not be written. If it could not, a restart may forget this stop, until a later
@@ -131,6 +132,9 @@ pub struct StopReport {
     pub not_persisted: Option<String>,
     /// How many open calls were settled as `cancelled`, as far as the messenger could say.
     pub calls_cancelled: usize,
+    /// Why the marker file beside the store could not be written. With `not_persisted` too, a restart
+    /// forgets this stop: that is the limit `DESIGN.md` states.
+    pub not_marked: Option<String>,
     /// Why what is shown could not be settled, or that a message could not be read.
     pub not_shown: Option<String>,
     /// Every provider's answer. Anything but `Ended` means its work may go on.

@@ -37,7 +37,12 @@ async fn a_stale_digest_or_revision_answers_stale_and_the_fresh_question_follows
         .owner
         .decide(&w.identity, q.message, &q.call, "allow-once");
     let input = Arguments::from_value(&args("rm -rf ~")).unwrap();
-    let Verdict::Ask(new) = w.engine.revise(&Caller::new(AI), &q.call.id, &input).await else {
+    let Verdict::Ask(new) = w
+        .pause()
+        .engine
+        .revise(&Caller::new(AI), &q.call.id, &input)
+        .await
+    else {
         panic!()
     };
     let (_s, mut rx) = listen(&w, EventFilter::default()).await;

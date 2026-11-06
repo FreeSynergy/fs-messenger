@@ -22,7 +22,7 @@ async fn without_arguments_the_digest_is_still_there_risk_unknown_and_allow_once
     assert_eq!(q.call.risk, ToolCallRisk::Unknown);
     assert_eq!(
         q.call.arguments_digest,
-        arguments_digest(AI, "message.open", &none)
+        arguments_digest(AI, None, "message.open", &none)
     );
     assert!(!q.call.arguments_digest.is_empty());
     let ids: Vec<_> = q.call.options.iter().map(|o| o.id.as_str()).collect();
@@ -79,8 +79,8 @@ fn no_input_and_an_empty_object_are_different_values() {
     let none = Arguments::none();
     let empty = Arguments::from_value(&json!({})).unwrap();
     assert_ne!(
-        arguments_digest(AI, "t", &none),
-        arguments_digest(AI, "t", &empty)
+        arguments_digest(AI, None, "t", &none),
+        arguments_digest(AI, None, "t", &empty)
     );
     assert_eq!(
         Arguments::from_value(&serde_json::Value::Null).unwrap(),
@@ -98,17 +98,17 @@ fn the_digest_covers_caller_tool_and_canonical_arguments_and_cannot_be_shifted()
         a.canonical().unwrap(),
         r#"{"a":1,"b":[true,{"x":3,"y":2}]}"#
     );
-    let d = arguments_digest(AI, "t", &a);
+    let d = arguments_digest(AI, None, "t", &a);
     assert_eq!(d.len(), 32);
-    assert_ne!(d, arguments_digest("other", "t", &a));
-    assert_ne!(d, arguments_digest(AI, "other", &a));
+    assert_ne!(d, arguments_digest("other", None, "t", &a));
+    assert_ne!(d, arguments_digest(AI, None, "other", &a));
     assert_ne!(
         d,
-        arguments_digest(AI, "t", &Arguments::from_text("[1]").unwrap())
+        arguments_digest(AI, None, "t", &Arguments::from_text("[1]").unwrap())
     );
     assert_ne!(
-        arguments_digest("ab", "c", &a),
-        arguments_digest("a", "bc", &a)
+        arguments_digest("ab", None, "c", &a),
+        arguments_digest("a", None, "bc", &a)
     );
 }
 
@@ -153,11 +153,11 @@ fn the_digest_is_exactly_these_bytes_with_an_explicit_no_input() {
     };
     let context: &[u8] = b"FreeSynergy.Messenger tool call digest v1";
     assert_eq!(
-        arguments_digest("me", "t", &Arguments::none()),
-        hash(&[context, b"me", b"t", b"no input"])
+        arguments_digest("me", None, "t", &Arguments::none()),
+        hash(&[context, b"me", b"no conversation", b"t", b"no input"])
     );
     assert_eq!(
-        arguments_digest("me", "t", &Arguments::from_text("[1]").unwrap()),
-        hash(&[context, b"me", b"t", b"input", b"[1]"])
+        arguments_digest("me", None, "t", &Arguments::from_text("[1]").unwrap()),
+        hash(&[context, b"me", b"no conversation", b"t", b"input", b"[1]"])
     );
 }

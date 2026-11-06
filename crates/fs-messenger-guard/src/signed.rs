@@ -23,6 +23,8 @@ pub enum Method {
     Reopen,
     /// `MessageAction.decide`.
     Decide,
+    /// `Guard.uninvite`.
+    Uninvite,
     /// Local enrolment: add a device key.
     AddDevice,
     /// Local enrolment: take a device key away.
@@ -39,6 +41,7 @@ impl Method {
             Self::Stop => "stop",
             Self::Reopen => "reopen",
             Self::Decide => "decide",
+            Self::Uninvite => "uninvite",
             Self::AddDevice => "addDevice",
             Self::RemoveDevice => "removeDevice",
         }

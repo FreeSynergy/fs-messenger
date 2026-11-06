@@ -62,7 +62,29 @@ pub(super) fn apply(message: &mut Message, agent_ref: &str, call: ToolCall) -> (
     (clean, true)
 }
 
+const BESIDE_QUESTION: &str = "this message holds a question of the engine; no report lands here";
+
+/// Only the engine ever sets `asked_of`: a report has it taken away.
+fn holds_engine_call(message: &Message) -> bool {
+    message.tool_calls.iter().any(|c| !c.asked_of.is_empty())
+}
+
 impl Inner {
+    /// A report is an act of its sender: an AI that may not send a message may not report either.
+    async fn report_may_land(&self, id: ObjectId) -> Result<()> {
+        let message = self.load_note(id).await?;
+        if holds_engine_call(&message) {
+            return Err(Error::GuardRefused(BESIDE_QUESTION.into()));
+        }
+        let Some(account) = message.account else {
+            return Ok(());
+        };
+        let (_, content) = self.load_account(account).await?;
+        let sender = message.summary.envelope.attributed_to.unwrap_or_default();
+        self.admitted_sender(&content.kind, &sender).await?;
+        Ok(())
+    }
+
     pub(super) async fn record_tool_call(
         &self,
         id: ObjectId,
@@ -74,8 +96,13 @@ impl Inner {
                 "a tool call needs the agent's reference, or a replay adds it again".into(),
             ));
         }
+        self.report_may_land(id).await?;
         let _writes = self.writes.lock().await;
         let mut message = self.load_note(id).await?;
+        // Checked again under the lock: nothing lands beside a person's question.
+        if holds_engine_call(&message) {
+            return Err(Error::GuardRefused(BESIDE_QUESTION.into()));
+        }
         let (stored, changed) = apply(&mut message, agent_ref, call);
         let size = message.body_text.len() + serde_json::to_string(&message.tool_calls)?.len();
         let limit = self.config.max_message_bytes;

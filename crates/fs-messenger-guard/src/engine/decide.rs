@@ -8,8 +8,10 @@
 use fs_messenger_core::{DecisionProblem, ToolCallChoice, ToolCallDecision};
 use fs_store::ObjectId;
 
-use super::core::{GuardEngine, View};
+use super::core::GuardEngine;
+use super::store_access::View;
 use crate::error::{GuardError, Refusal};
+use crate::identity::id_key;
 use crate::log::GuardLogEntry;
 use crate::model::GuardMode;
 use crate::state::{DecideInput, GuardDoc};
@@ -51,7 +53,7 @@ impl GuardEngine {
         message: ObjectId,
         decision: &ToolCallDecision,
     ) -> Result<(), GuardError> {
-        let _ops = self.ops.lock().await;
+        let _ops = self.lock_ops().await?;
         // Not `open_doc`: a stopped program still says how a call ended.
         let View::Doc(mut doc) = self.view().await else {
             return Err(Refusal::Damaged.into());
@@ -79,12 +81,13 @@ impl GuardEngine {
         if let Err(why) = self.show(&decided.call, "").await {
             problems.push(why);
         }
-        let mut entry = GuardLogEntry::new("decide", &decision.signer).about(&decided.call.caller);
+        let signer = id_key(&decision.signer);
+        let mut entry = GuardLogEntry::new("decide", &signer).about(&decided.call.caller);
         entry.call.clone_from(&decided.call.id);
         entry.capability.clone_from(&decided.call.capability);
         entry.choice = choice_name(decided.choice).to_string();
         entry.risk = decided.granted.as_ref().map(|g| g.risk);
-        if let Err(why) = self.repo.append(&entry).await {
+        if let Err(why) = self.log_entry(&entry).await {
             problems.push(why);
         }
         if problems.is_empty() {

@@ -6,14 +6,14 @@ mod common;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common::{AI, OWNER, TestClock, args, encrypted, engine_on};
+use common::{AI, OWNER, TestClock, World, args, encrypted, engine_on};
 use fs_messenger_core::{
     AccountSetup, EventFilter, FetchBatch, Ingest, Kind, Listener, MessageAction, Messenger,
     MessengerConfig, MessengerRepo, Outgoing, Provider, ProviderCursor, RawMessage, RawToolCall,
     SearchFilter, SendReceipt, ToolCall, ToolCallChoice, ToolCallDecision, ToolCallOption,
     ToolCallRisk, ToolCallState, TurnScope, Usage,
 };
-use fs_messenger_guard::{Gate, Guard, GuardMode, STATE_ID, Verdict};
+use fs_messenger_guard::{Gate, Guard, GuardError, GuardMode, STATE_ID, Verdict};
 use fs_store::{ObjectId, TursoStore};
 struct NoListener;
 
@@ -195,7 +195,69 @@ fn this_test_knows_every_method_of_the_traits() {
 }
 
 #[tokio::test]
-async fn no_path_from_messenger_or_provider_changes_the_state_on_a_shared_store() {
+async fn no_path_from_messenger_or_provider_changes_the_state_attached_on_its_own_store() {
+    let w = World::with_ai().await;
+    let input = fs_messenger_guard::Arguments::from_value(&args("/m")).unwrap();
+    let Verdict::Ask(q) = w
+        .engine
+        .check(
+            &fs_messenger_guard::Caller::new(AI),
+            "message.delete",
+            &input,
+        )
+        .await
+    else {
+        panic!()
+    };
+    let state_id: ObjectId = STATE_ID.parse().unwrap();
+    let before = w.record().await;
+
+    every_messenger_path(&w.repo, q.conversation, q.message, state_id).await;
+
+    let account = w.account("agent@local", "mail").await;
+    let hostile = Arc::new(Hostile {
+        target: q.call.clone(),
+        message: q.message,
+    });
+    w.repo.register_provider(account.id, hostile.clone());
+    w.repo.sync(account.id).await.unwrap();
+    // It reports on the question's own message, with the question's own id.
+    assert!(
+        w.repo
+            .record_tool_call(q.message, &q.call.id, q.call.clone())
+            .await
+            .is_err()
+    );
+
+    assert_eq!(
+        w.record().await,
+        before,
+        "the state object did not change at all"
+    );
+    assert_eq!(w.engine.state().await.mode, GuardMode::Open);
+    assert!(w.engine.state().await.grants.is_empty());
+    assert_eq!(w.engine.state().await.invited, [AI]);
+    assert_eq!(
+        w.shown(&q).await,
+        q.call,
+        "the question itself did not change either"
+    );
+    // Nothing the hostile message said became a right.
+    let verdict = w
+        .engine
+        .check(
+            &fs_messenger_guard::Caller::new(AI),
+            "message.delete",
+            &input,
+        )
+        .await;
+    assert!(!matches!(verdict, Verdict::Allow(_)), "{verdict:?}");
+}
+
+/// The worst case, which `attach` refuses: the record in the messenger's own store. The paths are
+/// tried at its id; a person's delete there would copy it into a timed activity.
+#[tokio::test]
+async fn no_path_reaches_the_state_even_in_the_messengers_own_store() {
     let dir = tempfile::tempdir().unwrap();
     let shared = Arc::new(
         TursoStore::open_with(dir.path().join("shared.db"), encrypted())
@@ -206,8 +268,11 @@ async fn no_path_from_messenger_or_provider_changes_the_state_on_a_shared_store(
         .await
         .unwrap();
     let clock = Arc::new(TestClock::default());
-    let (engine, enrolment) = engine_on(&shared, &clock);
-    engine.attach(&repo).unwrap();
+    let (engine, enrolment) = engine_on(&shared, &clock, &dir.path().join("stop"));
+    assert!(
+        matches!(engine.attach(&repo), Err(GuardError::AttachRefused(_))),
+        "the composition root refuses this"
+    );
     let owner = common::Device::new(OWNER, 1);
     enrolment.enrol_owner(&owner.public()).await.unwrap();
     let identity = engine.engine_identity().await.unwrap();
@@ -215,24 +280,6 @@ async fn no_path_from_messenger_or_provider_changes_the_state_on_a_shared_store(
         .reopen(&owner.proof(&identity, fs_messenger_guard::Method::Reopen, &[]))
         .await
         .unwrap();
-    let invite = owner.proof(
-        &identity,
-        fs_messenger_guard::Method::Invite,
-        &[AI.as_bytes()],
-    );
-    engine.invite(AI, &invite).await.unwrap();
-    let input = fs_messenger_guard::Arguments::from_value(&args("/m")).unwrap();
-    let Verdict::Ask(q) = engine
-        .check(
-            &fs_messenger_guard::Caller::new(AI),
-            "message.delete",
-            &input,
-        )
-        .await
-    else {
-        panic!()
-    };
-
     let state_id: ObjectId = STATE_ID.parse().unwrap();
     let read = || {
         let store = shared.clone();
@@ -242,48 +289,7 @@ async fn no_path_from_messenger_or_provider_changes_the_state_on_a_shared_store(
         }
     };
     let before = read().await;
-
-    every_messenger_path(&repo, q.conversation, q.message, state_id).await;
-
-    let account = repo
-        .add_account(AccountSetup {
-            address: "agent@local".into(),
-            kind: "mail".into(),
-            secret: String::new(),
-        })
-        .await
-        .unwrap();
-    let hostile = Arc::new(Hostile {
-        target: q.call.clone(),
-        message: q.message,
-    });
-    repo.register_provider(account.id, hostile.clone());
-    repo.sync(account.id).await.unwrap();
-    // It reports on the question's own message, with the question's own id.
-    let reported = repo
-        .record_tool_call(q.message, &q.call.id, q.call.clone())
-        .await
-        .unwrap();
-    assert_ne!(reported.id, q.call.id);
-
-    assert_eq!(
-        read().await,
-        before,
-        "the state object did not change at all"
-    );
+    every_messenger_path(&repo, ObjectId::new(), ObjectId::new(), state_id).await;
+    assert_eq!(read().await, before);
     assert_eq!(engine.state().await.mode, GuardMode::Open);
-    assert!(engine.state().await.grants.is_empty());
-    assert_eq!(engine.state().await.invited, [AI]);
-    let m = repo.message(q.conversation, q.message).await.unwrap();
-    let shown = m.tool_calls.iter().find(|c| c.id == q.call.id).unwrap();
-    assert_eq!(*shown, q.call, "the question itself did not change either");
-    // Nothing the hostile message said became a right.
-    let verdict = engine
-        .check(
-            &fs_messenger_guard::Caller::new(AI),
-            "message.delete",
-            &input,
-        )
-        .await;
-    assert!(!matches!(verdict, Verdict::Allow(_)), "{verdict:?}");
 }

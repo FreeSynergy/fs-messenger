@@ -22,6 +22,7 @@ mod digest;
 mod engine;
 mod enrol;
 mod error;
+mod identity;
 mod log;
 mod model;
 mod permission;
@@ -39,6 +40,7 @@ pub use digest::arguments_digest;
 pub use engine::{GuardConfig, GuardEngine};
 pub use enrol::LocalEnrolment;
 pub use error::{GuardError, Refusal};
+pub use identity::id_key;
 pub use log::GuardLogEntry;
 pub use model::{
     AiGrant, Allowance, Caller, GuardMode, GuardProof, GuardState, Question, StopReport, Verdict,

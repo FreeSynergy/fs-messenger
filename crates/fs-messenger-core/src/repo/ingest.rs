@@ -16,13 +16,18 @@ use super::message_codec::{message_from, message_to};
 use crate::error::{Error, Result};
 use crate::ingest::{IngestSteps, Ingested, Known, SyncReport};
 use crate::ingest_rules::stub_of;
-use crate::model::ExternalId;
+use crate::model::{ExternalId, SenderKind};
 use crate::provider::{ProviderCursor, RawMessage};
 
 #[async_trait]
 impl IngestSteps for Inner {
     fn max_message_bytes(&self) -> usize {
         self.config.max_message_bytes
+    }
+
+    async fn admit(&self, account: ObjectId, raw: &RawMessage) -> Result<SenderKind> {
+        let (_, content) = self.load_account(account).await?;
+        self.admitted_sender(&content.kind, &raw.sender).await
     }
 
     async fn exclusive(&self) -> OwnedMutexGuard<()> {
@@ -107,13 +112,14 @@ impl IngestSteps for Inner {
         account: ObjectId,
         raw: RawMessage,
         too_large: Option<usize>,
+        sender_kind: SenderKind,
     ) -> Result<ObjectId> {
         match too_large {
             Some(size) => {
-                self.store_raw(account, stub_of(raw), Some(size as u64))
+                self.store_raw(account, stub_of(raw), Some(size as u64), sender_kind)
                     .await
             }
-            None => self.store_raw(account, raw, None).await,
+            None => self.store_raw(account, raw, None, sender_kind).await,
         }
     }
 }

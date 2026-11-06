@@ -9,6 +9,7 @@ use super::doc::GuardDoc;
 use crate::device::DeviceVerifier;
 use crate::digest::{single_use_key, unhex};
 use crate::error::Refusal;
+use crate::identity::id_key;
 use crate::model::GuardProof;
 use crate::signed::{Method, signed_bytes};
 
@@ -30,14 +31,15 @@ impl GuardDoc {
         message: &[u8],
         signature: &[u8],
     ) -> Result<(), Refusal> {
-        if self.is_invited(signer) {
+        let signer = id_key(signer);
+        if self.is_invited(&signer) {
             return Err(Refusal::SignerIsAi);
         }
-        let keys = self.devices.get(signer).ok_or(Refusal::BadProof)?;
+        let keys = self.devices.get(&signer).ok_or(Refusal::BadProof)?;
+        // The key type was checked on reading the state.
         let holds = keys.iter().any(|key| {
-            key.key_type == verifier.key_type()
-                && unhex(&key.public_key)
-                    .is_some_and(|public| verifier.verify(&public, message, signature))
+            unhex(&key.public_key)
+                .is_some_and(|public| verifier.verify(&public, message, signature))
         });
         if holds {
             Ok(())
@@ -75,7 +77,7 @@ impl GuardDoc {
         )
         .ok_or(Refusal::BadProof)?;
         self.signature_holds(verifier, &proof.signer, &message, &proof.proof)?;
-        let key = single_use_key(b"nonce", &[proof.signer.as_bytes(), &proof.nonce]);
+        let key = single_use_key(b"nonce", &[id_key(&proof.signer).as_bytes(), &proof.nonce]);
         if self.used_proofs.contains(&key) {
             return Err(Refusal::Replayed);
         }

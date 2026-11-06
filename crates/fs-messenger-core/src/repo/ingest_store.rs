@@ -16,7 +16,7 @@ use super::message_codec::message_to;
 use super::text::{body_media_type, display_name, preview};
 use super::tool_calls;
 use crate::error::Result;
-use crate::model::{DeliveryState, Message, MessageSummary, StoredForm};
+use crate::model::{DeliveryState, Message, MessageSummary, SenderKind, StoredForm};
 use crate::provider::RawMessage;
 
 impl Inner {
@@ -25,6 +25,7 @@ impl Inner {
         account: ObjectId,
         raw: RawMessage,
         too_large: Option<u64>,
+        sender_kind: SenderKind,
     ) -> Result<ObjectId> {
         let name = raw
             .conversation_name
@@ -33,7 +34,6 @@ impl Inner {
             .unwrap_or(raw.sender.as_str());
         let (_, owner) = self.load_account(account).await?;
         let scope = owner.scope();
-        let sender_kind = self.admitted_sender(&owner.kind, &raw.sender).await?;
         let conversation = self
             .ensure_conversation(account, &scope, &raw.conversation, name, raw.kind)
             .await?;

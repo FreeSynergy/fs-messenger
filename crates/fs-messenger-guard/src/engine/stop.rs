@@ -1,169 +1,198 @@
-//! The emergency stop, for the whole program and for one conversation.
+//! The emergency stop.
 //!
-//! Pattern: Template method with a fixed order, which is the guarantee: 1. check who pulls it; 2. latch
-//! in memory, from where `check` refuses, without a lock; 3. write it; 4. settle what is shown; 5. ask
-//! the providers, each in its own task and without any lock; 6. log. Every step after the latch reports
-//! its failure and none of them can undo the one before.
+//! Pattern: Template method with a fixed order, which is the guarantee. 1. Latch, before any read: no
+//! store can hold this up. 2. Judge the proof, within a time limit; a proof shown to be bad takes that
+//! latch back, and anything else leaves it. 3. Marker file, store, what is shown, the providers and
+//! the log, each as a task of its own: they go on if the caller walks away, and one that hangs or
+//! panics cannot hold up or take down another.
 //!
 //! A state that cannot be read holds no keys to check a proof against. It reads as stopped already, so
 //! such a pull goes on without a proof, and can do nothing but end work.
 
-use fs_interfaces::provider::Unsupported;
-use fs_messenger_core::TurnStopOutcome;
-use fs_store::ObjectId;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
-use super::core::{GuardEngine, View};
+use tokio::task::JoinHandle;
+use tokio::time::timeout;
+
+use super::core::GuardEngine;
+use super::marker;
+use super::store_access::View;
 use crate::error::{GuardError, Refusal};
+use crate::identity::id_key;
 use crate::log::GuardLogEntry;
 use crate::model::{GuardProof, StopReport};
 use crate::signed::Method;
 use crate::state::{ProofRequest, StopMark};
 
+const ENGINE: &str = "urn:freesynergy:messenger:guard";
+/// Who a stop from the local console is by.
+pub(crate) const LOCAL_CONSOLE: &str = "urn:freesynergy:messenger:local-console";
+
+/// Wait for a task for so long. It goes on either way; the answer says what is known.
+async fn await_task<T>(task: JoinHandle<T>, wait: Duration) -> Result<T, String> {
+    match timeout(wait, task).await {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(_)) => Err("this step crashed".into()),
+        Err(_) => Err("this step is still running".into()),
+    }
+}
+
 impl GuardEngine {
-    pub(super) async fn pull_stop(&self, proof: &GuardProof) -> Result<StopReport, GuardError> {
-        let view = self.view().await;
-        let mut used = None;
-        let by = if let View::Doc(doc) = &view {
-            let request = ProofRequest {
-                method: Method::Stop,
-                arguments: &[],
-            };
-            used = Some(doc.check_proof(self.verifier.as_ref(), &request, proof)?);
-            if !self.permission.may_stop(&proof.signer, &self.config.owner) {
-                return Err(Refusal::NotPermitted.into());
-            }
-            proof.signer.clone()
-        } else {
-            String::new()
+    /// Who may pull it. Answers the mark, or why not. With no readable state there is no way to ask.
+    async fn judge(&self, proof: Option<&GuardProof>) -> Result<StopMark, Refusal> {
+        let at = self.clock.now();
+        let Some(proof) = proof else {
+            return Ok(StopMark {
+                by: LOCAL_CONSOLE.to_string(),
+                at,
+                used: None,
+            });
         };
-        let mark = StopMark {
-            by,
-            at: self.clock.now(),
+        let View::Doc(doc) = self.view().await else {
+            return Ok(StopMark {
+                by: marker::NOBODY.to_string(),
+                at,
+                used: None,
+            });
+        };
+        let request = ProofRequest {
+            method: Method::Stop,
+            arguments: &[],
+        };
+        let used = doc.check_proof(self.verifier.as_ref(), &request, proof)?;
+        let signer = id_key(&proof.signer);
+        if !self.permission.may_stop(&signer, &self.config.owner) {
+            return Err(Refusal::NotPermitted);
+        }
+        Ok(StopMark {
+            by: signer,
+            at,
+            used: Some(used),
+        })
+    }
+
+    /// With a proof, or without one from the local console: the caller can walk away from this. The
+    /// latch is up before this awaits anything.
+    pub(crate) async fn pull_stop(
+        &self,
+        proof: Option<GuardProof>,
+    ) -> Result<StopReport, GuardError> {
+        self.pending.fetch_add(1, Ordering::SeqCst);
+        let engine = self.me.upgrade().ok_or(Refusal::Unavailable)?;
+        let task = tokio::spawn(async move { engine.run_stop(proof).await });
+        task.await
+            .map_err(|_| GuardError::NotPersisted("the stop crashed; it stays stopped".into()))?
+    }
+
+    async fn run_stop(
+        self: Arc<Self>,
+        proof: Option<GuardProof>,
+    ) -> Result<StopReport, GuardError> {
+        let mark = match self.judge(proof.as_ref()).await {
+            Ok(mark) => mark,
+            Err(refusal) => {
+                self.pending.fetch_sub(1, Ordering::SeqCst);
+                return Err(refusal.into());
+            }
         };
         self.mark_unsaved(mark.clone());
+        self.pending.fetch_sub(1, Ordering::SeqCst);
 
-        let not_persisted = self.persist_stop(&mark, used).await;
+        let wait = self.config.store_wait * 4;
+        let persist = tokio::spawn(self.clone().persist_stop(mark.clone()));
+        let settle = tokio::spawn(self.clone().settle_all());
+        let turns = tokio::spawn(self.clone().end_turns());
+        let (not_marked, not_persisted) = await_task(persist, wait)
+            .await
+            .unwrap_or_else(|why| (None, Some(why)));
+        let (calls_cancelled, not_shown) = await_task(settle, wait)
+            .await
+            .unwrap_or_else(|why| (0, Some(why)));
+        let turn_wait = self.config.turn_wait + Duration::from_secs(1);
+        let (turns, not_shown) = match await_task(turns, turn_wait).await {
+            Ok(Ok(turns)) => (turns, not_shown),
+            Ok(Err(why)) | Err(why) => (vec![], not_shown.or(Some(why))),
+        };
         self.retries
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clear();
 
-        let mut report = StopReport {
-            not_persisted,
-            calls_cancelled: 0,
-            not_shown: None,
-            turns: vec![],
-            not_logged: None,
-            messenger_attached: self.port.get().is_some(),
-        };
-        if let Some(port) = self.port.get() {
-            match port.settle_open_calls(None).await {
-                Ok(found) => {
-                    report.calls_cancelled = found.settled;
-                    if found.unreadable > 0 {
-                        report.not_shown =
-                            Some(format!("{} messages could not be read", found.unreadable));
-                    }
-                }
-                Err(e) => report.not_shown = Some(e.to_string()),
-            }
-            match port.stop_turns(None, self.config.turn_wait).await {
-                Ok(turns) => report.turns = turns,
-                Err(e) => report.not_shown = Some(e.to_string()),
-            }
-        }
         let mut entry = GuardLogEntry::new("stop", &mark.by);
-        entry.cancelled = report.calls_cancelled;
+        entry.cancelled = calls_cancelled;
         if entry.actor.is_empty() {
-            entry.actor = "urn:freesynergy:messenger:guard".to_string();
+            entry.actor = ENGINE.to_string();
         }
-        report.not_logged = self.repo.append(&entry).await.err();
-        Ok(report)
+        let logger = self.clone();
+        let log = tokio::spawn(async move { logger.log_entry(&entry).await });
+        let not_logged = match await_task(log, self.config.store_wait * 2).await {
+            Ok(result) => result.err(),
+            Err(why) => Some(why),
+        };
+        Ok(StopReport {
+            not_persisted,
+            not_marked,
+            calls_cancelled,
+            not_shown,
+            turns,
+            not_logged,
+            messenger_attached: self.port.get().is_some(),
+        })
     }
 
-    /// Write the stop. Answers why that failed, if it did. The lock may be held by a `reopen` that
-    /// began first; it clears the latch when it ends, so the latch is set again here, under the lock.
-    async fn persist_stop(&self, mark: &StopMark, used: Option<String>) -> Option<String> {
-        let _ops = self.ops.lock().await;
+    /// The marker first: it does not depend on the store. Answers why the marker, and why the store,
+    /// could not be written. Whatever fails here, the retry task goes on.
+    async fn persist_stop(self: Arc<Self>, mark: StopMark) -> (Option<String>, Option<String>) {
+        let wait = self.config.store_wait;
+        let path = self.config.stop_marker.clone();
+        let mark_it = marker::write(path.clone(), mark.clone());
+        let mut not_marked = timeout(wait, mark_it)
+            .await
+            .unwrap_or_else(|_| Err("the disk did not answer in time".into()))
+            .err();
+        let Ok(_ops) = self.lock_ops().await else {
+            let why = "the lock did not come free in time; trying again";
+            return (not_marked, Some(why.to_string()));
+        };
+        // A `reopen` that began first clears latch, mark and marker when it ends: set them again.
         self.mark_unsaved(mark.clone());
-        match self.view().await {
-            View::Doc(mut doc) => {
-                if let Some(used) = used {
-                    doc.used_proofs.insert(used);
-                }
-                self.save(&doc).await.err()
-            }
+        let again = timeout(wait, marker::write(path, mark)).await;
+        if let Ok(result) = again {
+            not_marked = result.err();
+        }
+        let not_persisted = match self.view().await {
+            View::Doc(doc) => self.save(&doc).await.err(),
             // Nothing to keep: a missing state reads as stopped after a restart too.
             View::Missing => None,
             View::Unreadable(why) | View::Corrupt(why) => Some(format!(
                 "the state cannot be read, so it reads as stopped: {why}"
             )),
+        };
+        (not_marked, not_persisted)
+    }
+
+    async fn settle_all(self: Arc<Self>) -> (usize, Option<String>) {
+        let Some(port) = self.port.get() else {
+            return (0, None);
+        };
+        match port.settle_open_calls(None).await {
+            Ok(found) if found.unreadable > 0 => (
+                found.settled,
+                Some(format!("{} messages could not be read", found.unreadable)),
+            ),
+            Ok(found) => (found.settled, None),
+            Err(e) => (0, Some(e.to_string())),
         }
     }
 
-    /// `Conversation.stop`. Needs no proof: it can only end work. Open calls here are settled; a
-    /// provider that cannot end a turn is answered as `Unsupported`, after everything else was done.
-    pub(super) async fn stop_conversation_now(
-        &self,
-        conversation: ObjectId,
-    ) -> Result<(), GuardError> {
-        let mut problem = None;
-        {
-            let _ops = self.ops.lock().await;
-            if let View::Doc(mut doc) = self.view().await {
-                let mut changed = false;
-                for call in doc
-                    .calls
-                    .iter_mut()
-                    .filter(|c| c.conversation == conversation)
-                {
-                    if !call.stage.is_settled() {
-                        call.stage = crate::state::CallStage::Cancelled;
-                        call.revision += 1;
-                        changed = true;
-                    }
-                }
-                if changed {
-                    problem = self.save(&doc).await.err();
-                }
-            }
-        }
+    async fn end_turns(self: Arc<Self>) -> Result<Vec<fs_messenger_core::TurnStop>, String> {
         let Some(port) = self.port.get() else {
-            return Err(Refusal::NoWayToAsk.into());
+            return Ok(vec![]);
         };
-        let found = port
-            .settle_open_calls(Some(conversation))
+        port.stop_turns(None, self.config.turn_wait)
             .await
-            .map_err(|e| GuardError::DoneNotShown(e.to_string()))?;
-        let turns = port
-            .stop_turns(Some(conversation), self.config.turn_wait)
-            .await
-            .map_err(|e| GuardError::DoneNotShown(e.to_string()))?;
-        let mut entry = GuardLogEntry::new("turnStop", "urn:freesynergy:messenger:guard");
-        entry.cancelled = found.settled;
-        let not_logged = self.repo.append(&entry).await.err();
-        if let Some(why) = problem {
-            return Err(GuardError::NotPersisted(why));
-        }
-        if let Some(why) = not_logged {
-            return Err(GuardError::DoneNotShown(why));
-        }
-        for turn in turns {
-            match turn.outcome {
-                TurnStopOutcome::Ended => {}
-                TurnStopOutcome::Unsupported(why) => {
-                    let why = format!(
-                        "open calls here are cancelled, but this provider cannot end a turn: {why}"
-                    );
-                    return Err(Unsupported::new("turn.stop", why).into());
-                }
-                TurnStopOutcome::Failed(why) => return Err(GuardError::DoneNotShown(why)),
-                TurnStopOutcome::NoAnswer => {
-                    let why = "open calls here are cancelled, but the provider did not answer";
-                    return Err(GuardError::DoneNotShown(why.to_string()));
-                }
-            }
-        }
-        Ok(())
+            .map_err(|e| e.to_string())
     }
 }

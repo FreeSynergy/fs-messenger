@@ -21,6 +21,18 @@ pub enum Refusal {
     /// The name of a capability or profile is empty, too long or has control characters.
     #[error("not a usable name")]
     BadName,
+    /// A person refused a question of this participant a moment ago: it may not ask right now.
+    #[error("this participant was refused a moment ago and may not ask yet")]
+    Paused,
+    /// This participant has asked as often as it may in this hour.
+    #[error("this participant has asked too often in this hour")]
+    TooManyAsked,
+    /// The guard cannot say now: the store does not answer, or its state is damaged.
+    #[error("the guard cannot answer now")]
+    Unavailable,
+    /// The last key of the owner cannot go: nobody could ever open the program again.
+    #[error("this is the owner's last key")]
+    LastOwnerKey,
     /// Too many open questions for this participant.
     #[error("too many open questions for this participant")]
     TooManyQuestions,
@@ -123,6 +135,10 @@ pub enum GuardError {
     /// The state could not be written. Nothing changed, unless it was a stop: see `StopReport`.
     #[error("the state could not be written: {0}")]
     NotPersisted(String),
+    /// This guard cannot be put into this messenger, which is fatal for the program: without it,
+    /// `decide` and `stop` answer `Unsupported`.
+    #[error("the guard could not be attached: {0}")]
+    AttachRefused(String),
     /// It happened, and the state holds it; but the log, or what is shown, could not be written.
     #[error("done, but not logged or shown: {0}")]
     DoneNotShown(String),
@@ -132,6 +148,9 @@ impl From<GuardError> for fs_messenger_core::Error {
     fn from(e: GuardError) -> Self {
         match e {
             GuardError::Unsupported(u) => Self::Unsupported(u),
+            GuardError::Refused(Refusal::Unavailable) => {
+                Self::GuardUnavailable(Refusal::Unavailable.to_string())
+            }
             other => Self::GuardRefused(other.to_string()),
         }
     }

@@ -27,9 +27,11 @@ const TABLE: &[(&str, CapabilityRule)] = &[
     ("conversation.open", Risk(R::ReadsOnly)),
     ("conversation.nextUnread", Risk(R::ReadsOnly)),
     ("conversation.usage", Risk(R::ReadsOnly)),
-    ("conversation.markRead", Risk(R::Changes)),
+    // A read mark can reach the other side as a receipt.
+    ("conversation.markRead", Risk(R::ActsForPerson)),
     ("conversation.pin", Risk(R::Changes)),
-    ("conversation.move", Risk(R::Changes)),
+    // A folder can be a distribution list, or the Trash.
+    ("conversation.move", Risk(R::ActsForPerson)),
     ("turn.stop", Risk(R::Changes)),
     ("message.open", Risk(R::ReadsOnly)),
     ("message.search", Risk(R::ReadsOnly)),
@@ -41,7 +43,9 @@ const TABLE: &[(&str, CapabilityRule)] = &[
     ("draft.list", Risk(R::ReadsOnly)),
     ("rule.read", Risk(R::ReadsOnly)),
     ("message.compose", Risk(R::Changes)),
+    // A new draft. Overwriting one that exists loses what a person wrote, so it asks every time.
     ("draft.save", Risk(R::Changes)),
+    ("draft.change", Risk(R::Destroys)),
     ("attachment.add", Risk(R::Changes)),
     ("draft.discard", Risk(R::Destroys)),
     // A rule keeps acting for the person when nobody is looking: it can forward or delete mail.
@@ -68,6 +72,7 @@ const TABLE: &[(&str, CapabilityRule)] = &[
     ("guard.revoke", NeverForAi),
     ("guard.stop", NeverForAi),
     ("guard.reopen", NeverForAi),
+    ("guard.uninvite", NeverForAi),
 ];
 
 /// The rule for a capability id. Exact match; what is not in the table is `unknown`. Anything naming
@@ -77,7 +82,11 @@ pub fn capability_rule(capability: &str) -> CapabilityRule {
         return *rule;
     }
     let plain = capability.trim().to_ascii_lowercase();
-    if plain.starts_with("guard.") || plain == "toolcall.decide" || plain == "messenger.guard" {
+    if plain.starts_with("guard.")
+        || plain == "toolcall.decide"
+        || plain == "messenger.guard"
+        || plain == "account.secret"
+    {
         return NeverForAi;
     }
     Risk(R::Unknown)

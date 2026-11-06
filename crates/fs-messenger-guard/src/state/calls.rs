@@ -6,6 +6,7 @@
 
 use chrono::{DateTime, Duration, Utc};
 use fs_messenger_core::ToolCallRisk;
+use fs_store::ObjectId;
 
 use super::admin::usable_name;
 use super::doc::{CallRecord, GuardDoc};
@@ -22,6 +23,8 @@ pub(crate) struct Limits {
     pub(crate) question_ttl: Duration,
     pub(crate) approval_ttl: Duration,
     pub(crate) open_per_participant: usize,
+    pub(crate) refusal_pause: Duration,
+    pub(crate) questions_per_hour: u32,
 }
 
 /// What `check` has to do next.
@@ -43,7 +46,12 @@ pub(crate) struct QuestionInput {
     pub(crate) digest: String,
     pub(crate) has_input: bool,
     pub(crate) asked_of: String,
+    pub(crate) turn: Option<ObjectId>,
 }
+
+/// More new input than this for one question is no longer a person's question. Persisted with the
+/// revision, so a restart does not refill it.
+const MAX_REVISION: u64 = 16;
 
 impl GuardDoc {
     /// The call's own digest, for this caller. A question that has expired no longer matches.
@@ -60,6 +68,7 @@ impl GuardDoc {
     pub(crate) fn evaluate(
         &self,
         caller: &str,
+        turn: Option<ObjectId>,
         capability: &str,
         arguments: &Arguments,
         now: DateTime<Utc>,
@@ -77,7 +86,7 @@ impl GuardDoc {
         let Some(invitation) = self.invited.get(caller) else {
             return Evaluation::Refuse(Refusal::NotInvited);
         };
-        let digest = hex(&arguments_digest(caller, capability, arguments));
+        let digest = hex(&arguments_digest(caller, turn, capability, arguments));
         let held = self.matching(caller, &digest, now);
         if let Some(at) = held {
             if self.calls[at].stage == CallStage::Approved {
@@ -91,6 +100,15 @@ impl GuardDoc {
         if let Some(at) = held {
             return Evaluation::AskAgain(at);
         }
+        if invitation.paused_until.is_some_and(|until| until > now) {
+            return Evaluation::Refuse(Refusal::Paused);
+        }
+        let hour_on = invitation
+            .asked_since
+            .is_some_and(|since| now < since + Duration::hours(1));
+        if hour_on && invitation.asked >= limits.questions_per_hour {
+            return Evaluation::Refuse(Refusal::TooManyAsked);
+        }
         let open = self
             .calls
             .iter()
@@ -103,7 +121,22 @@ impl GuardDoc {
             digest,
             has_input: arguments.has_input(),
             asked_of: invitation.by.clone(),
+            turn,
         })
+    }
+
+    /// Count a new question against this participant's hour.
+    pub(crate) fn count_question(&mut self, caller: &str, now: DateTime<Utc>) {
+        if let Some(invitation) = self.invited.get_mut(caller) {
+            let hour_on = invitation
+                .asked_since
+                .is_some_and(|since| now < since + Duration::hours(1));
+            if !hour_on {
+                invitation.asked_since = Some(now);
+                invitation.asked = 0;
+            }
+            invitation.asked += 1;
+        }
     }
 
     /// Settle what has expired. Answers the ids.
@@ -121,13 +154,12 @@ impl GuardDoc {
         gone
     }
 
-    /// New arguments for a call. Answers `true` if anything changed.
+    /// New arguments for a call. Answers `true` if anything changed. Its expiry stays: new input must
+    /// not keep a card alive for ever.
     pub(crate) fn apply_revise(
         &mut self,
         at: usize,
         arguments: &Arguments,
-        now: DateTime<Utc>,
-        limits: &Limits,
     ) -> Result<bool, Refusal> {
         let call = self.calls.get_mut(at).ok_or(Refusal::UnknownCall)?;
         if call.stage.is_settled() {
@@ -136,15 +168,22 @@ impl GuardDoc {
         if call.stage == CallStage::Running {
             return Err(Refusal::RunningCall);
         }
-        let digest = hex(&arguments_digest(&call.caller, &call.capability, arguments));
+        let digest = hex(&arguments_digest(
+            &call.caller,
+            call.turn,
+            &call.capability,
+            arguments,
+        ));
         if digest == call.digest {
             return Ok(false);
+        }
+        if call.revision >= MAX_REVISION {
+            return Err(Refusal::RetriesExhausted);
         }
         call.digest = digest;
         call.has_input = arguments.has_input();
         call.stage = CallStage::Question;
         call.revision += 1;
-        call.expires_at = now + limits.question_ttl;
         Ok(true)
     }
 }

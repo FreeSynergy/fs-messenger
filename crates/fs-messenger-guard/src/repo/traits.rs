@@ -20,4 +20,12 @@ pub trait GuardRepository: Send + Sync {
     async fn append(&self, entry: &GuardLogEntry) -> Result<(), String>;
     /// The log, oldest first.
     async fn entries(&self) -> Result<Vec<GuardLogEntry>, String>;
+    /// Claim this repository for one engine. A second claim is refused.
+    fn claim_engine(&self) -> Result<(), String> {
+        Ok(())
+    }
+    /// Which store this is, for comparing with the messenger's; `None` if it cannot say.
+    fn store_address(&self) -> Option<usize> {
+        None
+    }
 }

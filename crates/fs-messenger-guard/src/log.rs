@@ -3,7 +3,8 @@
 //! Pattern: Adapter: one small event to a log-only activity. Log-only activities cannot be undone (the
 //! store's rule), and they sit on an id of their own, which holds no object. No secrets: no proof, no
 //! nonce, no key, no arguments, no digest. Refused attempts are not logged: a refusal changes nothing,
-//! and a caller could otherwise fill the log.
+//! and a caller could otherwise fill the log. Use of a class release is logged at most once a minute
+//! per participant and tool, for the same reason.
 
 use chrono::{DateTime, Utc};
 use fs_messenger_core::ToolCallRisk;
@@ -17,8 +18,8 @@ pub(crate) const LOG_SUBJECT: &str = "01900000-0000-7000-8000-00000000a1d1";
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct GuardLogEntry {
-    /// `invite`, `release`, `revoke`, `stop`, `reopen`, `decide`, `enrol`, `removeDevice`, `recover`,
-    /// `turnStop`.
+    /// `invite`, `uninvite`, `release`, `revoke`, `stop`, `reopen`, `decide`, `approvalUsed`, `classUsed`,
+    /// `finished`, `enrol`, `removeDevice`, `recover`, `turnStop`.
     pub event: String,
     /// Who did it: the person who signed, or the engine for a stop without a proof.
     pub actor: String,
@@ -34,6 +35,8 @@ pub struct GuardLogEntry {
     pub capability: String,
     /// `refuse`, `allowOnce`, `allowClass`.
     pub choice: String,
+    /// How a call ended: `done`, `failed`.
+    pub outcome: String,
     /// How many calls it cancelled.
     pub cancelled: usize,
 }
@@ -57,8 +60,10 @@ impl GuardLogEntry {
         match self.event.as_str() {
             "invite" => ActivityKind::Invite,
             "release" | "enrol" => ActivityKind::Add,
-            "revoke" | "removeDevice" => ActivityKind::Remove,
-            "reopen" | "recover" => ActivityKind::Accept,
+            "revoke" | "uninvite" | "removeDevice" => ActivityKind::Remove,
+            "reopen" | "recover" | "approvalUsed" | "classUsed" | "finished" => {
+                ActivityKind::Accept
+            }
             "decide" if self.choice != "refuse" => ActivityKind::Accept,
             _ => ActivityKind::Reject,
         }

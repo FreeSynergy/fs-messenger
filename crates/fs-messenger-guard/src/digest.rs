@@ -1,15 +1,18 @@
 //! The arguments digest: what exactly a decision is about.
 //!
-//! Pattern: Strategy (pure function): SHA-256 over a fixed context, the caller, the tool name and the
-//! canonical arguments, each with its length in front, so nothing can move from one field to another.
+//! Pattern: Strategy (pure function): SHA-256 over a fixed context, the caller, the conversation of its
+//! turn, the tool name and the canonical arguments, each with its length in front, so nothing can move from one field to another.
 //! No input is hashed as its own explicit value, so `{}` and "no input" differ and later input changes
 //! the digest. Keys are not secret, and nothing here is: the digest is shown to the person's device.
 
+use fs_store::ObjectId;
 use sha2::{Digest, Sha256};
 
 use crate::arguments::Arguments;
 
 const DIGEST_CONTEXT: &[u8] = b"FreeSynergy.Messenger tool call digest v1";
+const NO_CONVERSATION: &[u8] = b"no conversation";
+const CONVERSATION: &[u8] = b"conversation";
 const NO_INPUT: &[u8] = b"no input";
 const INPUT: &[u8] = b"input";
 
@@ -19,11 +22,24 @@ fn field(hash: &mut Sha256, bytes: &[u8]) {
     hash.update(bytes);
 }
 
-/// The digest of one call.
-pub fn arguments_digest(caller: &str, tool: &str, arguments: &Arguments) -> Vec<u8> {
+/// The digest of one call. The conversation of the turn is in it, so an `allowOnce` given in one
+/// conversation cannot be spent in another.
+pub fn arguments_digest(
+    caller: &str,
+    conversation: Option<ObjectId>,
+    tool: &str,
+    arguments: &Arguments,
+) -> Vec<u8> {
     let mut hash = Sha256::new();
     field(&mut hash, DIGEST_CONTEXT);
     field(&mut hash, caller.as_bytes());
+    match conversation {
+        None => field(&mut hash, NO_CONVERSATION),
+        Some(id) => {
+            field(&mut hash, CONVERSATION);
+            field(&mut hash, id.to_string().as_bytes());
+        }
+    }
     field(&mut hash, tool.as_bytes());
     match arguments.canonical() {
         None => field(&mut hash, NO_INPUT),

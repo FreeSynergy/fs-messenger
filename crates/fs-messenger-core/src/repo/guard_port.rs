@@ -5,9 +5,12 @@
 //! repo weakly: the repo holds the guard, and a cycle would keep the store's claim for ever.
 
 use std::sync::{Arc, Weak};
+use std::time::Duration;
 
 use fs_store::{ObjectId, Query};
+use tokio::time::timeout;
 
+use super::accounts::is_agent;
 use super::consts::{IDX_OPEN_CALL, NOTE, YES};
 use super::guard_note::ENGINE_ACTOR;
 use super::handle::{Inner, MessengerRepo};
@@ -16,7 +19,8 @@ use crate::error::{Error, Result};
 use crate::guard_hook::{EngineGuard, SenderLookup};
 use crate::model::{Event, SenderKind, ToolCall, ToolCallChange, ToolCallOutcome, ToolCallState};
 
-const AGENT_ACCOUNT: &str = "agent";
+/// How long the core waits for a guard, which it never does while holding its write lock.
+const GUARD_WAIT: Duration = Duration::from_secs(1);
 
 pub(super) struct Wiring {
     guard: Arc<dyn EngineGuard>,
@@ -47,13 +51,18 @@ pub struct GuardPort {
 }
 
 impl MessengerRepo {
-    /// Install the guard. Works once: later calls are refused, so a guard cannot be replaced at run
-    /// time. Call it before any provider is registered.
+    /// Install the guard. Works once, and only before any provider is registered: a provider holding
+    /// a clone of the repo cannot get in first, and a guard cannot be replaced at run time.
     pub fn install_guard(
         &self,
         guard: Arc<dyn EngineGuard>,
         senders: Arc<dyn SenderLookup>,
     ) -> Result<GuardPort> {
+        if !self.inner.all_providers().is_empty() {
+            return Err(Error::Conflict(
+                "install the guard before registering a provider".into(),
+            ));
+        }
         self.inner
             .wiring
             .set(Wiring { guard, senders })
@@ -71,24 +80,35 @@ impl Inner {
 
     /// What this sender is, and whether its message may be stored. The rule is in the guard's
     /// `DESIGN.md`: an account of kind `agent` carries AI participants only, so without a guard, or
-    /// without the guard's word, nothing of it is stored.
+    /// without the guard's word, nothing of it is stored. Called without any lock held, and a guard
+    /// that does not answer cannot stall a messenger write: for a sender that reads as not known, and
+    /// for an agent's message as "try again".
     pub(super) async fn admitted_sender(
         &self,
         account_kind: &str,
         sender: &str,
     ) -> Result<SenderKind> {
         let Some(wiring) = self.wiring.get() else {
-            if account_kind == AGENT_ACCOUNT {
+            if is_agent(account_kind) {
                 return Err(Error::GuardRefused(
                     "no guard is installed, so no AI participant exists".into(),
                 ));
             }
             return Ok(SenderKind::Unknown);
         };
-        if account_kind == AGENT_ACCOUNT {
-            wiring.guard.admit_agent_message(sender).await?;
+        if is_agent(account_kind) {
+            match timeout(GUARD_WAIT, wiring.guard.admit_agent_message(sender)).await {
+                Ok(answer) => answer?,
+                Err(_) => {
+                    return Err(Error::GuardUnavailable(
+                        "the guard did not answer in time".into(),
+                    ));
+                }
+            }
         }
-        Ok(wiring.senders.sender_kind(sender).await)
+        Ok(timeout(GUARD_WAIT, wiring.senders.sender_kind(sender))
+            .await
+            .unwrap_or(SenderKind::Unknown))
     }
 }
 
@@ -167,6 +187,30 @@ impl GuardPort {
             call,
             conversation,
         }));
+        Ok(())
+    }
+
+    /// Take away the message of a settled question of the engine. Nothing else can go this way: the
+    /// message must hold nothing but settled engine calls.
+    pub async fn delete_settled_question(&self, message: ObjectId) -> Result<()> {
+        let inner = self.inner()?;
+        let _writes = inner.writes.lock().await;
+        let m = match inner.load_note(message).await {
+            Ok(m) => m,
+            Err(Error::NotFound(_)) => return Ok(()),
+            Err(e) => return Err(e),
+        };
+        let engine_only = !m.tool_calls.is_empty()
+            && m.tool_calls
+                .iter()
+                .all(|c| c.state == ToolCallState::Settled && !c.asked_of.is_empty());
+        if !engine_only {
+            return Ok(());
+        }
+        inner.store.delete(message, ENGINE_ACTOR).await?;
+        if let Some(conversation) = m.summary.envelope.context.as_deref() {
+            inner.refresh(conversation.parse()?).await?;
+        }
         Ok(())
     }
 

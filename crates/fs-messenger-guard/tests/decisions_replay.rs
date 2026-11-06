@@ -130,7 +130,7 @@ async fn another_signature_for_the_same_bytes_is_the_same_proof() {
 
 #[tokio::test]
 async fn an_id_chosen_by_an_agent_identifies_nothing() {
-    use fs_messenger_core::{Ingest, RawToolCall, ToolCall, ToolCallKind};
+    use fs_messenger_core::{Ingest, ToolCall, ToolCallKind};
     let w = World::with_ai().await;
     let q = w.ask("message.delete", args("/m")).await;
     // An agent reports a call on the question's message, naming the question's id.
@@ -140,21 +140,15 @@ async fn an_id_chosen_by_an_agent_identifies_nothing() {
         kind: ToolCallKind::RunsCommand,
         ..ToolCall::default()
     };
-    let stored = w
-        .repo
-        .record_tool_call(q.message, &q.call.id, report)
-        .await
-        .unwrap();
-    assert_ne!(stored.id, q.call.id, "the engine's id stays the engine's");
+    let refused_report = w.repo.record_tool_call(q.message, &q.call.id, report).await;
+    assert!(
+        matches!(refused_report, Err(Error::GuardRefused(_))),
+        "{refused_report:?}"
+    );
     assert_eq!(w.shown(&q).await, q.call, "the question is untouched");
-    let _ = RawToolCall {
-        agent_ref: String::new(),
-        call: ToolCall::default(),
-    };
-    // A decision for what the agent got back is about no call the guard knows.
-    let mut named = stored.clone();
-    named.arguments_digest = vec![1; 32];
-    named.revision = 1;
+    // A decision about an id only an agent knows is about no call the guard knows.
+    let mut named = q.call.clone();
+    named.id = "agent-chosen".into();
     let d = w.owner.decide(&w.identity, q.message, &named, "allow-once");
     let result = w
         .repo

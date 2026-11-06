@@ -3,117 +3,18 @@
 
 mod common;
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 
-use async_trait::async_trait;
-use common::{AI, Device, OWNER, TestClock, World, args, encrypted};
-use fs_messenger_core::{MessageAction, Messenger, ToolCallRisk};
+use common::rigs::{Rig, eventually};
+use common::{AI, World, args};
+use fs_messenger_core::{MessageAction, Messenger};
 use fs_messenger_guard::{
-    Arguments, Caller, Ed25519Verifier, Gate, Guard, GuardConfig, GuardEngine, GuardError,
-    GuardLogEntry, GuardMode, GuardRepository, Method, OwnerOnly, Refusal, STATE_ID,
-    TursoGuardRepository, Verdict,
+    Arguments, Caller, Gate, Guard, GuardEngine, GuardError, GuardMode, GuardRepository, Method,
+    Refusal, STATE_ID, Verdict,
 };
+use fs_store::ObjectId;
 use fs_store::traits::UnloggedObjects;
-use fs_store::{ObjectId, TursoStore};
-use serde_json::{Value, json};
-use tokio::sync::Notify;
-/// The real repository, whose writes can fail and whose reads can stop answering.
-struct Faulty {
-    real: TursoGuardRepository,
-    fail_writes: AtomicBool,
-    fail_reads: AtomicBool,
-    /// The next save tells `entered` and waits for `go` first.
-    hold_save: AtomicBool,
-    entered: Notify,
-    go: Notify,
-}
-
-#[async_trait]
-impl GuardRepository for Faulty {
-    async fn load(&self) -> Result<Option<Value>, String> {
-        if self.fail_reads.load(Ordering::SeqCst) {
-            return Err("the store does not answer".into());
-        }
-        self.real.load().await
-    }
-    async fn save(&self, record: &Value) -> Result<(), String> {
-        if self.fail_writes.load(Ordering::SeqCst) {
-            return Err("disk full".into());
-        }
-        if self.hold_save.swap(false, Ordering::SeqCst) {
-            self.entered.notify_one();
-            self.go.notified().await;
-        }
-        self.real.save(record).await
-    }
-    async fn append(&self, entry: &GuardLogEntry) -> Result<(), String> {
-        if self.fail_writes.load(Ordering::SeqCst) {
-            return Err("disk full".into());
-        }
-        self.real.append(entry).await
-    }
-    async fn entries(&self) -> Result<Vec<GuardLogEntry>, String> {
-        self.real.entries().await
-    }
-}
-
-struct Rig {
-    dir: tempfile::TempDir,
-    store: Arc<TursoStore>,
-    faulty: Arc<Faulty>,
-    engine: Arc<GuardEngine>,
-    owner: Device,
-    identity: Vec<u8>,
-}
-
-async fn rig() -> Rig {
-    let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(
-        TursoStore::open_with(dir.path().join("g.db"), encrypted())
-            .await
-            .unwrap(),
-    );
-    let faulty = Arc::new(Faulty {
-        real: TursoGuardRepository::open(store.clone()).unwrap(),
-        fail_writes: AtomicBool::new(false),
-        fail_reads: AtomicBool::new(false),
-        hold_save: AtomicBool::new(false),
-        entered: Notify::new(),
-        go: Notify::new(),
-    });
-    let (engine, enrolment) = GuardEngine::open_with(
-        GuardConfig::new(OWNER),
-        faulty.clone(),
-        Arc::new(Ed25519Verifier),
-        Arc::new(OwnerOnly),
-        Arc::new(TestClock::default()),
-    );
-    let owner = Device::new(OWNER, 1);
-    enrolment.enrol_owner(&owner.public()).await.unwrap();
-    let identity = engine.engine_identity().await.unwrap();
-    engine
-        .reopen(&owner.proof(&identity, Method::Reopen, &[]))
-        .await
-        .unwrap();
-    let invite = owner.proof(&identity, Method::Invite, &[AI.as_bytes()]);
-    engine.invite(AI, &invite).await.unwrap();
-    let release = owner.proof(&identity, Method::Release, &[AI.as_bytes(), b"readsOnly"]);
-    let grant = fs_messenger_guard::AiGrant {
-        profile: AI.into(),
-        risk: ToolCallRisk::ReadsOnly,
-    };
-    engine.release(&grant, &release).await.unwrap();
-    Rig {
-        dir,
-        store,
-        faulty,
-        engine,
-        owner,
-        identity,
-    }
-}
-
+use serde_json::json;
 async fn verdict(engine: &GuardEngine) -> Verdict {
     let input = Arguments::from_value(&args("/")).unwrap();
     engine.check(&Caller::new(AI), "message.open", &input).await
@@ -121,7 +22,7 @@ async fn verdict(engine: &GuardEngine) -> Verdict {
 
 #[tokio::test]
 async fn a_stop_that_cannot_be_written_still_stops_and_says_so() {
-    let r = rig().await;
+    let r = Rig::open().await;
     assert!(matches!(verdict(&r.engine).await, Verdict::Allow(_)));
     r.faulty.fail_writes.store(true, Ordering::SeqCst);
     let report = r
@@ -149,19 +50,25 @@ async fn a_stop_that_cannot_be_written_still_stops_and_says_so() {
         "open"
     );
 
-    // Once writing works again, the next `check` puts it on disk, and a restart keeps it.
+    // Once writing works again it goes to disk, with nobody calling anything.
     r.faulty.fail_writes.store(false, Ordering::SeqCst);
-    assert_eq!(verdict(&r.engine).await, Verdict::Refuse(Refusal::Stopped));
-    let record = r.faulty.real.load().await.unwrap().unwrap();
-    assert_eq!(World::doc_mode(&record), "stopped");
-    assert_eq!(record["grants"], json!([]));
+    let real = r.faulty.clone();
+    eventually("the stop is written", async || {
+        World::doc_mode(&real.real.load().await.unwrap().unwrap()) == "stopped"
+    })
+    .await;
+    assert_eq!(
+        real.real.load().await.unwrap().unwrap()["grants"],
+        json!([])
+    );
+    assert!(!r.engine.stop_unwritten());
     drop(r.dir);
     drop(r.store);
 }
 
 #[tokio::test]
 async fn a_reopen_that_cannot_be_written_stays_shut() {
-    let r = rig().await;
+    let r = Rig::open().await;
     r.engine
         .stop(&r.owner.proof(&r.identity, Method::Stop, &[]))
         .await
@@ -178,7 +85,7 @@ async fn a_reopen_that_cannot_be_written_stays_shut() {
 
 #[tokio::test]
 async fn a_reopen_after_a_stop_that_was_not_written_does_not_bring_the_releases_back() {
-    let r = rig().await;
+    let r = Rig::open().await;
     r.faulty.fail_writes.store(true, Ordering::SeqCst);
     r.engine
         .stop(&r.owner.proof(&r.identity, Method::Stop, &[]))
@@ -190,15 +97,12 @@ async fn a_reopen_after_a_stop_that_was_not_written_does_not_bring_the_releases_
         .await
         .unwrap();
     assert!(r.engine.state().await.grants.is_empty());
-    assert!(
-        matches!(verdict(&r.engine).await, Verdict::Refuse(_)),
-        "no messenger to ask"
-    );
+    assert!(!matches!(verdict(&r.engine).await, Verdict::Allow(_)));
 }
 
 #[tokio::test]
 async fn when_the_store_stops_answering_everything_is_refused_and_comes_back_only_as_it_was() {
-    let r = rig().await;
+    let r = Rig::open().await;
     r.faulty.fail_reads.store(true, Ordering::SeqCst);
     assert_eq!(verdict(&r.engine).await, Verdict::Refuse(Refusal::Stopped));
     assert_eq!(r.engine.state().await.mode, GuardMode::Stopped);
@@ -235,7 +139,7 @@ async fn an_allow_once_that_cannot_be_used_up_in_the_state_is_refused() {
 
 #[tokio::test]
 async fn a_stop_during_a_reopen_that_is_being_written_wins() {
-    let r = rig().await;
+    let r = Rig::open().await;
     r.engine
         .stop(&r.owner.proof(&r.identity, Method::Stop, &[]))
         .await

@@ -15,6 +15,7 @@ use super::stage::{CallStage, options_for};
 use crate::device::DeviceVerifier;
 use crate::digest::{hex, single_use_key, unhex};
 use crate::error::Refusal;
+use crate::identity::id_key;
 use crate::model::{AiGrant, GuardMode};
 use crate::risk::can_be_released;
 use crate::signed::{Method, decide_arguments, signed_bytes};
@@ -82,7 +83,7 @@ impl GuardDoc {
         if call.asked_of.is_empty() {
             return Err(Refusal::Empty("askedOf"));
         }
-        if d.signer != call.asked_of {
+        if id_key(&d.signer) != call.asked_of {
             return Err(Refusal::SignerNotAskedOf);
         }
         if call.expires_at <= input.now {
@@ -122,8 +123,12 @@ impl GuardDoc {
         let call = &mut self.calls[at];
         call.revision += 1;
         let mut granted = None;
+        let mut paused = None;
         match choice {
-            ToolCallChoice::Refuse => call.stage = CallStage::Refused,
+            ToolCallChoice::Refuse => {
+                call.stage = CallStage::Refused;
+                paused = Some(call.caller.clone());
+            }
             ToolCallChoice::AllowOnce => {
                 call.stage = CallStage::Approved;
                 call.expires_at = input.now + input.limits.approval_ttl;
@@ -148,7 +153,9 @@ impl GuardDoc {
         if let Some(grant) = granted {
             self.apply_grant(grant);
         }
-        self.prune_settled();
+        if let Some(invitation) = paused.and_then(|caller: String| self.invited.get_mut(&caller)) {
+            invitation.paused_until = Some(input.now + input.limits.refusal_pause);
+        }
         Ok(decided)
     }
 }

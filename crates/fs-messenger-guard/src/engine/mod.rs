@@ -4,8 +4,12 @@ mod admin;
 mod core;
 mod decide;
 mod gate;
+mod marker;
+mod questions;
 mod stop;
+mod stop_conversation;
+mod store_access;
 mod wiring;
 
-pub(crate) use core::View;
 pub use core::{GuardConfig, GuardEngine};
+pub(crate) use store_access::View;

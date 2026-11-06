@@ -99,7 +99,7 @@ async fn it_works_with_no_messenger_at_all() {
             .unwrap(),
     );
     let clock = Arc::new(common::TestClock::default());
-    let (engine, enrolment) = common::engine_on(&store, &clock);
+    let (engine, enrolment) = common::engine_on(&store, &clock, &dir.path().join("stop"));
     let owner = Device::new(OWNER, 1);
     enrolment.enrol_owner(&owner.public()).await.unwrap();
     let identity = engine.engine_identity().await.unwrap();

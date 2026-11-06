@@ -49,7 +49,8 @@ async fn main() {
     // A store of its own for the guard.
     let guard_store = store(dir.path().join("guard.db")).await;
     let guard_repo = Arc::new(TursoGuardRepository::open(guard_store).expect("encrypted"));
-    let (engine, enrolment) = GuardEngine::open(GuardConfig::new(OWNER), guard_repo);
+    let config = GuardConfig::new(OWNER, dir.path().join("guard.stopped"));
+    let (engine, enrolment) = GuardEngine::open(config, guard_repo).expect("the first engine");
     engine.attach(&repo).expect("the first guard");
 
     let pair = KeyPair::from_seed(Seed::new([1; 32]));

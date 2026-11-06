@@ -3,10 +3,11 @@
 
 pub mod device;
 pub mod events;
+pub mod rigs;
 
 pub use device::{Device, TestClock};
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -60,15 +61,17 @@ async fn turso(path: PathBuf) -> Arc<TursoStore> {
 pub fn engine_on(
     store: &Arc<TursoStore>,
     clock: &Arc<TestClock>,
+    marker: &Path,
 ) -> (Arc<GuardEngine>, LocalEnrolment) {
     let repo = Arc::new(TursoGuardRepository::open(store.clone()).unwrap());
     GuardEngine::open_with(
-        GuardConfig::new(OWNER),
+        GuardConfig::new(OWNER, marker),
         repo,
         Arc::new(Ed25519Verifier) as Arc<dyn DeviceVerifier>,
         Arc::new(OwnerOnly),
         clock.clone(),
     )
+    .unwrap()
 }
 
 impl World {
@@ -81,7 +84,7 @@ impl World {
             .await
             .unwrap();
         let clock = Arc::new(TestClock::default());
-        let (engine, enrolment) = engine_on(&store, &clock);
+        let (engine, enrolment) = engine_on(&store, &clock, &dir.path().join("guard.stopped"));
         engine.attach(&repo).unwrap();
         Self {
             dir,
@@ -132,7 +135,7 @@ impl World {
         let repo = MessengerRepo::open_turso(messages.clone(), MessengerConfig::new(OWNER))
             .await
             .unwrap();
-        let (engine, enrolment) = engine_on(&store, &clock);
+        let (engine, enrolment) = engine_on(&store, &clock, &dir.path().join("guard.stopped"));
         engine.attach(&repo).unwrap();
         Self {
             dir,
@@ -145,6 +148,20 @@ impl World {
             owner,
             identity,
         }
+    }
+
+    /// Another conversation, with a message in it.
+    pub async fn repo_conversation(&self, id: &str) -> ObjectId {
+        let account = self.account(&format!("{id}@example.org"), "mail").await;
+        self.deliver(account.id, id, "x@y").await.unwrap();
+        let page = self.repo.conversations(None, false, None).await.unwrap();
+        page.items[0].id
+    }
+
+    /// Past the pause between retries.
+    pub fn pause(&self) -> &Self {
+        self.clock.advance(Duration::seconds(3));
+        self
     }
 
     pub async fn invite(&self, profile: &str) {

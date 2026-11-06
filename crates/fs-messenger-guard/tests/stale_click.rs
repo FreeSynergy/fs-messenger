@@ -96,6 +96,7 @@ async fn the_same_call_with_a_new_revision_does_not_take_the_old_click() {
 
     let new_input = Arguments::from_value(&rm_home()).unwrap();
     let Verdict::Ask(new) = w
+        .pause()
         .engine
         .revise(&Caller::new(AI), &q.call.id, &new_input)
         .await
@@ -159,7 +160,10 @@ async fn the_same_call_with_a_new_revision_does_not_take_the_old_click() {
     // Back to the arguments the person saw: the revision has moved on, so still no.
     let back = Arguments::from_value(&harmless()).unwrap();
     assert!(matches!(
-        w.engine.revise(&Caller::new(AI), &q.call.id, &back).await,
+        w.pause()
+            .engine
+            .revise(&Caller::new(AI), &q.call.id, &back)
+            .await,
         Verdict::Ask(_)
     ));
     let result = w
@@ -179,12 +183,18 @@ async fn revise_needs_the_callers_own_open_call() {
     let q = w.ask("shell.run", harmless()).await;
     let input = Arguments::from_value(&rm_home()).unwrap();
     let other = w
+        .pause()
         .engine
         .revise(&Caller::new(common::OTHER_AI), &q.call.id, &input)
         .await;
     assert_eq!(other, Verdict::Refuse(Refusal::UnknownCall));
     let same = Arguments::from_value(&harmless()).unwrap();
-    let Verdict::Ask(unchanged) = w.engine.revise(&Caller::new(AI), &q.call.id, &same).await else {
+    let Verdict::Ask(unchanged) = w
+        .pause()
+        .engine
+        .revise(&Caller::new(AI), &q.call.id, &same)
+        .await
+    else {
         panic!()
     };
     assert_eq!(
@@ -206,7 +216,12 @@ async fn an_approval_lapses_when_the_input_changes_and_a_running_call_cannot_be_
         .unwrap();
 
     let input = Arguments::from_value(&rm_home()).unwrap();
-    let Verdict::Ask(asked) = w.engine.revise(&Caller::new(AI), &q.call.id, &input).await else {
+    let Verdict::Ask(asked) = w
+        .pause()
+        .engine
+        .revise(&Caller::new(AI), &q.call.id, &input)
+        .await
+    else {
         panic!("an approval must not survive new input")
     };
     assert_eq!(asked.call.state, ToolCallState::Question);
@@ -226,6 +241,7 @@ async fn an_approval_lapses_when_the_input_changes_and_a_running_call_cannot_be_
         Verdict::Allow(_)
     ));
     let late = w
+        .pause()
         .engine
         .revise(&Caller::new(AI), &q.call.id, &Arguments::none())
         .await;

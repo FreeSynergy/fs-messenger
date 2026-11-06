@@ -83,6 +83,9 @@ pub enum Error {
         /// What a person reads.
         detail: String,
     },
+    /// The guard could not answer: try again. A sync stops here with its cursor where it was.
+    #[error("the guard cannot answer now: {0}")]
+    GuardUnavailable(String),
     /// The guard refused it (ADR 0054). Nothing changed, unless the text says otherwise.
     #[error("guard: {0}")]
     GuardRefused(String),

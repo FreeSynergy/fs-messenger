@@ -109,6 +109,11 @@ impl MessengerRepo {
         })
     }
 
+    /// Which store this is, for comparing: the guard refuses to share one.
+    pub fn store_address(&self) -> usize {
+        Arc::as_ptr(&self.inner.store).cast::<()>() as usize
+    }
+
     /// Use `provider` for `account`, replacing any earlier one.
     pub fn register_provider(&self, account: ObjectId, provider: Arc<dyn Provider>) {
         self.inner

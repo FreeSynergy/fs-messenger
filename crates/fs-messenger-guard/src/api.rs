@@ -46,6 +46,9 @@ pub trait Guard: Send + Sync {
     async fn release(&self, grant: &AiGrant, proof: &GuardProof) -> Result<(), GuardError>;
     /// Takes all releases of this participant, and its open calls.
     async fn revoke(&self, profile: &str, proof: &GuardProof) -> Result<(), GuardError>;
+    /// Withdraws the invitation: its releases and open calls go, and it may ask no more. By who invited
+    /// it, or the owner.
+    async fn uninvite(&self, profile: &str, proof: &GuardProof) -> Result<(), GuardError>;
     /// Emergency stop. Stops in memory first, and reports what it could not do.
     async fn stop(&self, proof: &GuardProof) -> Result<StopReport, GuardError>;
     /// Opens it again. Only with the permission, on a person's own device. Releases stay taken.

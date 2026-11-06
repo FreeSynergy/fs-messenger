@@ -6,7 +6,9 @@
 //! encrypted: it says who is invited and which keys count. Give the guard a store of its own
 //! (`DESIGN.md`): the rules hold on a shared one too, as tested, but the hub pushes a store's log.
 
-use std::sync::Arc;
+use std::collections::BTreeSet;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
 use fs_store::traits::{ActivityLog, UnloggedObjects};
@@ -27,6 +29,24 @@ const LOG_PREFIX: &str = "freesynergy.net:guard";
 pub struct TursoGuardRepository {
     store: Arc<TursoStore>,
     id: ObjectId,
+    engine_claimed: AtomicBool,
+}
+
+/// The stores with a guard repository in this process, by address. A second `TursoStore` on the same
+/// file is another object, which this cannot see; `DESIGN.md` says so.
+static CLAIMED: Mutex<BTreeSet<usize>> = Mutex::new(BTreeSet::new());
+
+fn address(store: &Arc<TursoStore>) -> usize {
+    Arc::as_ptr(store).cast::<()>() as usize
+}
+
+impl Drop for TursoGuardRepository {
+    fn drop(&mut self) {
+        CLAIMED
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&address(&self.store));
+    }
 }
 
 impl TursoGuardRepository {
@@ -35,11 +55,18 @@ impl TursoGuardRepository {
         if !store.is_encrypted() {
             return Err("the store is not encrypted; the guard does not open on it".into());
         }
+        let id = STATE_ID
+            .parse()
+            .map_err(|e: fs_store::Error| e.to_string())?;
+        let mut claimed = CLAIMED.lock().unwrap_or_else(PoisonError::into_inner);
+        if !claimed.insert(address(&store)) {
+            return Err("this store already has a guard".into());
+        }
+        drop(claimed);
         Ok(Self {
             store,
-            id: STATE_ID
-                .parse()
-                .map_err(|e: fs_store::Error| e.to_string())?,
+            id,
+            engine_claimed: AtomicBool::new(false),
         })
     }
 }
@@ -55,8 +82,10 @@ impl GuardRepository for TursoGuardRepository {
         else {
             return Ok(None);
         };
+        // Read, and not a state: that is damage, from which the local recovery can go on.
         if object.envelope.object_type != STATE_TYPE {
-            return Err(format!("object of type {}", object.envelope.object_type));
+            let found = object.envelope.object_type;
+            return Ok(Some(serde_json::json!({ "notAState": found })));
         }
         Ok(Some(object.content))
     }
@@ -79,6 +108,17 @@ impl GuardRepository for TursoGuardRepository {
             .await
             .map(|_| ())
             .map_err(|e| e.to_string())
+    }
+
+    fn claim_engine(&self) -> Result<(), String> {
+        if self.engine_claimed.swap(true, Ordering::SeqCst) {
+            return Err("this repository already has an engine".into());
+        }
+        Ok(())
+    }
+
+    fn store_address(&self) -> Option<usize> {
+        Some(address(&self.store))
     }
 
     async fn entries(&self) -> Result<Vec<GuardLogEntry>, String> {
