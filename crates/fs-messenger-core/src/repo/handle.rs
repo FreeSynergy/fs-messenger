@@ -5,11 +5,14 @@
 //! way to a `MessengerRepo`: `open_turso`, which asks the store whether it is encrypted.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, PoisonError, RwLock};
 
-use fs_store::{ObjectId, Store, StoredObject, TursoStore};
+use fs_store::{ObjectId, Query, Store, StoredObject, TursoStore};
 use tokio::sync::Mutex;
 
+use super::consts::IDX_ARRIVAL_DESC;
+use super::keys::arrival_of_desc_key;
 use super::store_check;
 use crate::error::{Error, Result};
 use crate::provider::Provider;
@@ -49,6 +52,8 @@ pub(super) struct Inner {
     pub(super) config: MessengerConfig,
     /// One read-modify-write at a time. Never held while a provider runs.
     pub(super) writes: Arc<Mutex<()>>,
+    /// Highest local arrival sequence handed out.
+    arrival: AtomicU64,
     providers: RwLock<HashMap<ObjectId, Arc<dyn Provider>>>,
 }
 
@@ -74,11 +79,13 @@ impl MessengerRepo {
 
     async fn checked(store: Arc<dyn Store>, config: MessengerConfig) -> Result<Self> {
         store_check::check(store.as_ref(), &config.actor).await?;
+        let arrival = AtomicU64::new(highest_arrival(store.as_ref()).await?);
         Ok(Self {
             inner: Arc::new(Inner {
                 store,
                 config,
                 writes: Arc::new(Mutex::new(())),
+                arrival,
                 providers: RwLock::new(HashMap::new()),
             }),
         })
@@ -94,7 +101,24 @@ impl MessengerRepo {
     }
 }
 
+/// Tombstones keep their sequence too, so a number is never handed out twice.
+async fn highest_arrival(store: &dyn Store) -> Result<u64> {
+    let q = Query::new().order_by_index(IDX_ARRIVAL_DESC).limit(1);
+    let newest = store.query(&q).await?;
+    Ok(newest
+        .first()
+        .and_then(|o| o.index.get(IDX_ARRIVAL_DESC))
+        .and_then(|v| v.first())
+        .and_then(|k| arrival_of_desc_key(k))
+        .unwrap_or(0))
+}
+
 impl Inner {
+    /// The next local arrival sequence. Call while holding `writes`.
+    pub(super) fn next_arrival(&self) -> u64 {
+        self.arrival.fetch_add(1, Ordering::Relaxed) + 1
+    }
+
     pub(super) fn provider(&self, account: ObjectId) -> Option<Arc<dyn Provider>> {
         self.providers
             .read()

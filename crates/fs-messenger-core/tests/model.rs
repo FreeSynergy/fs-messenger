@@ -71,7 +71,7 @@ async fn an_old_record_without_those_fields_reads_safely_through_the_program() {
     let m = repo.message(conv, id).await.unwrap();
     assert_eq!(m.summary.encryption, Encryption::Unknown);
     assert_eq!(m.summary.sender_kind, SenderKind::Unknown);
-    assert_eq!(m.summary.kind, Kind::Mail);
+    assert_eq!(m.summary.kind, Kind::Unknown);
     assert_eq!(m.body_media_type, "text/plain");
     assert_eq!(m.tool_calls[0].risk, ToolCallRisk::Unknown);
     assert_eq!(m.tool_calls[0].kind, ToolCallKind::Unknown);

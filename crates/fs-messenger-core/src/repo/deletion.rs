@@ -6,7 +6,7 @@
 
 use fs_store::{Envelope, ObjectId, StoredObject};
 
-use super::consts::{CONTENT_TYPE, IDX_ALIAS, IDX_ORDER, SENSITIVE, TOMBSTONE};
+use super::consts::{CONTENT_TYPE, IDX_ALIAS, IDX_ARRIVAL, IDX_ARRIVAL_DESC, SENSITIVE, TOMBSTONE};
 use super::handle::Inner;
 use crate::error::Result;
 
@@ -26,7 +26,7 @@ impl Inner {
         env.context.clone_from(&old.envelope.context);
         env.sensitive = vec![SENSITIVE.to_string()];
         let mut tombstone = StoredObject::new(env, CONTENT_TYPE, serde_json::json!({}));
-        for key in [IDX_ALIAS, IDX_ORDER] {
+        for key in [IDX_ALIAS, IDX_ARRIVAL, IDX_ARRIVAL_DESC] {
             if let Some(values) = old.index.get(key) {
                 tombstone.index.insert(key.to_string(), values.clone());
             }

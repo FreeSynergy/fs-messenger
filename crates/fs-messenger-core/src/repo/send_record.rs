@@ -84,6 +84,8 @@ impl Inner {
             account: Some(account),
             outgoing: true,
             pending_reply: None,
+            arrival: self.next_arrival(),
+            sort_at: None,
         };
         self.put(message_to(&message)?).await?;
         self.refresh(conversation_id).await?;

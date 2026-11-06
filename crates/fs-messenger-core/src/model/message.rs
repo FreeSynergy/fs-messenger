@@ -5,6 +5,7 @@
 
 use std::collections::BTreeMap;
 
+use chrono::{DateTime, Utc};
 use fs_store::{Blob, Envelope, ObjectId};
 use serde::{Deserialize, Serialize};
 
@@ -71,6 +72,11 @@ pub struct Message {
     pub outgoing: bool,
     /// The parent, while it has not arrived yet. Not in the contract.
     pub pending_reply: Option<ExternalId>,
+    /// Local arrival sequence, never from a sender. "Read up to" runs over it. Not in the contract.
+    pub arrival: u64,
+    /// When to sort it instead of `published`, if the sender dated it in the future. Not in the
+    /// contract.
+    pub sort_at: Option<DateTime<Utc>>,
     /// The agent's own reference of a call -> `ToolCall.id`. Not in the contract.
     pub tool_call_refs: BTreeMap<String, String>,
 }
@@ -79,5 +85,10 @@ impl Message {
     /// The id; the first version's id stays on edit.
     pub fn id(&self) -> ObjectId {
         self.summary.envelope.id
+    }
+
+    /// The time it sorts by: the sender's date, unless that is later than its arrival.
+    pub fn sort_time(&self) -> DateTime<Utc> {
+        self.sort_at.unwrap_or(self.summary.envelope.published)
     }
 }

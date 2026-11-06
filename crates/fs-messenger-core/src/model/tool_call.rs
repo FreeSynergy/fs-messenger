@@ -29,7 +29,6 @@ pub enum ToolCallKind {
 #[serde(rename_all = "camelCase")]
 pub enum ToolCallState {
     /// Still being formed.
-    #[default]
     Forming,
     /// Running.
     Working,
@@ -37,6 +36,10 @@ pub enum ToolCallState {
     Question,
     /// Over; `outcome` says how it ended.
     Settled,
+    /// Not known: no guess. Not in the contract, whose ordinal 0 is `forming`; see `DESIGN.md`.
+    #[default]
+    #[serde(other)]
+    Unknown,
 }
 
 /// How dangerous a call is. Set by the engine from the contract, never by the agent. Unset and
@@ -73,6 +76,9 @@ pub enum ToolCallOutcome {
     Refused,
     /// Cancelled.
     Cancelled,
+    /// A value this version does not know: no guess. Not in the contract; see `DESIGN.md`.
+    #[serde(other)]
+    Unknown,
 }
 
 /// What an option does. Unset and unknown values read as `refuse`; there is no "always".

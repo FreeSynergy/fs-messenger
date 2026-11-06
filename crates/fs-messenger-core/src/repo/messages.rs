@@ -1,17 +1,21 @@
 //! Reading messages and marking them read.
 //!
-//! Pattern: Repository, with cursor paging over the fixed-width order keys. "Read up to X" follows
-//! the message order, not the arrival order, so a late older message does not stay unread.
+//! Pattern: Repository, with cursor paging over fixed-width keys. "Read up to X" and "next unread"
+//! run over the local arrival order, not over a date a sender chose: an old date cannot be swept
+//! along by a later mark, and a date far ahead cannot sweep up what arrived after it.
 
 use fs_store::{ActivityKind, LogEntry, ObjectId, Op, Query};
 
-use super::consts::{IDX_DESC, IDX_ORDER, IDX_UNREAD, NOTE, TOMBSTONE, YES};
+use super::consts::{IDX_ARRIVAL, IDX_DESC, IDX_UNREAD, NOTE, TOMBSTONE, YES};
 use super::handle::Inner;
-use super::keys::order_key;
+use super::keys::arrival_key;
 use super::message_codec::{message_from, message_to};
-use super::paging::split_page;
+use super::paging::{decoded, split_page};
 use crate::error::{Error, Result};
-use crate::model::{Cursor, Message, MessagePage, MessageSummary, Page};
+use crate::model::{Cursor, Message, MessagePage, MessageSummary};
+
+/// How many records one step looks at when it has to walk past unreadable ones.
+const WALK: usize = 16;
 
 impl Inner {
     pub(super) async fn load_note(&self, id: ObjectId) -> Result<Message> {
@@ -31,6 +35,32 @@ impl Inner {
             return Err(Error::NotFound(id));
         }
         Ok(m)
+    }
+
+    /// The first message in the order of `key` that can be read.
+    pub(super) async fn first_readable(&self, base: Query, key: &str) -> Result<Option<Message>> {
+        let first = base.clone().order_by_index(key).limit(WALK);
+        let mut q = first;
+        loop {
+            let objects = self.store.query(&q).await?;
+            let full = objects.len() == WALK;
+            let last = objects
+                .last()
+                .and_then(|o| o.index.get(key))
+                .and_then(|v| v.first())
+                .cloned();
+            if let Some(m) = objects.into_iter().find_map(|o| message_from(o).ok()) {
+                return Ok(Some(m));
+            }
+            let Some(last) = last.filter(|_| full) else {
+                return Ok(None);
+            };
+            q = base
+                .clone()
+                .order_by_index(key)
+                .limit(WALK)
+                .index_op(key, Op::Gt, last);
+        }
     }
 
     pub(super) async fn messages_page(
@@ -54,24 +84,23 @@ impl Inner {
     /// Run a newest-first query that asks for one more than `size`.
     pub(super) async fn page_of(&self, q: Query, size: usize) -> Result<MessagePage> {
         let (objects, next) = split_page(self.store.query(&q).await?, size, IDX_DESC);
-        let items = objects
-            .into_iter()
-            .map(|o| Ok(message_from(o)?.summary))
-            .collect::<Result<Vec<_>>>()?;
-        Ok(Page { items, next })
+        Ok(decoded(objects, next, |o| Ok(message_from(o)?.summary)))
     }
 
+    /// Everything that had arrived by the time `up_to` arrived reads as read; a later arrival never
+    /// does, whatever its date. A record that cannot be read stays as it is.
     pub(super) async fn mark_read(&self, conversation: ObjectId, up_to: ObjectId) -> Result<()> {
         let _writes = self.writes.lock().await;
         let target = self.load_in(conversation, up_to).await?;
-        let key = order_key(target.summary.envelope.published, up_to);
         let q = Query::new()
             .of_type(NOTE)
             .in_context(conversation.to_string())
             .with_index(IDX_UNREAD, YES)
-            .index_op(IDX_ORDER, Op::Le, key);
+            .index_op(IDX_ARRIVAL, Op::Le, arrival_key(target.arrival, up_to));
         for o in self.store.query(&q).await? {
-            let mut m = message_from(o)?;
+            let Ok(mut m) = message_from(o) else {
+                continue;
+            };
             m.summary.unread = false;
             let read = vec![LogEntry::new(ActivityKind::Read, serde_json::json!({}))];
             self.store
@@ -81,17 +110,13 @@ impl Inner {
         self.refresh(conversation).await
     }
 
-    /// The oldest unread message after `after`. A deleted `after` still counts: its tombstone keeps
-    /// the place, because swiping a message away is how a frontend gets here.
+    /// The first arrived unread message after `after`. A deleted `after` still counts: its tombstone
+    /// keeps the place, because swiping a message away is how a frontend gets here.
     pub(super) async fn next_unread(
         &self,
         after: Option<ObjectId>,
     ) -> Result<Option<MessageSummary>> {
-        let mut q = Query::new()
-            .of_type(NOTE)
-            .with_index(IDX_UNREAD, YES)
-            .order_by_index(IDX_ORDER)
-            .limit(1);
+        let mut q = Query::new().of_type(NOTE).with_index(IDX_UNREAD, YES);
         if let Some(id) = after {
             let o = self
                 .store
@@ -99,13 +124,13 @@ impl Inner {
                 .await?
                 .filter(|o| [NOTE, TOMBSTONE].contains(&o.envelope.object_type.as_str()))
                 .ok_or(Error::NotFound(id))?;
-            let key = o.index.get(IDX_ORDER).and_then(|v| v.first()).cloned();
-            let key = key.ok_or_else(|| Error::Invalid(format!("{id} has no order")))?;
-            q = q.index_op(IDX_ORDER, Op::Gt, key);
+            let key = o.index.get(IDX_ARRIVAL).and_then(|v| v.first()).cloned();
+            let key = key.ok_or_else(|| Error::Invalid(format!("{id} has no arrival")))?;
+            q = q.index_op(IDX_ARRIVAL, Op::Gt, key);
         }
-        match self.store.query(&q).await?.pop() {
-            Some(o) => Ok(Some(message_from(o)?.summary)),
-            None => Ok(None),
-        }
+        Ok(self
+            .first_readable(q, IDX_ARRIVAL)
+            .await?
+            .map(|m| m.summary))
     }
 }

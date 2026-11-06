@@ -11,7 +11,6 @@ use super::consts::{
 use super::conversation_codec::{ConversationContent, ConversationRecord};
 use super::handle::Inner;
 use super::keys::alias_key;
-use super::message_codec::message_from;
 use super::paging::split_page;
 use crate::error::{Error, Result};
 use crate::model::{
@@ -84,19 +83,15 @@ impl Inner {
             .store
             .count(&notes().with_index(IDX_UNREAD, YES))
             .await?;
-        let last = self
-            .store
-            .query(&notes().order_by_index(IDX_DESC).limit(1))
-            .await?;
+        let last = self.first_readable(notes(), IDX_DESC).await?;
         let mut new = record.clone();
         new.content.unread_count = u32::try_from(unread).unwrap_or(u32::MAX);
         new.content.last_message = None;
         new.content.last_at = None;
         new.content.encryption = Encryption::Unknown;
-        if let Some(o) = last.into_iter().next() {
-            let m = message_from(o)?;
+        if let Some(m) = last {
             new.content.last_message = Some(m.id());
-            new.content.last_at = Some(m.summary.envelope.published);
+            new.content.last_at = Some(m.sort_time());
             new.content.encryption = m.summary.encryption;
         }
         if new != record {
@@ -107,8 +102,13 @@ impl Inner {
 
     async fn summary_of(&self, record: ConversationRecord) -> Result<ConversationSummary> {
         let c = record.content;
+        // Gone or unreadable is no reason to lose the conversation.
         let last_message = match c.last_message {
-            Some(id) => Some(self.load_note(id).await?.summary),
+            Some(id) => match self.load_note(id).await {
+                Ok(m) => Some(m.summary),
+                Err(Error::NotFound(_) | Error::Json(_)) => None,
+                Err(e) => return Err(e),
+            },
             None => None,
         };
         Ok(ConversationSummary {
@@ -149,11 +149,19 @@ impl Inner {
             q = q.index_op(IDX_SORT, Op::Gt, c.as_str());
         }
         let (objects, next) = split_page(self.store.query(&q).await?, size, IDX_SORT);
-        let mut items = Vec::with_capacity(objects.len());
+        let mut page = Page {
+            items: Vec::with_capacity(objects.len()),
+            next,
+            skipped: vec![],
+        };
         for o in objects {
-            items.push(self.summary_of(ConversationRecord::from_object(o)?).await?);
+            let id = o.envelope.id;
+            match ConversationRecord::from_object(o) {
+                Ok(record) => page.items.push(self.summary_of(record).await?),
+                Err(_) => page.skipped.push(id),
+            }
         }
-        Ok(Page { items, next })
+        Ok(page)
     }
 
     async fn put_logged(

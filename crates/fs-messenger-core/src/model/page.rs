@@ -3,6 +3,7 @@
 //! Pattern: Iterator (by hand): each page names where the next one starts. The cursor is the last
 //! sort key, not an offset, so new messages cannot shift a page that is being read.
 
+use fs_store::ObjectId;
 use serde::{Deserialize, Serialize};
 
 use super::{ConversationSummary, MessageSummary};
@@ -35,6 +36,8 @@ pub struct Page<T> {
     pub items: Vec<T>,
     /// Where the next page starts; `None` at the end.
     pub next: Option<Cursor>,
+    /// Stored items on this page that could not be read. They do not fail the page.
+    pub skipped: Vec<ObjectId>,
 }
 
 /// A page of messages.

@@ -38,22 +38,6 @@ async fn read_up_to_x_marks_x_and_everything_older_and_nothing_else() {
 }
 
 #[tokio::test]
-async fn read_up_to_follows_message_order_not_arrival() {
-    let (repo, _) = setup().await;
-    let me = account(&repo, "me@example.org").await;
-    let Ingested::Stored(newer) = repo.ingest(me.id, raw_at("n", "t", 9)).await.unwrap() else {
-        panic!();
-    };
-    let Ingested::Stored(older) = repo.ingest(me.id, raw_at("o", "t", 1)).await.unwrap() else {
-        panic!();
-    };
-    let conv = conversation_of(&repo).await;
-    repo.mark_read(conv, newer).await.unwrap();
-    assert!(!repo.message(conv, older).await.unwrap().summary.unread);
-    assert_eq!(repo.open(conv).await.unwrap().unread_count, 0);
-}
-
-#[tokio::test]
 async fn a_message_of_another_conversation_is_not_found_here() {
     let (repo, _) = setup().await;
     account(&repo, "me@example.org").await;

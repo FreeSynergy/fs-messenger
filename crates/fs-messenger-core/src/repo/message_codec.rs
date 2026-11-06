@@ -1,19 +1,21 @@
 //! Message <-> stored object: AS2 `Note` envelope + content + index fields + immutable original.
 //!
 //! Pattern: Adapter: maps the [`Message`] view onto what `fs-store` holds (ADR 0020, 0030). Every
-//! field of the content has a fail-safe default, so an old record reads as "not known", never as more.
+//! field of the content has a fail-safe default, so an old record reads as "not known", never as
+//! more. What still cannot be read fails only itself: pages skip and report it.
 
 use std::collections::BTreeMap;
 
+use chrono::{DateTime, Utc};
 use fs_store::{ObjectId, StoredObject};
 use serde::{Deserialize, Serialize};
 
 use super::consts::{
-    CONTENT_TYPE, IDX_ACCOUNT, IDX_ALIAS, IDX_BLOB, IDX_DESC, IDX_ENCRYPTION, IDX_FLAGGED,
-    IDX_FROM, IDX_HAS_ATTACHMENT, IDX_JOB, IDX_KIND, IDX_ORDER, IDX_REPLY_ALIAS, IDX_TASK,
-    IDX_TEXT, IDX_UNREAD, SENSITIVE, YES,
+    CONTENT_TYPE, IDX_ACCOUNT, IDX_ALIAS, IDX_ARRIVAL, IDX_ARRIVAL_DESC, IDX_BLOB, IDX_DESC,
+    IDX_ENCRYPTION, IDX_FLAGGED, IDX_FROM, IDX_HAS_ATTACHMENT, IDX_JOB, IDX_KIND, IDX_REPLY_ALIAS,
+    IDX_TASK, IDX_TEXT, IDX_UNREAD, SENSITIVE, YES,
 };
-use super::keys::{alias_key, desc_key, order_key};
+use super::keys::{alias_key, arrival_desc_key, arrival_key, desc_key};
 use super::text::body_media_type;
 use crate::error::Result;
 use crate::model::{
@@ -48,6 +50,8 @@ struct Content {
     account: Option<ObjectId>,
     outgoing: bool,
     pending_reply: Option<ExternalId>,
+    arrival: u64,
+    sort_at: Option<DateTime<Utc>>,
 }
 
 /// Read a stored `Note`.
@@ -85,6 +89,8 @@ pub(super) fn message_from(o: StoredObject) -> Result<Message> {
         account: c.account,
         outgoing: c.outgoing,
         pending_reply: c.pending_reply,
+        arrival: c.arrival,
+        sort_at: c.sort_at,
     })
 }
 
@@ -112,6 +118,8 @@ pub(super) fn message_to(m: &Message) -> Result<StoredObject> {
         account: m.account,
         outgoing: m.outgoing,
         pending_reply: m.pending_reply.clone(),
+        arrival: m.arrival,
+        sort_at: m.sort_at,
     };
     let mut env = s.envelope.clone();
     env.sensitive = vec![SENSITIVE.to_string()];
@@ -123,14 +131,15 @@ pub(super) fn message_to(m: &Message) -> Result<StoredObject> {
 
 fn add_index(o: &mut StoredObject, m: &Message) {
     let s = &m.summary;
-    let (id, at) = (s.envelope.id, s.envelope.published);
+    let (id, at) = (s.envelope.id, m.sort_time());
     let mut add = |key: &str, value: String| {
         if !value.is_empty() {
             o.index.entry(key.to_string()).or_default().push(value);
         }
     };
-    add(IDX_ORDER, order_key(at, id));
-    add(IDX_DESC, desc_key(at, id));
+    add(IDX_ARRIVAL, arrival_key(m.arrival, id));
+    add(IDX_ARRIVAL_DESC, arrival_desc_key(m.arrival, id));
+    add(IDX_DESC, desc_key(at, m.arrival, id));
     add(IDX_ENCRYPTION, s.encryption.as_str().to_string());
     add(IDX_KIND, s.kind.as_str().to_string());
     add(

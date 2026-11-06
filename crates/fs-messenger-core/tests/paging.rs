@@ -75,8 +75,11 @@ async fn messages_at_the_same_moment_are_neither_lost_nor_repeated() {
             break;
         }
     }
-    seen.sort();
-    assert_eq!(seen, ["m0", "m1", "m2", "m3", "m4"]);
+    assert_eq!(
+        seen,
+        ["m4", "m3", "m2", "m1", "m0"],
+        "the last arrived on top"
+    );
 }
 
 #[tokio::test]

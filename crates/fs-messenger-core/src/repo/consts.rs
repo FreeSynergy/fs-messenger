@@ -18,9 +18,11 @@ pub(super) const TEXT_MARKDOWN: &str = "text/markdown";
 /// them. DPV personal-data category; provisional, see `DESIGN.md`.
 pub(super) const SENSITIVE: &str = "pd:Communication";
 
-/// Message order, oldest first.
-pub(super) const IDX_ORDER: &str = "order";
-/// Message order, newest first.
+/// Local arrival order, first arrived first.
+pub(super) const IDX_ARRIVAL: &str = "arrival";
+/// Local arrival order, last arrived first.
+pub(super) const IDX_ARRIVAL_DESC: &str = "arrival_desc";
+/// Display order, newest first.
 pub(super) const IDX_DESC: &str = "desc";
 pub(super) const IDX_UNREAD: &str = "unread";
 pub(super) const IDX_FLAGGED: &str = "flagged";

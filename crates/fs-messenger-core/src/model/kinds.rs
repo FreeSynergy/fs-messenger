@@ -57,12 +57,15 @@ impl Encryption {
 #[serde(rename_all = "camelCase")]
 pub enum Kind {
     /// E-mail.
-    #[default]
     Mail,
     /// Chat or messenger.
     Chat,
     /// Comment thread.
     Comment,
+    /// Not known: no guess. Not in the contract, whose ordinal 0 is `mail`; see `DESIGN.md`.
+    #[default]
+    #[serde(other)]
+    Unknown,
 }
 
 impl Kind {
@@ -72,6 +75,7 @@ impl Kind {
             Self::Mail => "mail",
             Self::Chat => "chat",
             Self::Comment => "comment",
+            Self::Unknown => "unknown",
         }
     }
 }
@@ -97,7 +101,6 @@ pub enum SenderKind {
 #[serde(rename_all = "camelCase")]
 pub enum DeliveryState {
     /// On its way out.
-    #[default]
     Sending,
     /// Handed to the transport.
     Sent,
@@ -107,4 +110,8 @@ pub enum DeliveryState {
     Read,
     /// It did not leave.
     Failed,
+    /// Not known: no guess. Not in the contract, whose ordinal 0 is `sending`; see `DESIGN.md`.
+    #[default]
+    #[serde(other)]
+    Unknown,
 }

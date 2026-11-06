@@ -51,10 +51,13 @@ impl Inner {
     pub(super) async fn list_accounts(&self) -> Result<Vec<Account>> {
         let query = Query::new().of_type(ACCOUNT);
         let objects = self.store.query(&query).await?;
-        objects
+        Ok(objects
             .into_iter()
-            .map(|o| Ok(self.account_view(o.envelope.id, serde_json::from_value(o.content)?)))
-            .collect()
+            .filter_map(|o| {
+                let content = serde_json::from_value(o.content).ok()?;
+                Some(self.account_view(o.envelope.id, content))
+            })
+            .collect())
     }
 
     pub(super) async fn add_account(&self, setup: AccountSetup) -> Result<Account> {

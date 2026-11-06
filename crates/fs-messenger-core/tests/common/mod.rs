@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
 use fs_interfaces::Capabilities;
 use fs_messenger_core::{
-    Account, AccountSetup, Encryption, EncryptionPlan, Error, Event, ExternalId, FetchBatch,
+    Account, AccountSetup, Encryption, EncryptionPlan, Error, Event, ExternalId, FetchBatch, Kind,
     Listener, Messenger, MessengerConfig, MessengerRepo, Outgoing, Provider, ProviderCursor,
     RawMessage, Result, SendReceipt,
 };
@@ -70,6 +70,7 @@ pub fn raw(id: &str, thread: &str, text: &str) -> RawMessage {
         text,
     );
     m.encryption = Encryption::Openpgp;
+    m.kind = Kind::Mail;
     m
 }
 

@@ -8,13 +8,13 @@ use serde::{Deserialize, Serialize};
 
 use super::consts::{CONTENT_TYPE, DRAFT, IDX_BLOB, SENSITIVE, TEXT_PLAIN};
 use super::handle::Inner;
-use super::text::display_name;
+use super::text::{body_media_type, display_name};
 use crate::draft::DraftInfo;
 use crate::error::{Error, Result};
 use crate::model::Attachment;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub(super) struct DraftData {
     pub(super) id: ObjectId,
     pub(super) account: Option<ObjectId>,
@@ -64,6 +64,15 @@ impl DraftData {
     }
 }
 
+/// The id comes from the envelope, the format is one a draft can have.
+fn draft_from(o: StoredObject) -> Result<DraftData> {
+    let id = o.envelope.id;
+    let mut d: DraftData = serde_json::from_value(o.content)?;
+    d.id = id;
+    d.media_type = body_media_type(&d.media_type);
+    Ok(d)
+}
+
 impl Inner {
     pub(super) async fn save_draft(&self, data: &DraftData) -> Result<()> {
         let _writes = self.writes.lock().await;
@@ -77,22 +86,21 @@ impl Inner {
             .await?
             .filter(|o| o.envelope.object_type == DRAFT)
             .ok_or(Error::NotFound(id))?;
-        Ok(serde_json::from_value(o.content)?)
+        draft_from(o)
     }
 
     pub(super) async fn list_drafts(&self) -> Result<Vec<DraftInfo>> {
         let objects = self.store.query(&Query::new().of_type(DRAFT)).await?;
-        objects
+        // One that cannot be read must not hide the others.
+        Ok(objects
             .into_iter()
-            .map(|o| {
-                let d: DraftData = serde_json::from_value(o.content)?;
-                Ok(DraftInfo {
-                    id: d.id,
-                    to: d.to,
-                    text: d.text,
-                })
+            .filter_map(|o| draft_from(o).ok())
+            .map(|d| DraftInfo {
+                id: d.id,
+                to: d.to,
+                text: d.text,
             })
-            .collect()
+            .collect())
     }
 
     /// Remove the stored draft, if it was ever saved. The attachments stay for whoever names them.

@@ -43,7 +43,10 @@ impl Inner {
         env.cc = raw.cc;
         env.context = Some(conversation_id.to_string());
         env.in_reply_to = in_reply_to.map(|id| id.to_string());
-        env.published = raw.published.unwrap_or_else(Utc::now);
+        let arrived = Utc::now();
+        env.published = raw.published.unwrap_or(arrived);
+        // A date in the future shows, but must not hold the top of the list.
+        let sort_at = (env.published > arrived).then_some(arrived);
 
         let mut attachments = Vec::with_capacity(raw.attachments.len());
         for a in raw.attachments {
@@ -85,6 +88,8 @@ impl Inner {
             account: Some(account),
             outgoing: raw.outgoing,
             pending_reply,
+            arrival: self.next_arrival(),
+            sort_at,
         };
         for t in raw.tool_calls {
             tool_calls::apply(&mut message, &t.agent_ref, t.call);
