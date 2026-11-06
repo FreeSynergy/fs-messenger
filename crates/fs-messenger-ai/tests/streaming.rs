@@ -137,6 +137,25 @@ async fn multibyte_characters_split_across_chunks_arrive_whole() {
     }
 }
 
+/// On several threads, so the listener really runs while the turn goes on: when it hears the state
+/// event, the answer is stored already.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_state_event_comes_after_the_answer_is_stored() {
+    let world = World::invited().await;
+    let server = serve(vec![stream(llama::answer(&["stored first"]))]).await;
+    let provider = world.llama(world.config(&server.origin)).await;
+    world.past_the_gate(&provider);
+    let mut events = provider.live_events();
+    let _ = world.person_sends(AI, "hello").await;
+    loop {
+        if let Event::State(state) = events.recv().await.unwrap() {
+            let live = provider.live_turn(state.message).unwrap();
+            assert!(live.stored.is_some(), "the state event came first");
+            return;
+        }
+    }
+}
+
 #[tokio::test]
 async fn a_late_listener_reads_the_text_so_far() {
     let world = World::invited().await;

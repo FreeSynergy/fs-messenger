@@ -78,7 +78,8 @@ async fn a_chunked_body_torn_in_the_middle() {
 
 #[tokio::test]
 async fn a_stream_that_starts_over() {
-    let body = begun() + &anthropic::start() + &anthropic::block(0, "text");
+    // Only the second start: anything after it could be caught by another rule.
+    let body = begun() + &anthropic::start();
     let done = anthropic_turn(stream(body), Limits::default()).await;
     assert!(matches!(done.failure(), TurnFailure::Repeated(_)));
     assert_eq!(done.answer().body_text, KEPT);

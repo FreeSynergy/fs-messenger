@@ -281,6 +281,12 @@ pub async fn until_state(events: &mut broadcast::Receiver<Event>) -> Vec<Event> 
         let last = matches!(event, Event::State(_));
         all.push(event);
         if last {
+            // The state event ends it: nothing follows, a second state event least of all.
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            assert!(
+                events.try_recv().is_err(),
+                "something after the state event"
+            );
             return all;
         }
     }
