@@ -40,8 +40,9 @@ impl SseReader {
         }
     }
 
-    /// The events `chunk` completes.
-    pub(crate) fn feed(&mut self, chunk: &[u8]) -> Result<Vec<SseEvent>, TurnFailure> {
+    /// The events `chunk` completes, and what is wrong with the rest of it, if anything: what came
+    /// before a fault in the same chunk still counts, so its text is kept.
+    pub(crate) fn feed(&mut self, chunk: &[u8]) -> (Vec<SseEvent>, Option<TurnFailure>) {
         let mut events = vec![];
         for &byte in chunk {
             let lf = byte == b'\n';
@@ -51,17 +52,20 @@ impl SseReader {
             if lf || byte == b'\r' {
                 self.skip_lf = byte == b'\r';
                 let line = std::mem::take(&mut self.line);
-                if let Some(event) = self.end_of_line(&line)? {
-                    events.push(event);
+                match self.end_of_line(&line) {
+                    Ok(Some(event)) => events.push(event),
+                    Ok(None) => {}
+                    Err(fault) => return (events, Some(fault)),
                 }
             } else {
                 self.line.push(byte);
                 if self.line.len() + self.data.len() > self.limit {
-                    return Err(TurnFailure::Malformed("an event over the limit".into()));
+                    let fault = TurnFailure::Malformed("an event over the limit".into());
+                    return (events, Some(fault));
                 }
             }
         }
-        Ok(events)
+        (events, None)
     }
 
     fn end_of_line(&mut self, line: &[u8]) -> Result<Option<SseEvent>, TurnFailure> {
@@ -103,7 +107,10 @@ mod tests {
     use super::*;
 
     fn all(bytes: &[u8]) -> Result<Vec<SseEvent>, TurnFailure> {
-        SseReader::new(1024).feed(bytes)
+        match SseReader::new(1024).feed(bytes) {
+            (events, None) => Ok(events),
+            (_, Some(fault)) => Err(fault),
+        }
     }
 
     fn event(name: Option<&str>, data: &str) -> SseEvent {
@@ -141,7 +148,9 @@ mod tests {
         let mut reader = SseReader::new(1024);
         let mut events = vec![];
         for byte in bytes {
-            events.extend(reader.feed(std::slice::from_ref(byte)).unwrap());
+            let (more, fault) = reader.feed(std::slice::from_ref(byte));
+            assert_eq!(fault, None);
+            events.extend(more);
         }
         assert_eq!(events, [event(None, "gr\u{fc}\u{df}e \u{1f600}")]);
     }
@@ -153,6 +162,13 @@ mod tests {
         assert!(matches!(all(&long), Err(TurnFailure::Malformed(_))));
         let many = b"data: aaaaaaaaaaaaaaaaaaaa\n".repeat(100);
         assert!(matches!(all(&many), Err(TurnFailure::Malformed(_))));
+    }
+
+    #[test]
+    fn what_came_before_a_fault_in_the_same_chunk_still_counts() {
+        let (events, fault) = SseReader::new(1024).feed(b"data: a\n\ndata: \xff\n\n");
+        assert_eq!(events, [event(None, "a")]);
+        assert_eq!(fault, Some(TurnFailure::InvalidUtf8));
     }
 
     #[test]

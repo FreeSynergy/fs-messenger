@@ -1,6 +1,7 @@
 //! The wire: server-sent events, the two dialects, one HTTP way to reach them.
 
 mod anthropic;
+mod anthropic_stream;
 mod dialect;
 mod http;
 mod llama;

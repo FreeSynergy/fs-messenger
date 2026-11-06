@@ -46,6 +46,20 @@ async fn the_core_refuses_a_loopback_model_and_nothing_reaches_the_wire() {
     assert_eq!(drafts[0].text, "hello");
 }
 
+/// What the core reports as it stands, pinned so that a change shows. `DESIGN.md`, "Wanted".
+#[tokio::test]
+async fn the_core_says_ready_and_says_nothing_streams() {
+    let world = World::invited().await;
+    let provider = world.llama(world.config("http://127.0.0.1:9")).await;
+    real(&world, &provider);
+    let accounts = world.repo.accounts().await.unwrap();
+    assert!(
+        accounts[0].encryption_ready,
+        "it reads ready because the provider can plan, though each plan is refused"
+    );
+    assert!(!world.repo.capabilities().is_supported("text.stream"));
+}
+
 #[tokio::test]
 async fn the_core_refuses_a_remote_model_even_if_the_person_chose_it() {
     let world = World::invited().await;

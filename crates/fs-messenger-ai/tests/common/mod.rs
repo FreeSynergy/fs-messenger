@@ -2,6 +2,7 @@
 //! and the real provider. What stands in: the wire (`wire.rs`), and `PastTheGate`, which is labelled.
 #![allow(dead_code, unused_imports)]
 
+pub mod events;
 pub mod wire;
 
 use std::sync::Arc;
@@ -85,10 +86,15 @@ pub struct World {
 impl World {
     /// Open, with an `agent` account, and nobody invited.
     pub async fn uninvited() -> Self {
+        Self::with_config(MessengerConfig::new(OWNER)).await
+    }
+
+    /// As `uninvited`, with this messenger configuration.
+    pub async fn with_config(config: MessengerConfig) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let messages = turso(dir.path().join("messages.db")).await;
         let guard_store = turso(dir.path().join("guard.db")).await;
-        let repo = MessengerRepo::open_turso(messages.clone(), MessengerConfig::new(OWNER))
+        let repo = MessengerRepo::open_turso(messages.clone(), config)
             .await
             .unwrap();
         let guard_repo = Arc::new(TursoGuardRepository::open(guard_store).unwrap());

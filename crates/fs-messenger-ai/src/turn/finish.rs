@@ -45,12 +45,16 @@ pub(super) async fn finish(
     } else {
         store(shared, input, &body, reasoning, failure.as_ref(), job_ref).await
     };
-    if let Some((host, id)) = &stored {
+    if let Some((host, id, _)) = &stored {
         shared.live.stored(live, *id);
         record_calls(host.as_ref(), *id, said.tools.finished(&shared.redactor)).await;
         record_usage(host.as_ref(), input.conversation, said.usage).await;
     }
-    let failure = failure.or_else(|| stored.is_none().then_some(TurnFailure::NotStored));
+    let failure = failure.or(match &stored {
+        None => Some(TurnFailure::NotStored),
+        Some((_, _, true)) => Some(TurnFailure::ResponseTooLarge),
+        Some(_) => None,
+    });
     if failure.is_none() {
         shared
             .history
@@ -66,7 +70,7 @@ async fn store(
     reasoning: String,
     failure: Option<&TurnFailure>,
     job_ref: &str,
-) -> Option<(std::sync::Arc<dyn Host>, ObjectId)> {
+) -> Option<(std::sync::Arc<dyn Host>, ObjectId, bool)> {
     let host = shared.host().ok()?;
     let mut raw = RawMessage::new(
         ExternalId::new(TURN_SCHEME, input.turn_id.clone()),
@@ -81,10 +85,11 @@ async fn store(
     raw.in_reply_to = Some(input.parent_alias.clone());
     raw.job_ref = job_ref.to_string();
     raw.subject = failure.map(|f| format!("Answer cut off: {f}"));
+    // Over the core's limit only a stub stays. The limits here keep an answer below it, unless a program
+    // set them higher; then the person reads `failed` and the live text, not a success.
     match host.ingest(shared.account, raw).await {
-        Ok(Ingested::Stored(id) | Ingested::Duplicate(id) | Ingested::TooLarge { id, .. }) => {
-            Some((host, id))
-        }
+        Ok(Ingested::Stored(id) | Ingested::Duplicate(id)) => Some((host, id, false)),
+        Ok(Ingested::TooLarge { id, .. }) => Some((host, id, true)),
         Err(_) => None,
     }
 }

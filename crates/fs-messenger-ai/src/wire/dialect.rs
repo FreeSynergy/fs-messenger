@@ -102,15 +102,15 @@ pub(crate) fn bearer(key: &ApiKey) -> Result<(HeaderName, HeaderValue), AiError>
     Ok((reqwest::header::AUTHORIZATION, value))
 }
 
-/// A server's word for something, as a short safe name: text from a server is not shown otherwise, so
-/// it cannot carry the key or anything else into a message.
+/// A server's word for something, as a short safe name, in the form both APIs document (`rate_limit_error`,
+/// `end_turn`): text from a server is not shown otherwise, so it cannot carry anything into a message.
 pub(crate) fn short_name(word: Option<&str>) -> String {
     match word {
         Some(w)
             if !w.is_empty()
                 && w.len() <= 64
                 && w.bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') =>
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_') =>
         {
             w.to_string()
         }

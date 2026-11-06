@@ -8,6 +8,7 @@ mod live;
 mod registry;
 mod run;
 mod shared;
+mod tools;
 
 pub use failure::TurnFailure;
 pub(crate) use history::History;

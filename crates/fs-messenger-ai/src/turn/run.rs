@@ -11,12 +11,13 @@ use fs_messenger_core::{DeliveryState, ExternalId, TextPart};
 use fs_store::ObjectId;
 use tokio::time::Instant;
 
-use super::assemble::{PartText, ToolCalls};
+use super::assemble::PartText;
 use super::failure::TurnFailure;
 use super::finish::finish;
 use super::live::LiveOpening;
 use super::registry::TurnTicket;
 use super::shared::Shared;
+use super::tools::ToolCalls;
 use crate::wire::{ChatLine, Control, Ending, ModelEvent, SseReader, TurnUsage};
 
 const RECORD_WAIT: Duration = Duration::from_secs(2);
@@ -62,7 +63,9 @@ async fn run(shared: Arc<Shared>, input: TurnInput, ticket: TurnTicket) {
         usage: None,
     };
     let mut control = Control::new(ticket.cancel(), limits);
-    let outcome = converse(&shared, &input, live, &mut said, &mut control).await;
+    let outcome = converse(&shared, &input, live, &mut said, &mut control)
+        .await
+        .map_err(|failure| failure.without_key(&shared.redactor));
     // `converse` has dropped the response, and with it the connection.
     ticket.closed();
     finish(&shared, &input, live, said, outcome, &job_ref).await;
@@ -106,15 +109,22 @@ async fn converse(
             let events = reader.end_of_body()?;
             return apply_all(shared, live, said, events).map(|_| ());
         };
-        taken = taken.saturating_add(chunk.len());
-        if taken > limits.response_bytes {
-            return Err(TurnFailure::ResponseTooLarge);
-        }
-        for event in sse.feed(&chunk)? {
-            let events = reader.event(&event)?;
-            if apply_all(shared, live, said, events)? {
+        // Up to the limit it still counts, so one large chunk does not lose the text before it.
+        let room = limits.response_bytes.saturating_sub(taken);
+        let fits = chunk.len().min(room);
+        taken += fits;
+        let (events, fault) = sse.feed(&chunk[..fits]);
+        for event in events {
+            let said_now = reader.event(&event)?;
+            if apply_all(shared, live, said, said_now)? {
                 return Ok(());
             }
+        }
+        if let Some(fault) = fault {
+            return Err(fault);
+        }
+        if fits < chunk.len() {
+            return Err(TurnFailure::ResponseTooLarge);
         }
     }
 }

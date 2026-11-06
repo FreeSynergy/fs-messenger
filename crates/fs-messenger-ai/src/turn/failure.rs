@@ -4,6 +4,8 @@
 //! words, never from a server's text, so neither the key nor anything else a server echoes can pass
 //! through here.
 
+use crate::redact::Redactor;
+
 /// Why a turn ended as `failed`. The text so far is kept.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum TurnFailure {
@@ -72,4 +74,19 @@ pub enum TurnFailure {
     /// The answer could not be stored. Its text stays only in the live view.
     #[error("the answer could not be stored")]
     NotStored,
+}
+
+impl TurnFailure {
+    /// A short name from a server passes as a name. If it is the key, or holds it, it does not pass.
+    pub(crate) fn without_key(self, redactor: &Redactor) -> Self {
+        match self {
+            Self::Http { status, kind } => Self::Http {
+                status,
+                kind: redactor.scrubbed(&kind),
+            },
+            Self::ServerError(kind) => Self::ServerError(redactor.scrubbed(&kind)),
+            Self::Cut(reason) => Self::Cut(redactor.scrubbed(&reason)),
+            other => other,
+        }
+    }
 }
