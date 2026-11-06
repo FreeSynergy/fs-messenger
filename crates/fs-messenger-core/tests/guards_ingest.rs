@@ -56,8 +56,7 @@ async fn sync_stops_when_more_comes_without_progress() {
     let p = TestProvider::new(Encryption::Mls, &[]);
     *p.stuck.lock().unwrap() = true;
     repo.register_provider(me.id, p.clone());
-    let done = tokio::time::timeout(std::time::Duration::from_secs(5), repo.sync(me.id));
-    done.await.expect("the sync ends").unwrap();
+    repo.sync(me.id).await.unwrap();
     assert_eq!(p.since.lock().unwrap().len(), 1);
 }
 

@@ -133,6 +133,8 @@ impl Provider for TestProvider {
     async fn fetch(&self, since: Option<&ProviderCursor>) -> Result<FetchBatch> {
         self.since.lock().unwrap().push(since.cloned());
         if *self.stuck.lock().unwrap() {
+            let asked = self.since.lock().unwrap().len();
+            assert!(asked < 10, "a sync without progress keeps asking");
             return Ok(FetchBatch {
                 messages: vec![],
                 next: since.cloned(),
