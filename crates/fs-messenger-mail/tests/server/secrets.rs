@@ -120,8 +120,7 @@ async fn a_refused_login_names_no_password() {
         &imap
             .fetch(&MailCursor::default(), &limits)
             .await
-            .err()
-            .expect("refused"),
+            .expect_err("refused"),
     );
     let smtp = SmtpSubmit::new(SmtpConfig {
         endpoint: endpoint("FS_MSGTEST_SMTP_PORT"),
@@ -132,7 +131,7 @@ async fn a_refused_login_names_no_password() {
         from: user.clone(),
         recipients: vec![user.clone()],
     };
-    assert_clean(&smtp.submit(&envelope, b"x").await.err().expect("refused"));
+    assert_clean(&smtp.submit(&envelope, b"x").await.expect_err("refused"));
     let port = Env::load().get("FS_MSGTEST_HTTPS_PORT").to_string();
     let client = JmapClient::new(JmapConfig {
         session_url: format!("https://localhost:{port}/jmap/session"),
@@ -148,7 +147,6 @@ async fn a_refused_login_names_no_password() {
         &jmap
             .fetch(&MailCursor::default(), &limits)
             .await
-            .err()
-            .expect("refused"),
+            .expect_err("refused"),
     );
 }

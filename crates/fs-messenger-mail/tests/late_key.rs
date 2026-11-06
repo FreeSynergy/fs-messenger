@@ -6,7 +6,6 @@ mod forge;
 
 use common::{core_with, person};
 use fs_messenger_core::{Encryption, Ingest, Ingested, Messenger, Provider};
-use fs_messenger_mail::keys::KeyStore as _;
 use fs_messenger_mail::openpgp::generate_key;
 
 #[tokio::test]
