@@ -7,8 +7,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use common::{account, alias, conversation_of, message_id, raw, setup, with_provider};
 use fs_messenger_core::{
-    AccountSetup, Encryption, EncryptionPlan, Error, ExternalId, Ingest, Ingested, MessageAction,
-    Messenger, MessengerRepo, Outgoing, Provider, RawMessage, Result, SendReceipt,
+    Encryption, EncryptionPlan, Error, Ingest, Ingested, MessageAction, Messenger, MessengerRepo,
+    Outgoing, Provider, RawMessage, Result, SendReceipt,
 };
 use fs_store::{ObjectId, Query};
 

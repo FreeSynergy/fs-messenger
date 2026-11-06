@@ -18,7 +18,6 @@ use tokio::sync::mpsc;
 
 pub const ME: &str = "https://local.invalid/users/owner";
 
-/// A repo over a real in-memory store.
 pub async fn setup() -> (MessengerRepo, Arc<dyn Store>) {
     let store: Arc<dyn Store> = Arc::new(TursoStore::open_in_memory().await.unwrap());
     (repo_over(store.clone(), 50).await, store)
@@ -56,7 +55,6 @@ pub fn alias(id: &str) -> ExternalId {
     ExternalId::new("uid", id)
 }
 
-/// A sender's `Message-ID`.
 pub fn message_id(id: &str) -> ExternalId {
     ExternalId::new(fs_messenger_core::MESSAGE_ID, id)
 }
