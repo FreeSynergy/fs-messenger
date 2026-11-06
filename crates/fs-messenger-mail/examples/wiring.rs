@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use fs_messenger_core::Provider;
-use fs_messenger_mail::fetch::{DEFAULT_IMAP_TIMEOUT, ImapConfig, ImapFetch};
+use fs_messenger_mail::fetch::{DEFAULT_IDLE_TIMEOUT, ImapConfig, ImapFetch};
 use fs_messenger_mail::keys::FsKeyStore;
 use fs_messenger_mail::submit::{SmtpConfig, SmtpSubmit};
 use fs_messenger_mail::{Endpoint, MailIdentity, MailProvider, Password, TlsTrust};
@@ -23,7 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         endpoint: endpoint(993),
         user: address.to_string(),
         password: password.clone(),
-        timeout: DEFAULT_IMAP_TIMEOUT,
+        idle_timeout: DEFAULT_IDLE_TIMEOUT,
     });
     let submit = SmtpSubmit::new(SmtpConfig {
         endpoint: endpoint(465),

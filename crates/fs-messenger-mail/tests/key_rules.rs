@@ -39,6 +39,22 @@ async fn the_plan_names_exactly_who_lacks_a_key_also_hidden_ones() {
     assert_eq!(plan.missing_keys, ["gap@example.org"]);
 }
 
+/// N8: a control character in an address never gets a key, whatever is held.
+#[tokio::test]
+async fn an_address_with_a_control_character_has_no_key() {
+    let me = person("me@example.org").await;
+    let bad = "pe\r\ner@example.org".to_string();
+    let key = generate_key(&bad).unwrap().public();
+    me.provider.import_peer_key(&bad, &key).await.unwrap();
+    let plan = me
+        .provider
+        .encryption_plan(std::slice::from_ref(&bad))
+        .await
+        .unwrap();
+    assert_eq!(plan.encryption, Encryption::None);
+    assert_eq!(plan.missing_keys, [bad]);
+}
+
 #[tokio::test]
 async fn without_an_own_key_the_plan_names_the_sender() {
     let store = store().await;

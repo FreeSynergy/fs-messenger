@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::client::{JmapClient, err};
 use crate::error::{MailError, Result};
@@ -18,27 +18,16 @@ use crate::fetch::{
     MailboxCursor, MailboxRole, sent_is_optional,
 };
 
-const MAIL: &str = "urn:ietf:params:jmap:mail";
+pub(super) const MAIL: &str = "urn:ietf:params:jmap:mail";
 
 /// Reads mail over JMAP.
 pub struct JmapFetch {
-    client: Arc<JmapClient>,
+    pub(super) client: Arc<JmapClient>,
 }
 
 struct Mailboxes {
     inbox: String,
     sent: Option<String>,
-}
-
-fn strings(value: &Value) -> Vec<String> {
-    value
-        .as_array()
-        .map(|l| {
-            l.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 impl JmapFetch {
@@ -47,7 +36,7 @@ impl JmapFetch {
         Self { client }
     }
 
-    async fn account(&self) -> Result<String> {
+    pub(super) async fn account(&self) -> Result<String> {
         Ok(self.client.session().await?.account.clone())
     }
 
@@ -65,83 +54,6 @@ impl JmapFetch {
             inbox: by_role("inbox").ok_or_else(|| err("the account has no inbox"))?,
             sent: by_role("sent"),
         })
-    }
-
-    /// Ids of a mailbox's next page in the listing, and the cursor after it.
-    async fn listing(
-        &self,
-        mailbox: &str,
-        state: Option<String>,
-        anchor: Option<String>,
-        limit: usize,
-    ) -> Result<(Vec<String>, MailboxCursor)> {
-        let account = self.account().await?;
-        let mut query = json!({"accountId": account, "filter": {"inMailbox": mailbox},
-            "sort": [{"property": "receivedAt", "isAscending": true}], "limit": limit});
-        if let Some(anchor) = &anchor {
-            query["anchor"] = json!(anchor);
-            query["anchorOffset"] = json!(1);
-        }
-        let call = json!([
-            ["Email/get", {"accountId": account, "ids": [], "properties": ["id"]}, "s"],
-            ["Email/query", query, "q"],
-        ]);
-        let answers = self.client.call(&[MAIL], call).await?;
-        let state = match state {
-            Some(s) => s,
-            None => JmapClient::answer(&answers, "s")?["state"]
-                .as_str()
-                .ok_or_else(|| err("Email/get answered no state"))?
-                .to_string(),
-        };
-        let args = match JmapClient::response(&answers, "q")? {
-            Ok(args) => args,
-            Err(e) if e.kind == "anchorNotFound" && anchor.is_some() => {
-                // The anchor was deleted. From the start again: the core dedupes what repeats, and the
-                // state held is older than the walk, so nothing is lost.
-                return Box::pin(self.listing(mailbox, Some(state), None, limit)).await;
-            }
-            Err(e) => return Err(err(format!("Email/query answered {}", e.kind))),
-        };
-        let ids = strings(&args["ids"]);
-        let walking = ids.len() >= limit;
-        let anchor = if walking { ids.last().cloned() } else { None };
-        let cursor = MailboxCursor::Jmap {
-            state,
-            walking,
-            anchor,
-            pending: vec![],
-        };
-        Ok((ids, cursor))
-    }
-
-    /// What changed since `state`. `None` if the server cannot say any more: start over.
-    async fn changes(
-        &self,
-        state: &str,
-        limit: usize,
-    ) -> Result<Option<(Vec<String>, MailboxCursor, bool)>> {
-        let call = json!([["Email/changes", {"accountId": self.account().await?,
-            "sinceState": state, "maxChanges": limit}, "c"]]);
-        let answers = self.client.call(&[MAIL], call).await?;
-        let args = match JmapClient::response(&answers, "c")? {
-            Ok(args) => args,
-            Err(e) if e.kind == "cannotCalculateChanges" => return Ok(None),
-            Err(e) => return Err(err(format!("Email/changes answered {}", e.kind))),
-        };
-        let mut ids = strings(&args["created"]);
-        ids.extend(strings(&args["updated"]));
-        let next = args["newState"]
-            .as_str()
-            .ok_or_else(|| err("Email/changes answered no newState"))?
-            .to_string();
-        let cursor = MailboxCursor::Jmap {
-            state: next,
-            walking: false,
-            anchor: None,
-            pending: vec![],
-        };
-        Ok(Some((ids, cursor, args["hasMoreChanges"] == true)))
     }
 
     /// Download those of `ids` that are in `mailbox`, as far as the budget goes, and answer the ids left

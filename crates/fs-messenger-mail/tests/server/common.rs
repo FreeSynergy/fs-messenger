@@ -80,11 +80,11 @@ pub struct Person {
 
 impl Person {
     pub async fn open(who: Who, dir: &Path, fetch: Fetch, submit: Submit) -> Self {
-        Self::open_limited(who, dir, fetch, submit, 25 * 1024 * 1024).await
+        Self::open_provider_limited(who, dir, fetch, submit, 25 * 1024 * 1024).await
     }
 
-    /// With this limit on a mail, in the core and in the provider.
-    pub async fn open_limited(
+    /// With this limit on a mail in the provider; the core keeps its own default.
+    pub async fn open_provider_limited(
         who: Who,
         dir: &Path,
         fetch: Fetch,
@@ -97,8 +97,7 @@ impl Person {
                 .unwrap(),
         );
         let actor = format!("https://local.invalid/users/{}", who.address());
-        let mut config = MessengerConfig::new(actor.clone());
-        config.max_message_bytes = limit;
+        let config = MessengerConfig::new(actor.clone());
         let repo = MessengerRepo::open_turso(message_store.clone(), config)
             .await
             .unwrap();

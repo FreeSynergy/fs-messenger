@@ -1,5 +1,4 @@
-//! What a signature covers decides what it may vouch for. Real keys, real signatures, the real reading
-//! flow; only the wire is replaced. Every attack here comes from a review of this code.
+//! What a signature covers decides what it may vouch for. Real keys, signatures and reading flow.
 
 mod common;
 #[path = "common/forge.rs"]
@@ -86,7 +85,7 @@ async fn an_offer_inside_the_signed_part_rotates() {
     let next = generate_key(ALICE).unwrap();
     let header = format_header(ALICE, &next.public()).unwrap();
     let content = format!(
-        "From: {ALICE}\r\nAutocrypt: {header}\r\nContent-Type: text/plain\r\n\r\nnew key\r\n"
+        "From: {ALICE}\r\nAutocrypt: {header}\r\nContent-Type: text/plain; hp=\"cipher\"\r\n\r\nnew key\r\n"
     );
     let payload = multipart_signed("", &content, &detached(&alice_rpgp, &content));
     let raw = encrypted(&outer(ALICE, "in@e"), payload.as_bytes(), &next, &reader);
@@ -112,7 +111,6 @@ async fn a_signed_part_without_a_from_is_not_valid_for_the_sender() {
     assert_eq!(got.encryption, Encryption::None);
 }
 
-/// Plain `multipart/signed`: what is shown next to `Valid` is what was signed.
 #[tokio::test]
 async fn headers_shown_next_to_valid_are_the_signed_ones() {
     let (bob, _alice, alice_rpgp) = bob_knowing_alice().await;
@@ -288,9 +286,11 @@ async fn a_cut_off_mail_offers_no_key_and_is_not_opened() {
     let raw = encrypted(&head, genuine(true).as_bytes(), &alice, &reader);
     bob.wire
         .cut_off
-        .store(true, std::sync::atomic::Ordering::SeqCst);
+        .store(9_000_000, std::sync::atomic::Ordering::SeqCst);
     let got = deliver(&bob, &raw).await;
     assert_eq!(got.encryption, Encryption::None, "nothing was decrypted");
+    assert_eq!(got.too_large, Some(9_000_000), "it says what it holds");
+    assert_eq!(got.original, None, "a start is no original");
     assert_eq!(got.subject.as_deref(), Some("[...]"));
     assert_eq!(got.body_text, "");
     assert!(

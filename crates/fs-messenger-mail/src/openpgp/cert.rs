@@ -101,24 +101,22 @@ impl PublicCert {
             &offered.details.direct_signatures,
         );
         for user in &offered.details.users {
-            match held.details.users.iter_mut().find(|u| u.id == user.id) {
-                Some(mine) => changed |= add_missing(&mut mine.signatures, &user.signatures),
-                None => {
-                    held.details.users.push(user.clone());
-                    changed = true;
-                }
+            if let Some(mine) = held.details.users.iter_mut().find(|u| u.id == user.id) {
+                changed |= add_missing(&mut mine.signatures, &user.signatures);
+            } else {
+                held.details.users.push(user.clone());
+                changed = true;
             }
         }
         for sub in &offered.public_subkeys {
             let same = |s: &&mut pgp::composed::SignedPublicSubKey| {
                 s.key.fingerprint() == sub.key.fingerprint()
             };
-            match held.public_subkeys.iter_mut().find(|s| same(s)) {
-                Some(mine) => changed |= add_missing(&mut mine.signatures, &sub.signatures),
-                None => {
-                    held.public_subkeys.push(sub.clone());
-                    changed = true;
-                }
+            if let Some(mine) = held.public_subkeys.iter_mut().find(|s| same(s)) {
+                changed |= add_missing(&mut mine.signatures, &sub.signatures);
+            } else {
+                held.public_subkeys.push(sub.clone());
+                changed = true;
             }
         }
         changed

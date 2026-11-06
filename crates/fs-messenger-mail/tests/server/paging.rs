@@ -11,6 +11,7 @@ use crate::wire::jmap_client;
 const ONE: FetchLimits = FetchLimits {
     mails: 1,
     bytes: usize::MAX,
+    batch_bytes: u64::MAX,
 };
 
 fn mail(t: &str, n: u32, pad: usize) -> Vec<u8> {
@@ -104,7 +105,8 @@ async fn deleting_an_earlier_mail_between_pages_loses_no_mail() {
     assert!(has(&seen, &format!("M3-{t}")), "m3 must arrive");
 }
 
-/// Through the core: a stub stays of the large one, visibly, and the small one arrives.
+/// Through the core: a stub stays of the large one, visibly, and the small one arrives. The core keeps its
+/// default limit and only the provider's is low: a mismatch must not store a cut-off start as an original.
 async fn over_the_limit(fetch: Fetch) {
     const LIMIT: usize = 100_000;
     let t = token();
@@ -113,7 +115,7 @@ async fn over_the_limit(fetch: Fetch) {
     delivered(&format!("M2-{t}")).await;
     delivered(&format!("M1-{t}")).await;
     let b = tempfile::tempdir().unwrap();
-    let bob = Person::open_limited(Who::Bob, b.path(), fetch, Submit::Smtp, LIMIT).await;
+    let bob = Person::open_provider_limited(Who::Bob, b.path(), fetch, Submit::Smtp, LIMIT).await;
     let report = bob.repo.sync(bob.account).await.expect("sync");
     assert_eq!(report.rejected, 1, "{report:?}");
     assert_eq!(
@@ -126,7 +128,11 @@ async fn over_the_limit(fetch: Fetch) {
         .await
         .pop()
         .expect("a stub stays of the large one");
-    assert!(stub.too_large.is_some());
+    assert!(
+        stub.summary.too_large > 2 * LIMIT as u64 - 1,
+        "the real size: {}",
+        stub.summary.too_large
+    );
     assert_eq!(stub.body_text, "");
     assert_eq!(stub.original, None, "the cut-off start is not kept");
 }

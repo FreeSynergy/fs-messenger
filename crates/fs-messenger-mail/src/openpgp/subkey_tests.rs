@@ -170,3 +170,43 @@ fn dsa_is_refused_however_well_formed() {
     );
     assert!(!may_vouch(&key.public()));
 }
+
+/// A signature made after the key ran out proves nothing. The flag has to be on the newest self-signature.
+#[test]
+fn a_signature_made_after_the_key_ran_out_is_not_valid() {
+    use pgp::composed::{ArmorOptions, DetachedSignature};
+    use pgp::crypto::hash::HashAlgorithm;
+    let key = generate_key("a@x").unwrap();
+    let mut flags = pgp::packet::KeyFlags::default();
+    flags.set_sign(true);
+    flags.set_certify(true);
+    let lived = direct(
+        &key,
+        SignatureType::Key,
+        vec![
+            SubpacketData::KeyFlags(flags),
+            SubpacketData::KeyExpirationTime(pgp::types::Duration::from_secs(1)),
+        ],
+    );
+    let mut public = key.public();
+    public.0.details.direct_signatures.push(lived);
+    std::thread::sleep(std::time::Duration::from_millis(2100));
+    let armored = DetachedSignature::sign_binary_data(
+        rand::thread_rng(),
+        &key.0.primary_key,
+        &Password::empty(),
+        HashAlgorithm::Sha512,
+        &b"content"[..],
+    )
+    .unwrap()
+    .to_armored_bytes(ArmorOptions::default())
+    .unwrap();
+    assert_eq!(
+        verify_detached(&armored, b"content", std::slice::from_ref(&public)),
+        SignatureState::Unverified,
+    );
+    assert!(matches!(
+        verify_detached(&armored, b"content", &[key.public()]),
+        SignatureState::Valid { .. }
+    ));
+}

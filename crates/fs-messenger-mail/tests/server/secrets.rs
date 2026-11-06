@@ -2,7 +2,7 @@
 //! login names no password, over any of the three protocols.
 
 use fs_messenger_mail::fetch::{
-    DEFAULT_IMAP_TIMEOUT, FetchLimits, ImapConfig, ImapFetch, MailCursor, MailFetch,
+    DEFAULT_IDLE_TIMEOUT, FetchLimits, ImapConfig, ImapFetch, MailCursor, MailFetch,
 };
 use fs_messenger_mail::jmap::{JmapClient, JmapConfig, JmapFetch};
 use fs_messenger_mail::keys::KeyStore as _;
@@ -109,12 +109,13 @@ async fn a_refused_login_names_no_password() {
     let limits = FetchLimits {
         mails: 1,
         bytes: 1024,
+        batch_bytes: 1024,
     };
     let imap = ImapFetch::new(ImapConfig {
         endpoint: endpoint("FS_MSGTEST_IMAP_PORT"),
         user: user.clone(),
         password: wrong(),
-        timeout: DEFAULT_IMAP_TIMEOUT,
+        idle_timeout: DEFAULT_IDLE_TIMEOUT,
     });
     assert_clean(
         &imap
@@ -140,6 +141,7 @@ async fn a_refused_login_names_no_password() {
         trust: TlsTrust::OnlyThisCertificateForTests(server_certificate().to_string()),
         rebase_on_session_origin: true,
         other_credential_origins: vec![],
+        idle_timeout: DEFAULT_IDLE_TIMEOUT,
     })
     .unwrap();
     let jmap = JmapFetch::new(Arc::new(client));

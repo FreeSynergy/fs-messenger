@@ -17,6 +17,8 @@ mod encrypted;
 mod env;
 #[path = "../common/forge.rs"]
 mod forge;
+#[path = "../common/forge_subkeys.rs"]
+mod forge_subkeys;
 mod needles;
 mod paging;
 mod plain;

@@ -165,7 +165,7 @@ fn clean_header_block(raw: &[u8]) -> bool {
             return false;
         };
         let name = &line[..colon];
-        if name.is_empty() || !name.iter().all(|b| b.is_ascii_graphic()) {
+        if name.is_empty() || !name.iter().all(u8::is_ascii_graphic) {
             return false;
         }
         seen_field = true;

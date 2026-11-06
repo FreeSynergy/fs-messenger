@@ -5,10 +5,9 @@
 mod forge;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use forge::{files_of, holds_any, key, secret_needles};
-use fs_messenger_mail::fetch::{DEFAULT_IMAP_TIMEOUT, ImapConfig};
+use fs_messenger_mail::fetch::{DEFAULT_IDLE_TIMEOUT, ImapConfig};
 use fs_messenger_mail::jmap::JmapConfig;
 use fs_messenger_mail::keys::{FsKeyStore, KeySource, KeyStore, PeerKey};
 use fs_messenger_mail::openpgp::{generate_key, unix_now};
@@ -193,7 +192,7 @@ fn no_configuration_prints_a_password() {
         endpoint: endpoint.clone(),
         user: "u".into(),
         password: password.clone(),
-        timeout: DEFAULT_IMAP_TIMEOUT.min(Duration::from_secs(1)),
+        idle_timeout: DEFAULT_IDLE_TIMEOUT,
     };
     let smtp = SmtpConfig {
         endpoint,
@@ -207,6 +206,7 @@ fn no_configuration_prints_a_password() {
         trust: TlsTrust::SystemRoots,
         rebase_on_session_origin: false,
         other_credential_origins: vec![],
+        idle_timeout: DEFAULT_IDLE_TIMEOUT,
     };
     let shown = format!("{password} {password:?} {imap:?} {smtp:?} {jmap:?} {imap:#?}");
     assert!(!shown.contains(NEEDLE), "{shown}");

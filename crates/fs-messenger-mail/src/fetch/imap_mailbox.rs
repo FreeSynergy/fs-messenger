@@ -135,9 +135,9 @@ pub(super) async fn read_mailbox(
         }
         last_uid = uid;
         if over {
-            large.push(uid)
+            large.push(uid);
         } else {
-            fitting.push(uid)
+            fitting.push(uid);
         }
     }
     let origin = Origin {

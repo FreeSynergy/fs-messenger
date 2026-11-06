@@ -81,10 +81,14 @@ impl MailProvider {
                 data: a.data,
             })
             .collect();
-        raw.original = Some(Blob {
-            media_type: MEDIA_RFC822.to_string(),
-            bytes: mail.bytes,
-        });
+        // A cut-off start is no original (ADR 0030): the core gets to know the size, not these bytes.
+        raw.too_large = mail.too_large;
+        if mail.too_large.is_none() {
+            raw.original = Some(Blob {
+                media_type: MEDIA_RFC822.to_string(),
+                bytes: mail.bytes,
+            });
+        }
         raw.outgoing = mail.role == MailboxRole::Sent && from_me;
         Ok(raw)
     }

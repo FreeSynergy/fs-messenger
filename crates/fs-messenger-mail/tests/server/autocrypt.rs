@@ -201,3 +201,83 @@ async fn the_root_of_a_multipart_signed_cannot_rotate_a_key() {
         "not the root's subject"
     );
 }
+
+/// What the second review ran on this server: the owner revoked her signing subkey, and the holder of it
+/// signs a rotation to his own key.
+#[tokio::test]
+#[ignore = "needs scripts/test-servers/up.sh; run with --ignored"]
+async fn a_revoked_signing_subkey_cannot_rotate_a_key() {
+    use crate::forge_subkeys::{encrypted_by_subkey, key_with_subkeys, subkey_revoked};
+    let _one = serial().await;
+    let b = tempfile::tempdir().unwrap();
+    let bob = Person::open(Who::Bob, b.path(), Fetch::Imap, Submit::Smtp).await;
+    let from = Who::Alice.address();
+    let (alice, rpgp) = key_with_subkeys(&from, true);
+    bob.provider
+        .import_peer_key(&from, &subkey_revoked(&rpgp, 2, &[]))
+        .await
+        .unwrap();
+    let evil = generate_key(&from).unwrap().public();
+    let t = token();
+    let payload = format!(
+        "From: {from}\r\nAutocrypt: {}\r\nContent-Type: text/plain; hp=\"cipher\"\r\n\r\nRevoked-{t}\r\n",
+        format_header(&from, &evil).unwrap()
+    );
+    let reader = bob.provider.ensure_own_key().await.unwrap().public();
+    let head = format!(
+        "From: {from}\r\nTo: {}\r\nSubject: [...]\r\nMessage-ID: <{t}@msgtest.test>\r\n",
+        Who::Bob.address()
+    );
+    let raw = encrypted_by_subkey(&head, payload.as_bytes(), &rpgp, 2, &reader);
+    smtp_raw(Who::Bob, Who::Bob, &raw).await;
+    let got = bob.wait_for(&format!("Revoked-{t}")).await;
+    assert_eq!(got.summary.encryption, Encryption::Openpgp);
+    assert_eq!(
+        got.summary.signature,
+        fs_messenger_core::SignatureCheck::NotVerified
+    );
+    let peer = bob.provider.peer(&from).await.unwrap().unwrap();
+    assert_eq!(
+        peer.fingerprint,
+        alice.fingerprint(),
+        "the key must not rotate"
+    );
+}
+
+/// And the prose: Alice signs a text with header-like lines in it.
+#[tokio::test]
+#[ignore = "needs scripts/test-servers/up.sh; run with --ignored"]
+async fn signed_prose_cannot_rotate_a_key() {
+    let _one = serial().await;
+    let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let alice = Person::open(Who::Alice, a.path(), Fetch::Imap, Submit::Smtp).await;
+    let bob = Person::open(Who::Bob, b.path(), Fetch::Imap, Submit::Smtp).await;
+    bob.knows(&alice).await;
+    let from = Who::Alice.address();
+    let genuine = alice.provider.ensure_own_key().await.unwrap();
+    let evil = generate_key(&from).unwrap().public();
+    let t = token();
+    let prose = format!(
+        "Dear all\nFrom: {from}\nSubject: Quoted{t}\nAutocrypt: {}\n\nProse-{t}\n",
+        format_header(&from, &evil).unwrap()
+    );
+    let reader = bob.provider.ensure_own_key().await.unwrap().public();
+    let head = format!(
+        "From: {from}\r\nTo: {}\r\nSubject: [...]\r\nMessage-ID: <{t}@msgtest.test>\r\n",
+        Who::Bob.address()
+    );
+    let raw = crate::forge::encrypted(&head, prose.as_bytes(), &genuine, &reader);
+    smtp_raw(Who::Alice, Who::Bob, &raw).await;
+    let got = bob.wait_for(&format!("Prose-{t}")).await;
+    let peer = bob.provider.peer(&from).await.unwrap().unwrap();
+    assert_eq!(
+        peer.fingerprint,
+        genuine.fingerprint(),
+        "the key must not rotate"
+    );
+    assert_ne!(
+        got.summary.envelope.name,
+        format!("Quoted{t}"),
+        "not the quoted subject"
+    );
+}

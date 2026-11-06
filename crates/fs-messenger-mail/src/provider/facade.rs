@@ -90,8 +90,8 @@ impl MailProvider {
     pub(super) async fn learn_contained(&self, sender: String, offer: Offer) {
         let (learner, runtime) = (self.learner.clone(), Handle::current());
         let work = move || runtime.block_on(learner.learn(&sender, &offer));
-        let learned = contained(work, || Ok(Decision::Ignore)).await;
-        if let Err(e) = learned {
+        let outcome = contained(work, || Ok(Decision::Ignore)).await;
+        if let Err(e) = outcome {
             tracing::warn!(error = %e, "could not learn a key from an Autocrypt header");
         }
     }
