@@ -6,7 +6,7 @@ use common::{OWNER, World, args};
 use fs_messenger_core::{
     Error, MessageAction, Messenger, ToolCallChoice, ToolCallDecision, ToolCallOutcome,
 };
-use fs_messenger_guard::{Method, Question};
+use fs_messenger_guard::{Allowance, Method, Question, Verdict};
 use serde_json::json;
 async fn send(w: &World, q: &Question, d: ToolCallDecision) -> fs_messenger_core::Result<()> {
     w.repo
@@ -177,4 +177,32 @@ fn the_choices_stay_as_the_contract_has_them() {
     .map(|c| serde_json::to_string(c).unwrap())
     .collect();
     assert_eq!(names, ["\"refuse\"", "\"allowOnce\"", "\"allowClass\""]);
+}
+
+#[tokio::test]
+async fn an_answered_or_running_call_takes_no_second_answer_even_at_its_current_revision() {
+    let w = World::with_ai().await;
+    let q = w.ask("message.delete", args("/m")).await;
+    send(&w, &q, good(&w, &q)).await.unwrap();
+    // Approved: well signed, for the revision on screen. No question stands.
+    let approved = w.shown(&q).await;
+    let d = w
+        .owner
+        .decide(&w.identity, q.message, &approved, "allow-once");
+    refused(&w, &q, d, "revision does not match").await;
+
+    assert!(matches!(
+        w.check("message.delete", args("/m")).await,
+        Verdict::Allow(Allowance::Once { .. })
+    ));
+    // Running: a second answer would give it a second use.
+    let running = w.shown(&q).await;
+    let d = w
+        .owner
+        .decide(&w.identity, q.message, &running, "allow-once");
+    refused(&w, &q, d, "revision does not match").await;
+    assert!(matches!(
+        w.check("message.delete", args("/m")).await,
+        Verdict::Ask(_)
+    ));
 }
