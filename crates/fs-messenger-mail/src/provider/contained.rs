@@ -18,3 +18,17 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `read_cut_off` and `learn_contained` run through this. No input is known that makes `cut_off`
+    /// panic, so what is tested is the path, not that function.
+    #[tokio::test]
+    async fn a_panic_becomes_the_fallback() {
+        let answer = contained(|| -> u8 { panic!("a bug in a parser") }, || 7).await;
+        assert_eq!(answer, 7);
+        assert_eq!(contained(|| 1, || 7).await, 1);
+    }
+}

@@ -6,6 +6,7 @@ mod encrypt;
 mod generate;
 mod usable;
 
+pub(crate) use cert::MAX_CERT_BYTES;
 pub use cert::{PublicCert, SecretCert};
 pub use decrypt::{SignatureState, decrypt, decrypt_selecting, verify_detached};
 pub use encrypt::{EncryptionTargets, sign_and_encrypt};

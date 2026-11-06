@@ -54,28 +54,28 @@ impl KeyLearner {
         let _writes = self.writes.lock().await;
         let known = self.keys.peer(&address).await?;
         let decision = decide(known.as_ref(), offer, now);
+        // What is kept is what the signatures cover: every later write logs this record again.
+        let kept = offer.cert.compact();
         match (&decision, known) {
             (Decision::FirstSeen, _) => {
-                let peer = PeerKey::new(&address, &offer.cert, KeySource::AutocryptFirstSeen, now)?;
+                let peer = PeerKey::new(&address, &kept, KeySource::AutocryptFirstSeen, now)?;
                 self.keys.put_peer(&peer).await?;
             }
             (Decision::Rotate, Some(old)) => {
-                let mut peer =
-                    PeerKey::new(&address, &offer.cert, KeySource::AutocryptRotated, now)?;
+                let mut peer = PeerKey::new(&address, &kept, KeySource::AutocryptRotated, now)?;
                 peer.first_seen = old.first_seen;
                 self.keys.put_peer(&peer).await?;
             }
             (Decision::SameKey { take_offered }, Some(mut peer)) => {
-                if *take_offered {
-                    let mut merged = peer.certificate()?;
-                    merged.merge(&offer.cert);
+                if *take_offered && let Some(merged) = peer.certificate()?.merged_with(&offer.cert)
+                {
                     peer.cert = PeerKey::new(&address, &merged, peer.source, now)?.cert;
                 }
                 peer.last_seen = now;
                 self.keys.put_peer(&peer).await?;
             }
             (Decision::Conflict, Some(mut peer)) => {
-                let fresh = PeerKey::new(&address, &offer.cert, peer.source, now)?;
+                let fresh = PeerKey::new(&address, &kept, peer.source, now)?;
                 peer.candidate = Some(CandidateKey {
                     fingerprint: fresh.fingerprint,
                     cert: fresh.cert,

@@ -2,7 +2,7 @@
 //! batches, each on a fresh server (`down.sh`, then `up.sh`):
 //!
 //!     cargo test -j 4 -p fs-messenger-mail --test server -- --ignored encrypted needles plain refused
-//!     cargo test -j 4 -p fs-messenger-mail --test server -- --ignored autocrypt secrets
+//!     cargo test -j 4 -p fs-messenger-mail --test server -- --ignored autocrypt secrets flood
 //!     cargo test -j 4 -p fs-messenger-mail --test server -- --ignored replay paging
 //!
 //! Stalwart's default throttle allows 25 mails per hour per sender domain and recipient, and all of them
@@ -16,6 +16,7 @@ mod autocrypt;
 mod common;
 mod encrypted;
 mod env;
+mod flood;
 #[path = "../common/forge.rs"]
 mod forge;
 #[path = "../common/forge_subkeys.rs"]

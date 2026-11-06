@@ -176,3 +176,30 @@ fn seipd_body(bytes: &[u8]) -> usize {
         at += header + length;
     }
 }
+
+/// What anyone can write without a key: a copy of a public self-signature with its own unhashed area.
+/// It verifies, because nothing covers that area.
+pub fn padded(cert: &PublicCert, tag: &str, size: usize) -> PublicCert {
+    use pgp::composed::{Deserializable as _, SignedPublicKey};
+    use pgp::packet::{Notation, Signature};
+    let bytes = cert.to_binary().unwrap();
+    let mut form = SignedPublicKey::from_bytes(std::io::Cursor::new(bytes)).unwrap();
+    let signature = &form.details.direct_signatures[0];
+    let mut config = signature.config().unwrap().clone();
+    let note = Notation {
+        readable: true,
+        name: format!("{tag}@example.org").into_bytes().into(),
+        value: vec![b'x'; size].into(),
+    };
+    config
+        .unhashed_subpackets
+        .push(Subpacket::regular(SubpacketData::Notation(note)).unwrap());
+    let copy = Signature::from_config(
+        config,
+        signature.signed_hash_value().unwrap(),
+        signature.signature().unwrap().clone(),
+    )
+    .unwrap();
+    form.details.direct_signatures.push(copy);
+    PublicCert::from_binary(&form.to_bytes().unwrap()).unwrap()
+}

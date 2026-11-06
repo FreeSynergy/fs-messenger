@@ -63,12 +63,13 @@ fn may_prove(known: &PeerKey, now: u64) -> bool {
 
 /// The same primary key. A forger cannot add self-signatures, so what a form brings beyond the held one,
 /// if its signatures verify, is the owner's: a revocation, a new subkey, a later expiry. The two forms are
-/// merged, and nothing is ever given up: a form with a subkey stripped takes nothing away.
+/// merged, and nothing is ever given up: a form with a subkey stripped takes nothing away. What he can
+/// write is the unhashed area of a copied signature: that counts as nothing new (`PublicCert::merged_with`).
 fn same_key(known: &PeerKey, offer: &Offer, now: u64) -> Decision {
     let invalid = usable_encryption_key(&offer.cert, now) == Err(KeyRefusal::Invalid);
     let take_offered = !invalid
         && known
             .certificate()
-            .is_ok_and(|mut held| held.merge(&offer.cert));
+            .is_ok_and(|held| held.merged_with(&offer.cert).is_some());
     Decision::SameKey { take_offered }
 }

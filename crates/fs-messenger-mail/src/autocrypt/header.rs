@@ -11,10 +11,9 @@ use base64::engine::general_purpose::STANDARD;
 
 use crate::address::{clean_address, normalise_address};
 use crate::error::{MailError, Result};
-use crate::openpgp::PublicCert;
+use crate::openpgp::{MAX_CERT_BYTES, PublicCert};
 
-/// A certificate larger than this is not even looked at.
-const MAX_KEYDATA: usize = 64 * 1024;
+const MAX_KEYDATA: usize = MAX_CERT_BYTES;
 const FOLD_AT: usize = 76;
 
 /// A parsed `Autocrypt` header.
