@@ -11,7 +11,7 @@ use reqwest::redirect::Policy;
 use serde_json::{Value, json};
 use tokio::sync::OnceCell;
 
-use super::session::Session;
+use super::session::{Origins, Session};
 use crate::error::{MailError, Result};
 use crate::secret::Password;
 use crate::tls::TlsTrust;
@@ -33,6 +33,24 @@ pub struct JmapConfig {
     /// Use the origin of `session_url` for every URL the session names, for a server behind a proxy
     /// that advertises its inner address. Off: the session's URLs must be `https` by themselves.
     pub rebase_on_session_origin: bool,
+    /// Other `https` origins this account may send its credentials to, if the session document names
+    /// them. Empty by default: only the origin of `session_url` gets them.
+    pub other_credential_origins: Vec<String>,
+}
+
+/// At most this much JSON from a server. Generous: `maxObjectsInGet` ids per call, no mail bodies.
+const MAX_JSON_BYTES: usize = 32 * 1024 * 1024;
+
+/// The whole body of `response`, refused past `limit` without holding more than that.
+async fn read_limited(mut response: reqwest::Response, limit: usize) -> Result<Vec<u8>> {
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(err)? {
+        if body.len() + chunk.len() > limit {
+            return Err(err(format!("the answer is larger than {limit} bytes")));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
 }
 
 /// A method answered with an error (RFC 8620 section 3.6.2).
@@ -90,8 +108,13 @@ impl JmapClient {
             .get_or_try_init(|| async {
                 let url = &self.config.session_url;
                 let response = self.authed(self.http.get(url)).send().await.map_err(err)?;
-                let body = Self::checked(response)?.bytes().await.map_err(err)?;
-                Session::read(&body, url, self.config.rebase_on_session_origin)
+                let body = read_limited(Self::checked(response)?, MAX_JSON_BYTES).await?;
+                let origins = Origins {
+                    session_url: url,
+                    rebase: self.config.rebase_on_session_origin,
+                    others: &self.config.other_credential_origins,
+                };
+                Session::read(&body, origins)
             })
             .await
     }
@@ -108,7 +131,8 @@ impl JmapClient {
             .send()
             .await
             .map_err(err)?;
-        let answer: Value = Self::checked(response)?.json().await.map_err(err)?;
+        let body = read_limited(Self::checked(response)?, MAX_JSON_BYTES).await?;
+        let answer: Value = serde_json::from_slice(&body)?;
         match answer.get("methodResponses") {
             Some(Value::Array(list)) => Ok(list.clone()),
             _ => Err(err("the answer has no methodResponses")),
@@ -126,15 +150,16 @@ impl JmapClient {
             .send()
             .await
             .map_err(err)?;
-        let answer: Value = Self::checked(response)?.json().await.map_err(err)?;
+        let body = read_limited(Self::checked(response)?, MAX_JSON_BYTES).await?;
+        let answer: Value = serde_json::from_slice(&body)?;
         answer["blobId"]
             .as_str()
             .map(str::to_string)
             .ok_or_else(|| err("the upload answered no blobId"))
     }
 
-    /// Download a blob, byte for byte.
-    pub(super) async fn download(&self, blob: &str) -> Result<Vec<u8>> {
+    /// Download a blob, byte for byte, up to `limit`. More is an error: the server said otherwise.
+    pub(super) async fn download(&self, blob: &str, limit: usize) -> Result<Vec<u8>> {
         let session = self.session().await?;
         let url = session
             .download_url
@@ -143,8 +168,7 @@ impl JmapClient {
             .replace("{name}", "mail.eml")
             .replace("{type}", "message/rfc822");
         let response = self.authed(self.http.get(url)).send().await.map_err(err)?;
-        let body = Self::checked(response)?.bytes().await.map_err(err)?;
-        Ok(body.to_vec())
+        read_limited(Self::checked(response)?, limit).await
     }
 
     /// The arguments of the response with call id `id`, or the method's error.
@@ -167,5 +191,20 @@ impl JmapClient {
     /// As [`JmapClient::response`], with a method's error as an error.
     pub(super) fn answer<'a>(responses: &'a [Value], id: &str) -> Result<&'a Value> {
         Self::response(responses, id)?.map_err(|e| err(format!("call {id} answered {}", e.kind)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn response(size: usize) -> reqwest::Response {
+        reqwest::Response::from(http::Response::new(reqwest::Body::from(vec![7u8; size])))
+    }
+
+    #[tokio::test]
+    async fn a_body_past_the_limit_is_refused() {
+        assert_eq!(read_limited(response(10), 10).await.unwrap().len(), 10);
+        assert!(read_limited(response(11), 10).await.is_err());
     }
 }

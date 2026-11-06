@@ -50,5 +50,7 @@ zeroize = "1"
 fs-messenger-mail = { path = ".", features = ["test-trust"] }
 # `MessengerRepo::open` on an in-memory store, for the offline tests.
 fs-messenger-core = { path = "../fs-messenger-core", features = ["test-support"] }
+http = "1"
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring", "pem"] }
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }

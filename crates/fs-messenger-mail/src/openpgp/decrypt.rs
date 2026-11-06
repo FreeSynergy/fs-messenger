@@ -4,7 +4,7 @@
 //! here, so a sender cannot put a plain literal packet into an encrypted-looking envelope and have it
 //! counted as decrypted. Reading to the end checks integrity (AEAD or MDC): tampered data fails.
 
-use std::io::{BufReader, Cursor};
+use std::io::{BufReader, Cursor, Read as _};
 
 use pgp::composed::{
     Deserializable, DetachedSignature, Message, SignedPublicKey, SignedPublicSubKey,
@@ -36,11 +36,24 @@ fn verifiers(cert: &SignedPublicKey) -> Vec<&dyn VerifyingKey> {
     keys
 }
 
-/// Decrypt with `own` and check the signature against `signers`. Fails if `own` opens nothing.
+/// Decrypt with `own` and check the signature against `signers`. Fails if `own` opens nothing, or if the
+/// plaintext is larger than `limit`.
 pub fn decrypt(
     armored: &[u8],
     own: &[SecretCert],
     signers: &[PublicCert],
+    limit: usize,
+) -> Result<(Vec<u8>, SignatureState), MailError> {
+    decrypt_selecting(armored, own, limit, |_| Ok(signers.to_vec()))
+}
+
+/// As [`decrypt`], decrypting once: `pick` sees the plaintext and names whom the signature must verify
+/// with, because a mail says inside who wrote it. An error of `pick` is passed on as it is.
+pub fn decrypt_selecting(
+    armored: &[u8],
+    own: &[SecretCert],
+    limit: usize,
+    pick: impl FnOnce(&[u8]) -> Result<Vec<PublicCert>, MailError>,
 ) -> Result<(Vec<u8>, SignatureState), MailError> {
     if own.is_empty() {
         return Err(MailError::Pgp("no own key".into()));
@@ -58,9 +71,19 @@ pub fn decrypt(
     if message.is_compressed() {
         message = message.decompress()?;
     }
-    let plaintext = message
-        .as_data_vec()
+    // Compression can turn a small mail into gigabytes: never hold more than the limit.
+    let mut plaintext = Vec::new();
+    message
+        .by_ref()
+        .take(u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1))
+        .read_to_end(&mut plaintext)
         .map_err(|e| MailError::Pgp(e.to_string()))?;
+    if plaintext.len() > limit {
+        return Err(MailError::Pgp(format!(
+            "the plaintext is larger than {limit} bytes"
+        )));
+    }
+    let signers = pick(&plaintext)?;
     let state = if message.is_signed() {
         signers
             .iter()

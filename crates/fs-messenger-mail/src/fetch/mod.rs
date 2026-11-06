@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use crate::error::MailError;
 
 pub use cursor::{MailCursor, MailboxCursor};
-pub use imap::{ImapConfig, ImapFetch};
+pub use imap::{DEFAULT_IMAP_TIMEOUT, ImapConfig, ImapFetch};
 
 /// What a mailbox is for. Only `Sent` can make a mail "mine": the `From` of a mail proves nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,11 +44,33 @@ pub struct FetchedBatch {
     pub more: bool,
 }
 
+/// How much one call may deliver.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FetchLimits {
+    /// Mails per mailbox.
+    pub mails: usize,
+    /// Bytes per mail. A larger one is skipped, logged and left on the server: holding it just to
+    /// have the core refuse it would let a sender fill the memory.
+    pub bytes: usize,
+}
+
+/// A failure in the sent mailbox does not cost what the inbox delivered: the cursor of the sent mailbox
+/// stays where it was, and the next call tries again.
+pub(crate) fn sent_is_optional(result: Result<(), MailError>) {
+    if let Err(e) = result {
+        tracing::warn!(error = %e, "could not read the sent mailbox; going on with the inbox");
+    }
+}
+
 /// How mail is read from a server, and how a sent copy gets there.
 #[async_trait]
 pub trait MailFetch: Send + Sync {
-    /// Up to `limit` mails after `cursor`, per mailbox. May repeat a mail; never skips one.
-    async fn fetch(&self, cursor: &MailCursor, limit: usize) -> Result<FetchedBatch, MailError>;
+    /// What comes after `cursor`, within `limits`. May repeat a mail; skips only one over the limit.
+    async fn fetch(
+        &self,
+        cursor: &MailCursor,
+        limits: &FetchLimits,
+    ) -> Result<FetchedBatch, MailError>;
     /// Keep `raw` as the sent copy.
     async fn store_sent(&self, raw: &[u8]) -> Result<(), MailError>;
 }

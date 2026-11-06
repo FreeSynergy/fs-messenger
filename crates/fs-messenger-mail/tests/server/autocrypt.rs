@@ -153,3 +153,51 @@ async fn a_rotation_signed_by_the_known_key_is_taken() {
     assert_eq!(held.fingerprint, new.fingerprint(), "rotated");
     assert_eq!(held.source, KeySource::AutocryptRotated);
 }
+
+/// The reviewer's attack, on the real server: a part Alice really signed, in a `multipart/signed` whose
+/// root carries the attacker's key. The signature does not cover that root.
+#[tokio::test]
+#[ignore = "needs scripts/test-servers/up.sh; run with --ignored"]
+async fn the_root_of_a_multipart_signed_cannot_rotate_a_key() {
+    let _one = serial().await;
+    let b = tempfile::tempdir().unwrap();
+    let bob = Person::open(Who::Bob, b.path(), Fetch::Imap, Submit::Smtp).await;
+    let (alice, alice_rpgp) = crate::forge::key(&Who::Alice.address());
+    let from = Who::Alice.address();
+    bob.provider
+        .import_peer_key(&from, &alice.public())
+        .await
+        .unwrap();
+    let evil = generate_key(&from).unwrap();
+    let t = token();
+    let content = format!(
+        "From: {from}\r\nSubject: Genuine{t}\r\nContent-Type: text/plain\r\n\r\nSigned-{t}\r\n"
+    );
+    let signature = crate::forge::detached(&alice_rpgp, &content);
+    let head = format!(
+        "From: {from}\r\nSubject: Evil{t}\r\nAutocrypt: {}\r\n",
+        format_header(&from, &evil.public()).unwrap()
+    );
+    let payload = crate::forge::multipart_signed(&head, &content, &signature);
+    let reader = bob.provider.ensure_own_key().await.unwrap().public();
+    let outer = format!(
+        "From: {from}\r\nTo: {}\r\nSubject: [...]\r\nMessage-ID: <{t}@msgtest.test>\r\n",
+        Who::Bob.address()
+    );
+    let raw = crate::forge::encrypted(&outer, payload.as_bytes(), &evil, &reader);
+    smtp_raw(Who::Bob, Who::Bob, &raw).await;
+
+    let got = bob.wait_for(&format!("Signed-{t}")).await;
+    assert_eq!(got.summary.encryption, Encryption::Openpgp);
+    let held = bob.provider.peer(&from).await.unwrap().unwrap();
+    assert_eq!(
+        held.fingerprint,
+        alice.fingerprint(),
+        "the key must not rotate"
+    );
+    assert_eq!(
+        got.summary.envelope.name,
+        format!("Genuine{t}"),
+        "not the root's subject"
+    );
+}

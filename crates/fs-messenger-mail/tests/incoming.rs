@@ -2,14 +2,12 @@
 
 mod common;
 
-use common::{Offline, person};
-use fs_messenger_core::{Encryption, Provider, RawMessage};
-use fs_messenger_mail::UNDECRYPTED_MARK;
+use common::{Offline, deliver, person};
+use fs_messenger_core::{Encryption, SignatureCheck};
 use fs_messenger_mail::autocrypt::format_header;
 use fs_messenger_mail::mime::{OUTER_SUBJECT, PayloadInput, build_outer, build_payload};
 use fs_messenger_mail::openpgp::{
-    EncryptionTargets, SecretCert, SignatureState, sign_and_encrypt, unix_now,
-    usable_encryption_key,
+    EncryptionTargets, SecretCert, sign_and_encrypt, unix_now, usable_encryption_key,
 };
 
 async fn own(p: &Offline) -> SecretCert {
@@ -46,13 +44,6 @@ fn mail(from: &str, to: &str, signer: &SecretCert, reader: &SecretCert, header: 
     .unwrap()
 }
 
-async fn deliver(p: &Offline, raw: &[u8]) -> RawMessage {
-    p.wire.inbox.lock().unwrap().push(raw.to_vec());
-    let mut batch = p.provider.fetch(None).await.unwrap();
-    assert_eq!(batch.messages.len(), 1);
-    batch.messages.pop().unwrap()
-}
-
 #[tokio::test]
 async fn decrypted_means_openpgp_with_protected_headers_and_the_original_untouched() {
     let (alice, bob) = (person("a@example.org").await, person("b@example.org").await);
@@ -76,13 +67,9 @@ async fn decrypted_means_openpgp_with_protected_headers_and_the_original_untouch
         "the sender's id only links"
     );
     assert_eq!(got.original.unwrap().bytes, raw, "byte for byte (ADR 0030)");
-    let inspected = bob.provider.inspect(&raw).await.unwrap();
-    assert_eq!(
-        inspected.signature,
-        SignatureState::Valid {
-            fingerprint: ka.fingerprint()
-        }
-    );
+    // The key came with this mail, so it proves nothing yet. The next one is signed by a known key.
+    assert_eq!(got.signature, SignatureCheck::NotVerified);
+    assert_eq!(deliver(&bob, &raw).await.signature, SignatureCheck::Valid);
 }
 
 #[tokio::test]
@@ -97,11 +84,14 @@ async fn a_mail_for_someone_else_stays_undecrypted_with_its_original() {
     let raw = mail(&alice.address, &eve.address, &ka, &kb, &header);
     let got = deliver(&eve, &raw).await;
     assert_eq!(got.encryption, Encryption::None);
-    assert_eq!(got.body_text, UNDECRYPTED_MARK);
+    assert!(got.undecrypted);
+    assert!(
+        got.body_text.is_empty(),
+        "no text pretends to be the message"
+    );
     assert_eq!(got.subject.as_deref(), Some(OUTER_SUBJECT));
     assert!(got.attachments.is_empty());
     assert_eq!(got.original.unwrap().bytes, raw);
-    assert!(eve.provider.inspect(&raw).await.unwrap().undecrypted);
 }
 
 #[tokio::test]
@@ -112,7 +102,7 @@ protocol=\"application/pgp-encrypted\"; boundary=y\r\n\r\n--y\r\nContent-Type: a
 Version: 1\r\n--y\r\nContent-Type: application/octet-stream\r\n\r\nnot pgp at all\r\n--y--\r\n";
     let got = deliver(&bob, raw).await;
     assert_eq!(got.encryption, Encryption::None);
-    assert_eq!(got.body_text, UNDECRYPTED_MARK);
+    assert!(got.undecrypted);
     assert_eq!(got.original.unwrap().bytes, raw);
 }
 
@@ -172,7 +162,7 @@ Version: 1\r\n--y\r\nContent-Type: application/octet-stream\r\n\r\n{literal}\r\n
     );
     let got = deliver(&bob, raw.as_bytes()).await;
     assert_eq!(got.encryption, Encryption::None);
-    assert_eq!(got.body_text, UNDECRYPTED_MARK);
+    assert!(got.undecrypted);
 }
 
 #[tokio::test]
@@ -195,8 +185,7 @@ async fn a_signature_by_a_stranger_does_not_read_as_valid() {
         Encryption::Openpgp,
         "it was decrypted; that is all the state says"
     );
-    let inspected = bob.provider.inspect(&raw).await.unwrap();
-    assert_eq!(inspected.signature, SignatureState::Unverified);
+    assert_eq!(got.signature, SignatureCheck::NotVerified);
 }
 
 #[tokio::test]

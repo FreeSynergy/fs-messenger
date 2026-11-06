@@ -31,6 +31,6 @@ mod tls;
 
 pub use address::normalise_address;
 pub use error::MailError;
-pub use provider::{Inspection, MailIdentity, MailProvider, UNDECRYPTED_MARK};
+pub use provider::{MailIdentity, MailProvider};
 pub use secret::Password;
 pub use tls::{Endpoint, TlsTrust};

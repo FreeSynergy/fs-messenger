@@ -9,20 +9,20 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use fs_interfaces::provider::Capabilities;
 use fs_messenger_core::{
-    EncryptionPlan, FetchBatch, Outgoing, Provider, ProviderCursor, Result as CoreResult,
-    SendReceipt,
+    EncryptionPlan, FetchBatch, MessengerConfig, Outgoing, Provider, ProviderCursor,
+    Result as CoreResult, SendReceipt,
 };
 
 use crate::address::normalise_address;
 use crate::autocrypt::KeyLearner;
 use crate::error::MailError;
-use crate::fetch::{MailCursor, MailFetch};
+use crate::fetch::{FetchLimits, MailCursor, MailFetch};
 use crate::keys::{KeyStore, PeerKey};
 use crate::openpgp::{SecretCert, generate_key};
 use crate::submit::MailSubmit;
 
 /// Mails per mailbox in one fetch.
-const FETCH_LIMIT: usize = 50;
+const FETCH_MAILS: usize = 50;
 
 /// Whose mail this is.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,6 +46,7 @@ pub struct MailProvider {
     pub(super) fetcher: Arc<dyn MailFetch>,
     pub(super) submitter: Arc<dyn MailSubmit>,
     pub(super) keys: Arc<dyn KeyStore>,
+    pub(super) limits: FetchLimits,
     learner: KeyLearner,
 }
 
@@ -63,7 +64,20 @@ impl MailProvider {
             submitter,
             learner: KeyLearner::new(keys.clone()),
             keys,
+            // The core's own default, so that both refuse at the same point.
+            limits: FetchLimits {
+                mails: FETCH_MAILS,
+                bytes: MessengerConfig::new("").max_message_bytes,
+            },
         }
+    }
+
+    /// The largest mail, and the largest plaintext after decrypting, for a program that set
+    /// `MessengerConfig::max_message_bytes` to something else.
+    #[must_use]
+    pub fn with_max_message_bytes(mut self, bytes: usize) -> Self {
+        self.limits.bytes = bytes;
+        self
     }
 
     pub(super) fn learner(&self) -> &KeyLearner {
@@ -98,9 +112,14 @@ impl MailProvider {
         self.keys.put_peer(&peer).await
     }
 
-    /// A person accepts the offered key of `address`. Answers whether there was one.
-    pub async fn accept_candidate(&self, address: &str) -> Result<bool, MailError> {
-        self.learner.accept_candidate(address).await
+    /// A person compared `fingerprint` with its owner and accepts that key for `address`. Answers
+    /// whether a key was replaced; fails if the candidate held now is another one.
+    pub async fn accept_candidate(
+        &self,
+        address: &str,
+        fingerprint: &str,
+    ) -> Result<bool, MailError> {
+        self.learner.accept_candidate(address, fingerprint).await
     }
 }
 
@@ -135,7 +154,7 @@ impl Provider for MailProvider {
 
     async fn fetch(&self, since: Option<&ProviderCursor>) -> CoreResult<FetchBatch> {
         let cursor = MailCursor::read(since);
-        let batch = self.fetcher.fetch(&cursor, FETCH_LIMIT).await?;
+        let batch = self.fetcher.fetch(&cursor, &self.limits).await?;
         let mut messages = Vec::with_capacity(batch.mails.len());
         for mail in batch.mails {
             messages.push(self.receive(mail).await?);

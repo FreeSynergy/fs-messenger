@@ -1,7 +1,6 @@
 //! A plain mail arrives marked `none`, and a mail we cannot open stays visibly undecrypted.
 
 use fs_messenger_core::Encryption;
-use fs_messenger_mail::UNDECRYPTED_MARK;
 
 use crate::common::{
     Fetch, Person, Submit, Who, contains, message_id_of, raw_by_message_id, serial, smtp_raw, token,
@@ -75,7 +74,7 @@ async fn a_mail_for_a_lost_key_is_kept_and_marked() {
     fs_messenger_core::Ingest::sync(&new_bob.repo, new_bob.account)
         .await
         .expect("no error loses it");
-    let held = new_bob.find(UNDECRYPTED_MARK).await;
+    let held = new_bob.find(fs_messenger_mail::mime::OUTER_SUBJECT).await;
     let mine = held
         .iter()
         .find(|m| m.links.iter().any(|x| x.id == id))
@@ -83,6 +82,6 @@ async fn a_mail_for_a_lost_key_is_kept_and_marked() {
     assert_eq!(mine.summary.encryption, Encryption::None);
     let server = raw_by_message_id(Who::Bob, &id).await.unwrap();
     assert_eq!(mine.original.as_ref().unwrap().bytes, server);
-    let inspected = new_bob.provider.inspect(&server).await.unwrap();
-    assert!(inspected.undecrypted);
+    assert!(mine.undecrypted);
+    assert!(mine.body_text.is_empty());
 }

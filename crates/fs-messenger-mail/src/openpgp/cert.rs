@@ -80,16 +80,35 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 impl PublicCert {
-    /// Creation time of the newest self-signature, for telling two forms of one key apart.
+    /// Creation time of the newest self-signature, subkeys included, for telling two forms of one key
+    /// apart: a new or newly bound subkey makes a form newer.
     pub(crate) fn newest_self_signature(&self) -> u64 {
         let details = &self.0.details;
         details
             .direct_signatures
             .iter()
             .chain(details.users.iter().flat_map(|u| u.signatures.iter()))
+            .chain(
+                self.0
+                    .public_subkeys
+                    .iter()
+                    .flat_map(|s| s.signatures.iter()),
+            )
             .filter_map(pgp::packet::Signature::created)
             .map(|t| u64::from(t.as_secs()))
             .max()
             .unwrap_or(0)
+    }
+
+    /// How many revocations it carries, of the key and of its subkeys.
+    pub(crate) fn revocations(&self) -> usize {
+        let of_subkeys = self
+            .0
+            .public_subkeys
+            .iter()
+            .flat_map(|s| s.signatures.iter())
+            .filter(|s| s.typ() == Some(pgp::packet::SignatureType::SubkeyRevocation))
+            .count();
+        self.0.details.revocation_signatures.len() + of_subkeys
     }
 }

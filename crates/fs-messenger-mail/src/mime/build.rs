@@ -11,6 +11,7 @@ use fs_messenger_core::OutgoingAttachment;
 use mail_builder::MessageBuilder;
 use mail_builder::headers::address::Address;
 use mail_builder::headers::content_type::ContentType;
+use mail_builder::headers::date::Date;
 use mail_builder::headers::raw::Raw;
 use mail_builder::mime::MimePart;
 
@@ -18,7 +19,6 @@ use crate::error::{MailError, Result};
 
 /// The outer `Subject` of every encrypted mail (RFC 9788 section 4.3).
 pub const OUTER_SUBJECT: &str = "[...]";
-const SUBJECT_CHARS: usize = 78;
 
 /// What goes into a mail.
 pub struct PayloadInput<'a> {
@@ -28,7 +28,7 @@ pub struct PayloadInput<'a> {
     pub to: &'a [String],
     /// `Cc`.
     pub cc: &'a [String],
-    /// The real subject.
+    /// The real subject; empty if the person gave none.
     pub subject: &'a str,
     /// `Message-ID`, without brackets.
     pub message_id: &'a str,
@@ -48,17 +48,6 @@ pub struct PayloadInput<'a> {
     pub autocrypt: &'a str,
 }
 
-/// The core gives no subject (`DESIGN.md` of the core, open point 2): the first text line stands in.
-pub fn subject_from_text(text: &str) -> String {
-    let line = text.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
-    let short: String = line.trim().chars().take(SUBJECT_CHARS).collect();
-    if short.is_empty() {
-        "(no subject)".to_string()
-    } else {
-        short
-    }
-}
-
 fn list(addresses: &[String]) -> Address<'static> {
     Address::new_list(
         addresses
@@ -72,10 +61,12 @@ fn list(addresses: &[String]) -> Address<'static> {
 fn addressed<'a>(input: &'a PayloadInput<'a>, subject: &'a str) -> MessageBuilder<'a> {
     let mut b = MessageBuilder::new()
         .from(input.from)
-        .subject(subject)
         .message_id(input.message_id)
         .date(input.date)
         .header("Autocrypt", Raw::new(input.autocrypt));
+    if !subject.is_empty() {
+        b = b.subject(subject);
+    }
     if !input.to.is_empty() {
         b = b.to(list(input.to));
     }
@@ -105,6 +96,13 @@ fn file_part(file: &OutgoingAttachment) -> MimePart<'_> {
         .transfer_encoding("base64")
 }
 
+/// `Date` as `mail-builder` writes it outside, so that the `HP-Outer` line says what is really there.
+fn date_text(date: i64) -> String {
+    let mut out = Vec::new();
+    Date::new(date).write_rfc822(&mut out);
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 fn written(builder: MessageBuilder<'_>) -> Result<Vec<u8>> {
     builder
         .write_to_vec()
@@ -117,6 +115,10 @@ pub fn build_payload(input: &PayloadInput<'_>) -> Result<Vec<u8>, MailError> {
     parts.extend(input.attachments.iter().map(file_part));
     let root = ContentType::new("multipart/mixed").attribute("hp", "cipher");
     let mut b = addressed(input, input.subject)
+        .header(
+            "HP-Outer",
+            Raw::new(format!("Date: {}", date_text(input.date))),
+        )
         .header("HP-Outer", Raw::new(format!("From: {}", input.from)))
         .header("HP-Outer", Raw::new(format!("Subject: {OUTER_SUBJECT}")))
         .header(
@@ -128,6 +130,16 @@ pub fn build_payload(input: &PayloadInput<'_>) -> Result<Vec<u8>, MailError> {
     }
     if !input.cc.is_empty() {
         b = b.header("HP-Outer", Raw::new(format!("Cc: {}", input.cc.join(", "))));
+    }
+    if let Some(parent) = input.in_reply_to {
+        b = b.header("HP-Outer", Raw::new(format!("In-Reply-To: <{parent}>")));
+    }
+    if !input.references.is_empty() {
+        let refs: Vec<String> = input.references.iter().map(|r| format!("<{r}>")).collect();
+        b = b.header(
+            "HP-Outer",
+            Raw::new(format!("References: {}", refs.join(" "))),
+        );
     }
     written(b.body(MimePart::new(root, parts)))
 }
@@ -149,16 +161,4 @@ pub fn build_outer(input: &PayloadInput<'_>, armored: &str) -> Result<Vec<u8>, M
     .inline()
     .transfer_encoding("7bit");
     written(addressed(input, OUTER_SUBJECT).body(MimePart::new(root, vec![control, data])))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_subject_comes_from_the_first_line_and_is_never_empty() {
-        assert_eq!(subject_from_text("\n  hello there \nmore"), "hello there");
-        assert_eq!(subject_from_text("   "), "(no subject)");
-        assert_eq!(subject_from_text(&"x".repeat(200)).chars().count(), 78);
-    }
 }

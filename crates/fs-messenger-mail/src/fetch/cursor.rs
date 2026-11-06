@@ -27,8 +27,10 @@ pub enum MailboxCursor {
     Jmap {
         /// Everything from this state on comes through `Email/changes`.
         state: String,
-        /// Still walking the first listing, at this position.
-        position: Option<u64>,
+        /// Still walking the first listing.
+        walking: bool,
+        /// The last id of that walk: an id stays right when mail is deleted, a position does not.
+        anchor: Option<String>,
     },
 }
 
@@ -71,7 +73,8 @@ mod tests {
             "a".into(),
             MailboxCursor::Jmap {
                 state: "s1".into(),
-                position: None,
+                walking: false,
+                anchor: None,
             },
         );
         let written = c.write().unwrap();

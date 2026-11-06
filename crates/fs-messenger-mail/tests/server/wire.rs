@@ -4,7 +4,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use fs_messenger_core::Message;
-use fs_messenger_mail::fetch::{FetchedMail, ImapConfig, ImapFetch, MailCursor, MailFetch};
+use fs_messenger_mail::fetch::{
+    DEFAULT_IMAP_TIMEOUT, FetchLimits, FetchedMail, ImapConfig, ImapFetch, MailCursor, MailFetch,
+};
 use fs_messenger_mail::jmap::{JmapClient, JmapConfig};
 use fs_messenger_mail::submit::{MailEnvelope, MailSubmit, SmtpConfig, SmtpSubmit};
 use fs_messenger_mail::{Endpoint, TlsTrust};
@@ -25,6 +27,7 @@ pub fn imap_fetch(who: Who) -> ImapFetch {
         },
         user: who.address(),
         password: who.password(),
+        timeout: DEFAULT_IMAP_TIMEOUT,
     })
 }
 
@@ -54,6 +57,7 @@ pub fn jmap_client(who: Who) -> Arc<JmapClient> {
             password: who.password(),
             trust: trust(),
             rebase_on_session_origin: true,
+            other_credential_origins: vec![],
         })
         .expect("jmap client"),
     )
@@ -65,7 +69,11 @@ pub async fn raw_mails(who: Who) -> Vec<FetchedMail> {
     let mut cursor = MailCursor::default();
     let mut all = vec![];
     loop {
-        let batch = fetch.fetch(&cursor, 50).await.expect("raw fetch");
+        let limits = FetchLimits {
+            mails: 50,
+            bytes: usize::MAX,
+        };
+        let batch = fetch.fetch(&cursor, &limits).await.expect("raw fetch");
         all.extend(batch.mails);
         cursor = batch.cursor;
         if !batch.more {

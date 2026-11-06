@@ -164,3 +164,47 @@ async fn a_forged_message_id_does_not_suppress_a_mail_over_imap() {
 async fn a_forged_message_id_does_not_suppress_a_mail_over_jmap() {
     forged_message_id(Fetch::Jmap).await;
 }
+
+/// A legal `|` in a `Message-ID` costs neither the mail nor its reply.
+async fn pipe_in_an_id(fetch: Fetch) {
+    let _one = serial().await;
+    let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let alice = Person::open(Who::Alice, a.path(), fetch, Submit::Smtp).await;
+    let bob = Person::open(Who::Bob, b.path(), fetch, Submit::Smtp).await;
+    bob.knows(&alice).await;
+    let t = token();
+    let (from, to) = (Who::Alice.address(), Who::Bob.address());
+    let first = format!("Pipe-{t}");
+    let raw = format!(
+        "From: {from}\r\nTo: {to}\r\nSubject: p\r\nMessage-ID: <{t}|a@msgtest.test>\r\n\r\n{first}\r\n"
+    );
+    smtp_raw(Who::Alice, Who::Bob, raw.as_bytes()).await;
+    let parent = bob.wait_for(&first).await;
+    let second = format!("Pipe2-{t}");
+    let raw = format!(
+        "From: {from}\r\nTo: {to}\r\nSubject: q\r\nMessage-ID: <{t}|b@msgtest.test>\r\n\
+         In-Reply-To: <{t}|a@msgtest.test>\r\nReferences: <{t}|a@msgtest.test>\r\n\r\n{second}\r\n"
+    );
+    smtp_raw(Who::Alice, Who::Bob, raw.as_bytes()).await;
+    let child = bob.wait_for(&second).await;
+    assert_eq!(
+        child.summary.envelope.in_reply_to,
+        Some(parent.id().to_string())
+    );
+    assert_eq!(
+        child.summary.envelope.context,
+        parent.summary.envelope.context
+    );
+}
+
+#[tokio::test]
+#[ignore = "needs scripts/test-servers/up.sh; run with --ignored"]
+async fn a_pipe_in_a_message_id_is_stored_over_imap() {
+    pipe_in_an_id(Fetch::Imap).await;
+}
+
+#[tokio::test]
+#[ignore = "needs scripts/test-servers/up.sh; run with --ignored"]
+async fn a_pipe_in_a_message_id_is_stored_over_jmap() {
+    pipe_in_an_id(Fetch::Jmap).await;
+}

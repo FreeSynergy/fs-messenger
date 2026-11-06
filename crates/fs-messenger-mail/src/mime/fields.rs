@@ -47,7 +47,7 @@ pub struct MailFields {
     pub attachments: Vec<AttachmentPart>,
     /// Raw values of the `Autocrypt` headers.
     pub autocrypt: Vec<Vec<u8>>,
-    /// Whether the root part declares Header Protection (RFC 9788).
+    /// Whether the root part declares Header Protection (RFC 9788): `hp` is `cipher` or `clear`.
     pub header_protected: bool,
 }
 
@@ -124,7 +124,11 @@ impl MailFields {
                 .all("Autocrypt")
                 .map(|h| h.raw_value().to_vec())
                 .collect(),
-            header_protected: m.content_type().is_some_and(|c| c.has_attribute("hp")),
+            // RFC 9788 section 4.1 knows these two values; any other declares nothing.
+            header_protected: m
+                .content_type()
+                .and_then(|c| c.attribute("hp"))
+                .is_some_and(|hp| hp == "cipher" || hp == "clear"),
         })
     }
 }

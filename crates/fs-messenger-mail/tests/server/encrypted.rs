@@ -1,8 +1,7 @@
 //! alice to bob, encrypted, through `Draft.send`, over every pair of submission and fetch.
 
-use fs_messenger_core::{DeliveryState, Encryption, Messenger};
+use fs_messenger_core::{DeliveryState, Encryption, Messenger, SignatureCheck};
 use fs_messenger_mail::mime::MailFields;
-use fs_messenger_mail::openpgp::SignatureState;
 
 use crate::common::{
     Fetch, Person, Submit, Who, contains, message_id_of, raw_by_message_id, serial, token,
@@ -60,21 +59,16 @@ async fn round_trip(submit: Submit, fetch: Fetch) {
         .expect("on the server");
     assert_eq!(got.original.as_ref().unwrap().bytes, on_server);
 
-    // The signature really verified, with the key that came with the mail.
-    let inspected = bob.provider.inspect(&on_server).await.unwrap();
-    assert_eq!(inspected.encryption, Encryption::Openpgp);
+    // First contact: the key came with the mail, so it is learned and the signature proves nothing yet.
+    assert_eq!(got.signature, SignatureCheck::NotVerified);
     let learned = bob
         .provider
         .peer(&Who::Alice.address())
         .await
         .unwrap()
         .expect("learned");
-    assert_eq!(
-        inspected.signature,
-        SignatureState::Valid {
-            fingerprint: learned.fingerprint.clone()
-        }
-    );
+    let own = alice.provider.ensure_own_key().await.unwrap();
+    assert_eq!(learned.fingerprint, own.fingerprint());
 
     // A reply: bob's answer lands in alice's thread, under her message.
     let reply = format!("Reply-{t}");

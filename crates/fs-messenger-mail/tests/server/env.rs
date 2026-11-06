@@ -12,16 +12,54 @@ use tokio::sync::{Mutex, MutexGuard};
 pub async fn serial() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     let guard = LOCK.get_or_init(|| Mutex::new(())).lock().await;
+    relax_throttle().await;
     wipe(Who::Alice).await;
     wipe(Who::Bob).await;
     guard
 }
 
-/// Destroy every mail of `who`, through the management port of the throwaway server.
-async fn wipe(who: Who) {
-    let env = Env::load();
-    let url = format!("{}/jmap/", env.get("FS_MSGTEST_JMAP_URL"));
-    let name = format!("{}_PASSWORD", who.user_var());
+/// A full run sends more mail than the default 25 per hour per sender domain and recipient. Off for this
+/// throwaway server, once per run, at runtime; the scripts stay as they are.
+async fn relax_throttle() {
+    static DONE: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
+    DONE.get_or_init(|| async {
+        let env = Env::load();
+        let call = |calls: serde_json::Value| {
+            let body = serde_json::json!({"using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"], "methodCalls": calls});
+            let url = format!("{}/jmap/", env.get("FS_MSGTEST_JMAP_URL"));
+            let (user, pass) = (env.get("FS_MSGTEST_MAIL_ADMIN_USER"), env.get("FS_MSGTEST_MAIL_ADMIN_PASSWORD"));
+            async move {
+                let answer: serde_json::Value = loopback_client().post(url).basic_auth(user, Some(pass)).json(&body)
+                    .send().await.expect("admin").json().await.expect("admin json");
+                answer
+            }
+        };
+        let found = call(serde_json::json!([["x:MtaInboundThrottle/query", {"filter": {}}, "q"]])).await;
+        let ids = found["methodResponses"][0][1]["ids"].as_array().cloned().unwrap_or_default();
+        let update: serde_json::Map<String, serde_json::Value> = ids
+            .iter()
+            .filter_map(|i| i.as_str())
+            .map(|i| (i.to_string(), serde_json::json!({"enable": false})))
+            .collect();
+        let answer = call(serde_json::json!([["x:MtaInboundThrottle/set", {"update": update}, "s"]])).await;
+        eprintln!("throttle: {}", answer["methodResponses"][0][1]["updated"]);
+    })
+    .await;
+}
+
+/// Destroy one mail of `who`, as another program of theirs would.
+pub async fn destroy(who: Who, email: &str) {
+    let answer = jmap_call(who, |account| {
+        serde_json::json!([["Email/set", {"accountId": account, "destroy": [email]}, "d"]])
+    })
+    .await;
+    assert!(
+        answer["methodResponses"][0][1]["destroyed"][0] == email,
+        "{answer}"
+    );
+}
+
+fn loopback_client() -> reqwest::Client {
     // Plain HTTP on loopback, test credentials; the client still needs a TLS backend to exist.
     let tls = rustls::ClientConfig::builder_with_provider(Arc::new(
         rustls::crypto::ring::default_provider(),
@@ -30,30 +68,20 @@ async fn wipe(who: Who) {
     .unwrap()
     .with_root_certificates(rustls::RootCertStore::empty())
     .with_no_client_auth();
-    let http = reqwest::Client::builder()
+    reqwest::Client::builder()
         .tls_backend_preconfigured(tls)
         .build()
-        .unwrap();
-    let mail = "urn:ietf:params:jmap:mail";
-    let call = |calls: serde_json::Value| {
-        let (http, url, user, pass) = (&http, &url, who.address(), env.get(&name).to_string());
-        async move {
-            let body = serde_json::json!({"using": ["urn:ietf:params:jmap:core", mail], "methodCalls": calls});
-            let answer: serde_json::Value = http
-                .post(url)
-                .basic_auth(user, Some(pass))
-                .json(&body)
-                .send()
-                .await
-                .expect("wipe")
-                .json()
-                .await
-                .expect("wipe answer");
-            answer
-        }
-    };
+        .unwrap()
+}
+
+/// One JMAP request by `who`, through the management port of the throwaway server.
+async fn jmap_call(who: Who, calls: impl FnOnce(&str) -> serde_json::Value) -> serde_json::Value {
+    let env = Env::load();
+    let name = format!("{}_PASSWORD", who.user_var());
+    let http = loopback_client();
+    let base = env.get("FS_MSGTEST_JMAP_URL");
     let session: serde_json::Value = http
-        .get(format!("{}/jmap/session", env.get("FS_MSGTEST_JMAP_URL")))
+        .get(format!("{base}/jmap/session"))
         .basic_auth(who.address(), Some(env.get(&name)))
         .send()
         .await
@@ -61,18 +89,35 @@ async fn wipe(who: Who) {
         .json()
         .await
         .expect("session json");
-    let account = session["primaryAccounts"][mail]
-        .as_str()
-        .expect("account")
-        .to_string();
+    let mail = "urn:ietf:params:jmap:mail";
+    let account = session["primaryAccounts"][mail].as_str().expect("account");
+    let body = serde_json::json!({"using": ["urn:ietf:params:jmap:core", mail], "methodCalls": calls(account)});
+    http.post(format!("{base}/jmap/"))
+        .basic_auth(who.address(), Some(env.get(&name)))
+        .json(&body)
+        .send()
+        .await
+        .expect("jmap")
+        .json()
+        .await
+        .expect("jmap json")
+}
+
+/// Destroy every mail of `who`, through the management port of the throwaway server.
+async fn wipe(who: Who) {
     loop {
-        let q = serde_json::json!([["Email/query", {"accountId": account, "limit": 200}, "q"]]);
-        let answer = call(q).await;
+        let answer = jmap_call(who, |account| {
+            serde_json::json!([["Email/query", {"accountId": account, "limit": 200}, "q"]])
+        })
+        .await;
         let ids = answer["methodResponses"][0][1]["ids"].clone();
         if ids.as_array().is_none_or(Vec::is_empty) {
             return;
         }
-        call(serde_json::json!([["Email/set", {"accountId": account, "destroy": ids}, "d"]])).await;
+        jmap_call(who, |account| {
+            serde_json::json!([["Email/set", {"accountId": account, "destroy": ids}, "d"]])
+        })
+        .await;
     }
 }
 

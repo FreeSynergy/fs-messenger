@@ -11,11 +11,12 @@ use fs_messenger_core::{
 };
 
 use super::facade::MailProvider;
+use super::ids::{decode_id, encode_id};
 use super::receive::{SCHEME_MESSAGE_ID, SCHEME_THREAD};
 use crate::address::normalise_address;
 use crate::autocrypt::format_header;
 use crate::error::MailError;
-use crate::mime::{PayloadInput, build_outer, build_payload, subject_from_text};
+use crate::mime::{PayloadInput, build_outer, build_payload};
 use crate::openpgp::{
     EncryptionTargets, PublicCert, SecretCert, sign_and_encrypt, unix_now, usable_encryption_key,
 };
@@ -101,25 +102,20 @@ impl MailProvider {
 
         let domain = from.rsplit_once('@').map_or("localhost", |(_, d)| d);
         let message_id = format!("{}@{domain}", message.id());
-        let parent = alias_of(message.in_reply_to(), SCHEME_MESSAGE_ID);
-        let root = alias_of(message.conversation(), SCHEME_THREAD)
-            .or(parent)
-            .unwrap_or(message_id.as_str());
-        let references: Vec<String> = match parent {
-            Some(p) if p == root => vec![root.to_string()],
-            Some(p) => vec![root.to_string(), p.to_string()],
-            None => vec![],
-        };
+        let parent = id_of(message.in_reply_to(), SCHEME_MESSAGE_ID);
+        let root = id_of(message.conversation(), SCHEME_THREAD)
+            .or_else(|| parent.clone())
+            .unwrap_or_else(|| message_id.clone());
+        let references = references_of(message, parent.as_deref(), &root);
         let own_public = own.public();
         let autocrypt = format_header(&from, &own_public)?;
-        let subject = subject_from_text(message.text());
         let input = PayloadInput {
             from: &from,
             to: message.to(),
             cc: message.cc(),
-            subject: &subject,
+            subject: message.subject(),
             message_id: &message_id,
-            in_reply_to: parent,
+            in_reply_to: parent.as_deref(),
             references: &references,
             date: Utc::now().timestamp(),
             text: message.text(),
@@ -159,17 +155,36 @@ impl MailProvider {
         }
         Ok(SendReceipt {
             aliases: vec![ExternalId::new(SCHEME_MESSAGE_ID, message_id.clone())],
-            conversation: Some(ExternalId::new(SCHEME_THREAD, root)),
+            conversation: Some(ExternalId::new(SCHEME_THREAD, encode_id(&root))),
             encryption: Encryption::Openpgp,
         })
     }
 }
 
-fn alias_of<'a>(aliases: &'a [ExternalId], scheme: &str) -> Option<&'a str> {
+/// The id under `scheme`, as it was written in the mail.
+fn id_of(aliases: &[ExternalId], scheme: &str) -> Option<String> {
     aliases
         .iter()
         .find(|a| a.scheme == scheme)
-        .map(|a| a.id.as_str())
+        .map(|a| decode_id(&a.id))
+}
+
+/// RFC 5322: the parent's chain, then the parent. The first entry stays the thread's root.
+fn references_of(message: &Outgoing, parent: Option<&str>, root: &str) -> Vec<String> {
+    let Some(parent) = parent else {
+        return vec![];
+    };
+    let mut chain: Vec<String> = message
+        .references()
+        .iter()
+        .filter(|r| r.is_sender_chosen())
+        .map(|r| decode_id(&r.id))
+        .collect();
+    if root != parent && chain.first().map(String::as_str) != Some(root) {
+        chain.insert(0, root.to_string());
+    }
+    chain.push(parent.to_string());
+    chain
 }
 
 /// A key checked a moment ago failed now. Refuse rather than send to fewer people.

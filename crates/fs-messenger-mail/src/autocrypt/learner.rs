@@ -87,9 +87,14 @@ impl KeyLearner {
         Ok(decision)
     }
 
-    /// A person looked at a candidate and says it is right. The only way a key replaces another
-    /// without proof. Answers whether there was a candidate.
-    pub async fn accept_candidate(&self, address: &str) -> Result<bool, MailError> {
+    /// A person compared `fingerprint` with its owner and says it is right. The only way a key replaces
+    /// another without proof. Answers whether a key was replaced. Fails if the candidate held now is
+    /// another one: somebody offered a new key in the meantime, and nobody checked that one.
+    pub async fn accept_candidate(
+        &self,
+        address: &str,
+        fingerprint: &str,
+    ) -> Result<bool, MailError> {
         let _writes = self.writes.lock().await;
         let Some(mut peer) = self.keys.peer(address).await? else {
             return Ok(false);
@@ -97,6 +102,13 @@ impl KeyLearner {
         let Some(candidate) = peer.candidate.take() else {
             return Ok(false);
         };
+        let cert = crate::keys::decode_cert(&candidate.cert)?;
+        if !cert.fingerprint().eq_ignore_ascii_case(fingerprint.trim()) {
+            return Err(MailError::Keys(format!(
+                "the candidate of {address} is {}, not the key that was checked",
+                cert.fingerprint()
+            )));
+        }
         peer.fingerprint = candidate.fingerprint;
         peer.cert = candidate.cert;
         peer.source = KeySource::Person;

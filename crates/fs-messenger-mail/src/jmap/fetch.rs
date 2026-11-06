@@ -2,7 +2,8 @@
 //!
 //! Pattern: Strategy + State per mailbox: first a listing (`Email/query`), then changes (`Email/changes`).
 //! The `Email` state is read BEFORE the listing starts, so whatever arrives meanwhile comes again through
-//! the changes, and the core dedupes it. Provisional: a flag change on an old mail lists it as updated
+//! the changes, and the core dedupes it. The listing pages by `anchor`: a position would skip a mail when
+//! an earlier one is deleted between two pages. If the anchor itself is gone, the walk starts over. Provisional: a flag change on an old mail lists it as updated
 //! and downloads it once more; costs bandwidth, stores nothing.
 
 use std::sync::Arc;
@@ -12,7 +13,10 @@ use serde_json::{Value, json};
 
 use super::client::{JmapClient, err};
 use crate::error::{MailError, Result};
-use crate::fetch::{FetchedBatch, FetchedMail, MailCursor, MailFetch, MailboxCursor, MailboxRole};
+use crate::fetch::{
+    FetchLimits, FetchedBatch, FetchedMail, MailCursor, MailFetch, MailboxCursor, MailboxRole,
+    sent_is_optional,
+};
 
 const MAIL: &str = "urn:ietf:params:jmap:mail";
 
@@ -68,15 +72,19 @@ impl JmapFetch {
         &self,
         mailbox: &str,
         state: Option<String>,
-        position: u64,
+        anchor: Option<String>,
         limit: usize,
     ) -> Result<(Vec<String>, MailboxCursor)> {
         let account = self.account().await?;
+        let mut query = json!({"accountId": account, "filter": {"inMailbox": mailbox},
+            "sort": [{"property": "receivedAt", "isAscending": true}], "limit": limit});
+        if let Some(anchor) = &anchor {
+            query["anchor"] = json!(anchor);
+            query["anchorOffset"] = json!(1);
+        }
         let call = json!([
             ["Email/get", {"accountId": account, "ids": [], "properties": ["id"]}, "s"],
-            ["Email/query", {"accountId": account, "filter": {"inMailbox": mailbox},
-                "sort": [{"property": "receivedAt", "isAscending": true}],
-                "position": position, "limit": limit}, "q"],
+            ["Email/query", query, "q"],
         ]);
         let answers = self.client.call(&[MAIL], call).await?;
         let state = match state {
@@ -86,17 +94,22 @@ impl JmapFetch {
                 .ok_or_else(|| err("Email/get answered no state"))?
                 .to_string(),
         };
-        let ids = strings(&JmapClient::answer(&answers, "q")?["ids"]);
-        let cursor = if ids.len() < limit {
-            MailboxCursor::Jmap {
-                state,
-                position: None,
+        let args = match JmapClient::response(&answers, "q")? {
+            Ok(args) => args,
+            Err(e) if e.kind == "anchorNotFound" && anchor.is_some() => {
+                // The anchor was deleted. From the start again: the core dedupes what repeats, and the
+                // state held is older than the walk, so nothing is lost.
+                return Box::pin(self.listing(mailbox, Some(state), None, limit)).await;
             }
-        } else {
-            MailboxCursor::Jmap {
-                state,
-                position: Some(position + ids.len() as u64),
-            }
+            Err(e) => return Err(err(format!("Email/query answered {}", e.kind))),
+        };
+        let ids = strings(&args["ids"]);
+        let walking = ids.len() >= limit;
+        let anchor = if walking { ids.last().cloned() } else { None };
+        let cursor = MailboxCursor::Jmap {
+            state,
+            walking,
+            anchor,
         };
         Ok((ids, cursor))
     }
@@ -123,24 +136,26 @@ impl JmapFetch {
             .to_string();
         let cursor = MailboxCursor::Jmap {
             state: next,
-            position: None,
+            walking: false,
+            anchor: None,
         };
         Ok(Some((ids, cursor, args["hasMoreChanges"] == true)))
     }
 
-    /// Download those of `ids` that are in `mailbox`. Ids that vanished meanwhile are simply gone.
+    /// Download those of `ids` that are in `mailbox` and fit. Ids that vanished meanwhile are simply gone.
     async fn download(
         &self,
         ids: Vec<String>,
         mailbox: &str,
         role: MailboxRole,
+        limit: usize,
         out: &mut Vec<FetchedMail>,
     ) -> Result<()> {
         if ids.is_empty() {
             return Ok(());
         }
         let call = json!([["Email/get", {"accountId": self.account().await?, "ids": ids,
-            "properties": ["id", "blobId", "mailboxIds"]}, "g"]]);
+            "properties": ["id", "blobId", "mailboxIds", "size"]}, "g"]]);
         let answers = self.client.call(&[MAIL], call).await?;
         let list = JmapClient::answer(&answers, "g")?["list"]
             .as_array()
@@ -150,8 +165,13 @@ impl JmapFetch {
             let (Some(id), Some(blob)) = (email["id"].as_str(), email["blobId"].as_str()) else {
                 return Err(err("Email/get answered a mail without id or blobId"));
             };
+            let size = email["size"].as_u64().unwrap_or(0);
+            if size > u64::try_from(limit).unwrap_or(u64::MAX) {
+                tracing::warn!(mailbox, id, size, "mail too large; left on the server");
+                continue;
+            }
             out.push(FetchedMail {
-                bytes: self.client.download(blob).await?,
+                bytes: self.client.download(blob, limit).await?,
                 role,
                 stable_id: format!("{mailbox}/{id}"),
             });
@@ -163,29 +183,31 @@ impl JmapFetch {
         &self,
         mailbox: &str,
         role: MailboxRole,
-        limit: usize,
+        limits: &FetchLimits,
         batch: &mut FetchedBatch,
     ) -> Result<()> {
-        let held = batch.cursor.mailboxes.get(mailbox).cloned();
-        let (state, position) = match held {
-            Some(MailboxCursor::Jmap { state, position }) => (Some(state), position),
-            _ => (None, None),
+        let (state, walking, anchor) = match batch.cursor.mailboxes.get(mailbox).cloned() {
+            Some(MailboxCursor::Jmap {
+                state,
+                walking,
+                anchor,
+            }) => (Some(state), walking, anchor),
+            _ => (None, false, None),
         };
-        let changes = match (&state, position) {
-            (Some(state), None) => self.changes(state, limit).await?,
+        let changes = match &state {
+            Some(state) if !walking => self.changes(state, limits.mails).await?,
             _ => None,
         };
         let (ids, next, more) = if let Some(answer) = changes {
             answer
         } else {
             // A first listing, its next page, or the server can no longer say what changed.
-            let state = state.filter(|_| position.is_some());
-            let (ids, next) = self
-                .listing(mailbox, state, position.unwrap_or(0), limit)
-                .await?;
+            let state = state.filter(|_| walking);
+            let (ids, next) = self.listing(mailbox, state, anchor, limits.mails).await?;
             (ids, next, true)
         };
-        self.download(ids, mailbox, role, &mut batch.mails).await?;
+        self.download(ids, mailbox, role, limits.bytes, &mut batch.mails)
+            .await?;
         batch.more |= more;
         batch.cursor.mailboxes.insert(mailbox.to_string(), next);
         Ok(())
@@ -194,17 +216,23 @@ impl JmapFetch {
 
 #[async_trait]
 impl MailFetch for JmapFetch {
-    async fn fetch(&self, cursor: &MailCursor, limit: usize) -> Result<FetchedBatch, MailError> {
+    async fn fetch(
+        &self,
+        cursor: &MailCursor,
+        limits: &FetchLimits,
+    ) -> Result<FetchedBatch, MailError> {
         let boxes = self.mailboxes().await?;
         let mut batch = FetchedBatch {
             cursor: cursor.clone(),
             ..FetchedBatch::default()
         };
-        self.read_mailbox(&boxes.inbox, MailboxRole::Inbox, limit, &mut batch)
+        self.read_mailbox(&boxes.inbox, MailboxRole::Inbox, limits, &mut batch)
             .await?;
         if let Some(sent) = &boxes.sent {
-            self.read_mailbox(sent, MailboxRole::Sent, limit, &mut batch)
-                .await?;
+            sent_is_optional(
+                self.read_mailbox(sent, MailboxRole::Sent, limits, &mut batch)
+                    .await,
+            );
         }
         Ok(batch)
     }

@@ -27,6 +27,8 @@ use pgp::{crypto::ecc_curve::ECCCurve, ser::Serialize as _, types::KeyVersion};
 const US: &str = "us@example.org";
 const PEER: &str = "peer@example.org";
 const BODY: &str = "Content-Type: text/plain\r\n\r\nthe secret text\r\n";
+/// As gpg users sign it when their program protects headers: the signature covers the sender.
+const NAMED: &str = "From: peer@example.org\r\nContent-Type: text/plain\r\n\r\nthe secret text\r\n";
 
 /// gpg in a home of its own. Arguments are one string, split at spaces.
 struct Gpg(tempfile::TempDir);
@@ -149,28 +151,27 @@ fn wrapped(armored: &[u8], head: &str) -> Vec<u8> {
     ).into_bytes()
 }
 
-/// RFC 3156 section 5 around `BODY`, with `head` above it.
-fn signed(signature: &[u8], head: &str) -> Vec<u8> {
+/// RFC 3156 section 5 around `body`, with `head` above it.
+fn signed(signature: &[u8], head: &str, body: &str) -> Vec<u8> {
     let signature = String::from_utf8_lossy(signature);
     format!(
-        "{head}Content-Type: multipart/signed; micalg=pgp-sha512; protocol=\"application/pgp-signature\"; boundary=\"s\"\r\n\r\n--s\r\n{BODY}\r\n--s\r\nContent-Type: application/pgp-signature\r\n\r\n{signature}\r\n--s--\r\n"
+        "{head}Content-Type: multipart/signed; micalg=pgp-sha512; protocol=\"application/pgp-signature\"; boundary=\"s\"\r\n\r\n--s\r\n{body}\r\n--s\r\nContent-Type: application/pgp-signature\r\n\r\n{signature}\r\n--s--\r\n"
     ).into_bytes()
 }
 
-/// Through the real reading flow: what the core gets, what `inspect` says, and rPGP's error.
-async fn read(p: &Offline, label: &str, raw: &[u8]) -> (Encryption, SignatureState) {
+/// Through the real reading flow: what the core gets, and rPGP's error.
+async fn read(p: &Offline, label: &str, raw: &[u8]) -> (Encryption, SignatureCheck) {
     p.wire.inbox.lock().unwrap().push(raw.to_vec());
     let mut batch = p.provider.fetch(None).await.unwrap();
     let got = batch.messages.pop().unwrap();
-    let seen = p.provider.inspect(raw).await.unwrap();
-    let (encryption, body) = (got.encryption, got.body_text);
-    println!("{label}: {encryption:?} {:?} {body:?}", seen.signature);
-    if seen.undecrypted {
+    let (encryption, body, signature) = (got.encryption, got.body_text, got.signature);
+    println!("{label}: {encryption:?} {signature:?} {body:?}");
+    if got.undecrypted {
         let own = p.keys.own_key(US).await.unwrap().unwrap();
-        let error = decrypt(&armor_of(raw), &[own], &[]).err().unwrap();
+        let error = decrypt(&armor_of(raw), &[own], &[], 1 << 24).err().unwrap();
         println!("  decrypt: {error}");
     }
-    (encryption, seen.signature)
+    (encryption, signature)
 }
 
 async fn own(p: &Offline) -> SecretCert {
@@ -259,36 +260,42 @@ async fn d_e_gpg_mail_to_a_key_of_ours() {
         known.provider.import_peer_key(PEER, &signer).await.unwrap();
         let data = STANDARD.encode(&export);
         let offer = format!("Autocrypt: addr={PEER}; keydata={data}\r\n");
-        let fingerprint = signer.fingerprint();
-        let valid = SignatureState::Valid { fingerprint };
         let base = format!("--armor --sign --encrypt --local-user {PEER} --recipient {US}");
         for extra in ["", " --rfc4880", " --force-ocb", " --digest-algo SHA1"] {
-            let armored = g.run(&format!("{base}{extra}"), BODY.as_bytes()).1;
+            let armored = g.run(&format!("{base}{extra}"), NAMED.as_bytes()).1;
             g.run("--list-packets", &armored);
             let raw = wrapped(&armored, "");
             let got = read(&known, "known", &raw).await;
             if extra == " --force-ocb" {
-                assert_eq!(got, (Encryption::None, SignatureState::NotSigned));
+                assert_eq!(got, (Encryption::None, SignatureCheck::NotVerified));
                 continue;
             }
             let sha1 = extra.contains("SHA1");
             assert_eq!(got.0, Encryption::Openpgp);
-            assert_eq!(got.1 == valid, !sha1);
+            assert_eq!(got.1 == SignatureCheck::Valid, !sha1);
+            // A signature over a bare body does not vouch for the sender.
+            let bare = g.run(&format!("{base}{extra}"), BODY.as_bytes()).1;
+            let got = read(&known, "bare body", &wrapped(&bare, "")).await;
+            assert_eq!(got, (Encryption::Openpgp, SignatureCheck::NotVerified));
             let got = read(&unknown, "unknown", &raw).await;
-            assert_eq!(got.1, SignatureState::Unverified);
+            assert_eq!(got.1, SignatureCheck::NotVerified);
+            // A key offered in the same mail proves nothing about that mail.
             let got = read(&unknown, "offered", &wrapped(&armored, &offer)).await;
-            assert_eq!(got.1 == valid, !sha1);
+            assert_eq!(got.1, SignatureCheck::NotVerified);
             assert!(unknown.keys.peer(PEER).await.unwrap().is_none());
         }
         let detach = format!("--armor --detach-sign --local-user {PEER}");
-        let signature = g.run(&detach, BODY.as_bytes()).1;
+        let signature = g.run(&detach, NAMED.as_bytes()).1;
         let encrypt = format!("--armor --encrypt --recipient {US}");
-        let inner = g.run(&encrypt, &signed(&signature, "")).1;
+        let inner = g.run(&encrypt, &signed(&signature, "", NAMED)).1;
         let got = read(&known, "RFC 3156 6.1", &wrapped(&inner, "")).await;
-        assert_eq!(got, (Encryption::Openpgp, valid.clone()));
+        assert_eq!(got, (Encryption::Openpgp, SignatureCheck::Valid));
         let head = format!("From: {PEER}\r\nTo: {US}\r\nMessage-ID: <s@e>\r\n");
-        let got = read(&known, "RFC 3156 5", &signed(&signature, &head)).await;
-        assert_eq!(got, (Encryption::None, valid));
+        let got = read(&known, "RFC 3156 5", &signed(&signature, &head, NAMED)).await;
+        assert_eq!(got, (Encryption::None, SignatureCheck::Valid));
+        let bare = g.run(&detach, BODY.as_bytes()).1;
+        let got = read(&known, "RFC 3156 5, bare", &signed(&bare, &head, BODY)).await;
+        assert_eq!(got, (Encryption::None, SignatureCheck::NotVerified));
     }
     let g = Gpg::new().unwrap();
     g.generate(US, "Key-Version: 5\nSubkey-Version: 5\n");

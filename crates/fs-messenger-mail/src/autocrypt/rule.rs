@@ -6,6 +6,8 @@
 //! whose signature verifies with the known key. An outer `Autocrypt` header proves nothing, whatever
 //! signature the mail carries, because that header is not covered by the signature.
 
+use std::cmp::Ordering;
+
 use super::learner::Offer;
 use crate::keys::PeerKey;
 use crate::openpgp::{KeyRefusal, usable_encryption_key};
@@ -44,30 +46,43 @@ pub fn decide(known: Option<&PeerKey>, offer: &Offer, now: u64) -> Decision {
     if !usable {
         return Decision::Ignore;
     }
-    if offer.proven_by_known_key {
+    if offer.proven_by_known_key && may_prove(known, now) {
         Decision::Rotate
     } else {
         Decision::Conflict
     }
 }
 
-/// The same primary key: the offered form may carry a revocation or a later expiry, and a forger cannot
-/// add self-signatures. He can only offer an older form, so a revocation is never given up.
+/// A key that is revoked or ran out proves nothing any more: whoever holds it now may not be its owner.
+fn may_prove(known: &PeerKey, now: u64) -> bool {
+    known.certificate().is_ok_and(|held| {
+        !matches!(
+            usable_encryption_key(&held, now),
+            Err(KeyRefusal::Revoked | KeyRefusal::Expired | KeyRefusal::Invalid | KeyRefusal::Weak)
+        )
+    })
+}
+
+/// The same primary key. A forger cannot add self-signatures, but he can offer an older form or strip
+/// signatures from one. So a form with fewer revocations is never taken, one with more always is.
 fn same_key(known: &PeerKey, offer: &Offer, now: u64) -> Decision {
-    let check = |cert| usable_encryption_key(cert, now);
     let Ok(held) = known.certificate() else {
         return Decision::SameKey {
             take_offered: false,
         };
     };
-    let take_offered = match (check(&held), check(&offer.cert)) {
-        // Newly revoked: only if its signatures verify, which `Invalid` would say.
-        (Err(KeyRefusal::Revoked), _) | (_, Err(KeyRefusal::Invalid)) => false,
-        (Ok(_) | Err(_), Err(KeyRefusal::Revoked)) => true,
-        // A later self-signature, and it does not make a live key unusable.
-        (held_state, offered_state) => {
-            let newer = offer.cert.newest_self_signature() > held.newest_self_signature();
-            newer && (held_state.is_err() || offered_state.is_ok())
+    let held_state = usable_encryption_key(&held, now);
+    let offered_state = usable_encryption_key(&offer.cert, now);
+    let take_offered = if offered_state == Err(KeyRefusal::Invalid) {
+        false
+    } else {
+        match offer.cert.revocations().cmp(&held.revocations()) {
+            Ordering::Less => false,
+            Ordering::Greater => true,
+            Ordering::Equal => {
+                let newer = offer.cert.newest_self_signature() > held.newest_self_signature();
+                newer && (held_state.is_err() || offered_state.is_ok())
+            }
         }
     };
     Decision::SameKey { take_offered }

@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use fs_messenger_core::{
     AccountSetup, Ingest, Message, Messenger, MessengerConfig, MessengerRepo, SearchFilter,
 };
-use fs_messenger_mail::fetch::{FetchedBatch, MailCursor, MailFetch};
+use fs_messenger_mail::fetch::{FetchLimits, FetchedBatch, MailCursor, MailFetch};
 use fs_messenger_mail::jmap::{JmapFetch, JmapSubmit};
 use fs_messenger_mail::keys::{FsKeyStore, KeyStore};
 use fs_messenger_mail::submit::MailSubmit;
@@ -40,8 +40,12 @@ pub struct Counting {
 
 #[async_trait]
 impl MailFetch for Counting {
-    async fn fetch(&self, cursor: &MailCursor, limit: usize) -> Result<FetchedBatch, MailError> {
-        let batch = self.inner.fetch(cursor, limit).await?;
+    async fn fetch(
+        &self,
+        cursor: &MailCursor,
+        limits: &FetchLimits,
+    ) -> Result<FetchedBatch, MailError> {
+        let batch = self.inner.fetch(cursor, limits).await?;
         self.delivered
             .fetch_add(batch.mails.len(), Ordering::SeqCst);
         Ok(batch)
@@ -153,6 +157,10 @@ impl Person {
         }
         draft
             .set_recipients(to.to_vec(), vec![], bcc.to_vec())
+            .await?;
+        // The tests write the subject as the first line, so that one needle finds both.
+        draft
+            .set_subject(text.lines().next().unwrap_or("").into())
             .await?;
         draft.set_text(text.into(), "text/plain".into()).await?;
         for (name, media, data) in files {

@@ -104,14 +104,3 @@ async fn the_known_key_vouching_inside_rotates() {
     assert_eq!(held.fingerprint, next.fingerprint());
     assert!(held.candidate.is_none());
 }
-
-/// Inspecting a stored mail writes nothing, whatever it offers.
-#[tokio::test]
-async fn inspecting_does_not_learn() {
-    let (bob, alice, own, evil) = setup().await;
-    let forged = format_header(ALICE, &evil.public()).unwrap();
-    let raw = mail(&alice, &own, "", &forged);
-    bob.provider.inspect(&raw).await.unwrap();
-    let held = bob.provider.peer(ALICE).await.unwrap().unwrap();
-    assert!(held.candidate.is_none());
-}

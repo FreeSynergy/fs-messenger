@@ -86,11 +86,27 @@ async fn first_seen_wins_and_a_forged_key_only_becomes_a_visible_candidate() {
     );
     assert!(keys.peer(PEER).await.unwrap().unwrap().candidate.is_some());
     // A person decides.
-    assert!(learner.accept_candidate(PEER).await.unwrap());
+    let checked = learner.accept_candidate(PEER, &good.fingerprint()).await;
+    assert!(checked.is_err(), "not the key the person compared");
+    assert_eq!(
+        keys.peer(PEER).await.unwrap().unwrap().fingerprint,
+        good.fingerprint()
+    );
+    assert!(
+        learner
+            .accept_candidate(PEER, &evil.fingerprint())
+            .await
+            .unwrap()
+    );
     let held = keys.peer(PEER).await.unwrap().unwrap();
     assert_eq!(held.fingerprint, evil.fingerprint());
     assert_eq!(held.source, KeySource::Person);
-    assert!(!learner.accept_candidate(PEER).await.unwrap());
+    assert!(
+        !learner
+            .accept_candidate(PEER, &evil.fingerprint())
+            .await
+            .unwrap()
+    );
 }
 
 #[tokio::test]
@@ -170,5 +186,24 @@ async fn keys_do_not_go_into_a_plain_store_and_survive_a_restart_in_an_encrypted
             .unwrap()
             .fingerprint(),
         other.fingerprint()
+    );
+}
+
+/// fs-store logs before and after images and offers no way around it, so an own key ends up in the
+/// activity log and in `Debug` of an activity, encrypted at rest with the store. Pinned here, because
+/// DESIGN.md states it: when fs-store changes this, this test says so. Wanted from fs-store.
+#[tokio::test]
+async fn known_limit_the_own_key_is_in_the_activity_log_of_its_store() {
+    let store = Arc::new(TursoStore::open_in_memory().await.unwrap());
+    let keys = FsKeyStore::open(store.clone(), "me");
+    keys.put_own_key("me@example.org", &generate_key("me@example.org").unwrap())
+        .await
+        .unwrap();
+    let log = Store::activities(store.as_ref(), &fs_store::ActivityFilter::default())
+        .await
+        .unwrap();
+    assert!(
+        format!("{log:?}").contains("secret"),
+        "the limit is gone: update DESIGN.md"
     );
 }

@@ -1,15 +1,16 @@
 //! Whether a certificate may be encrypted to now: [`usable_encryption_key`].
 //!
 //! Pattern: Specification. rPGP gives the packets, not the semantics, so the rule is written here:
-//! every self-signature must verify, the key must not be revoked or expired, and a live encryption
-//! subkey must exist. Provisional: a subkey revocation fails rPGP's binding check, so such a whole
-//! certificate is refused as invalid instead of falling back to another subkey; a key that encrypts
-//! only with its primary key is refused too. A v4 key that does not advertise `SEIPDv2` is refused:
+//! every self-signature must verify, the key must not be revoked, expired or of a broken algorithm, and
+//! a live encryption subkey must exist. A subkey with a revocation is skipped; `verify_bindings` has
+//! verified that signature with the rest. Provisional: a key that encrypts only with its primary key is
+//! refused, and a revoked subkey stays revoked even if a later binding says otherwise. A v4 key that does not advertise `SEIPDv2` is refused:
 //! `SEIPDv1` is `Unsupported` outgoing.
 
 use pgp::composed::SignedPublicSubKey;
 use pgp::packet::{Signature, SignatureType};
-use pgp::types::{KeyDetails, KeyVersion};
+use pgp::ser::Serialize as _;
+use pgp::types::{KeyDetails, KeyVersion, PublicParams};
 
 use super::PublicCert;
 
@@ -28,6 +29,9 @@ pub enum KeyRefusal {
     /// It has no live subkey for encryption.
     #[error("it cannot encrypt")]
     CannotEncrypt,
+    /// DSA, Elgamal, or RSA under 2048 bits.
+    #[error("its algorithm or key size is too weak")]
+    Weak,
     /// A v4 key that does not advertise `SEIPDv2`.
     #[error("it does not support SEIPDv2")]
     NoModernEncryption,
@@ -52,6 +56,28 @@ fn expired(created: u64, sig: &Signature, now: u64) -> bool {
     lifetime != 0 && created + lifetime <= now
 }
 
+const MIN_RSA_BITS: usize = 2048;
+
+/// Whether these parameters are of an algorithm and size we rely on. rPGP parses them all.
+fn strong(params: &PublicParams) -> bool {
+    match params {
+        PublicParams::DSA(_) | PublicParams::Elgamal(_) => false,
+        // An RSA key starts with the MPI of `n`, whose first two bytes are its length in bits.
+        PublicParams::RSA(_) => params.to_bytes().is_ok_and(|b| {
+            b.len() >= 2 && usize::from(u16::from_be_bytes([b[0], b[1]])) >= MIN_RSA_BITS
+        }),
+        _ => true,
+    }
+}
+
+/// Whether a signature by this key says anything: its signatures verify, it is not revoked and not of
+/// a broken algorithm. An expired key still counts here, for what it signed while it lived.
+pub(crate) fn may_vouch(cert: &PublicCert) -> bool {
+    cert.0.verify_bindings().is_ok()
+        && cert.0.details.revocation_signatures.is_empty()
+        && strong(cert.0.primary_key.public_params())
+}
+
 fn self_signature(cert: &PublicCert) -> Option<&Signature> {
     let details = &cert.0.details;
     let direct = newest(details.direct_signatures.iter());
@@ -70,6 +96,9 @@ pub fn usable_encryption_key(
     if !cert.0.details.revocation_signatures.is_empty() {
         return Err(KeyRefusal::Revoked);
     }
+    if !strong(cert.0.primary_key.public_params()) {
+        return Err(KeyRefusal::Weak);
+    }
     let created = u64::from(cert.0.primary_key.created_at().as_secs());
     let own = self_signature(cert).ok_or(KeyRefusal::Invalid)?;
     if expired(created, own, now) {
@@ -81,8 +110,16 @@ pub fn usable_encryption_key(
         return Err(KeyRefusal::NoModernEncryption);
     }
     let mut saw_expired = false;
+    let mut saw_weak = false;
     let mut best: Option<(&SignedPublicSubKey, u64)> = None;
     for sub in &cert.0.public_subkeys {
+        let revoked = sub
+            .signatures
+            .iter()
+            .any(|s| s.typ() == Some(SignatureType::SubkeyRevocation));
+        if revoked {
+            continue;
+        }
         let bindings = sub
             .signatures
             .iter()
@@ -92,6 +129,10 @@ pub fn usable_encryption_key(
         };
         let flags = binding.key_flags();
         if !flags.encrypt_comms() && !flags.encrypt_storage() {
+            continue;
+        }
+        if !strong(sub.key.public_params()) {
+            saw_weak = true;
             continue;
         }
         let sub_created = u64::from(sub.key.created_at().as_secs());
@@ -106,6 +147,7 @@ pub fn usable_encryption_key(
     match best {
         Some((sub, _)) => Ok(sub),
         None if saw_expired => Err(KeyRefusal::Expired),
+        None if saw_weak => Err(KeyRefusal::Weak),
         None => Err(KeyRefusal::CannotEncrypt),
     }
 }
