@@ -2,8 +2,11 @@
 //!
 //! Pattern: none (tests). Real self-signatures, so the rule meets the packets a real peer could send.
 
-use pgp::packet::{SignatureType, SubpacketData};
+use pgp::composed::{EncryptionCaps, KeyType, SecretKeyParamsBuilder, SubkeyParamsBuilder};
+use pgp::packet::{KeyFlags, Signature, SignatureConfig, SignatureType, Subpacket, SubpacketData};
+use pgp::types::{KeyDetails, KeyVersion, Password, Timestamp};
 
+use super::merge::compact_binding;
 use super::usable_tests::direct;
 use super::*;
 
@@ -95,4 +98,100 @@ fn revocations_are_bounded() {
             "round {round}"
         );
     }
+}
+
+/// A key with one signing subkey.
+fn signing_key() -> SecretCert {
+    let subkey = SubkeyParamsBuilder::default()
+        .version(KeyVersion::V6)
+        .key_type(KeyType::Ed25519)
+        .can_encrypt(EncryptionCaps::None)
+        .can_sign(true)
+        .build()
+        .unwrap();
+    let params = SecretKeyParamsBuilder::default()
+        .version(KeyVersion::V6)
+        .key_type(KeyType::Ed25519)
+        .can_certify(true)
+        .can_sign(true)
+        .feature_seipd_v2(true)
+        .primary_user_id("<a@x>".to_string())
+        .subkey(subkey)
+        .build()
+        .unwrap();
+    SecretCert(params.generate(rand::thread_rng()).unwrap())
+}
+
+/// A signature on the subkey by its owner, with `embedded` in the unhashed area.
+fn on_subkey(key: &SecretCert, typ: SignatureType, signs: bool, embedded: Signature) -> Signature {
+    let primary = &key.0.primary_key;
+    let mut config = SignatureConfig::from_key(rand::thread_rng(), primary, typ).unwrap();
+    let mut hashed = vec![
+        Subpacket::regular(SubpacketData::SignatureCreationTime(Timestamp::now())).unwrap(),
+        Subpacket::regular(SubpacketData::IssuerFingerprint(primary.fingerprint())).unwrap(),
+    ];
+    if signs {
+        let mut flags = KeyFlags::default();
+        flags.set_sign(true);
+        hashed.push(Subpacket::regular(SubpacketData::KeyFlags(flags)).unwrap());
+    }
+    config.hashed_subpackets = hashed;
+    config.unhashed_subpackets =
+        vec![Subpacket::regular(SubpacketData::EmbeddedSignature(Box::new(embedded))).unwrap()];
+    let subkey = &key.0.public_subkeys[0].key;
+    config
+        .sign_subkey_binding(primary, primary.public_key(), &Password::empty(), subkey)
+        .unwrap()
+}
+
+fn real_back(key: &SecretCert) -> Signature {
+    key.0.secret_subkeys[0]
+        .key
+        .sign_primary_key_binding(
+            rand::thread_rng(),
+            key.0.primary_key.public_key(),
+            &Password::empty(),
+        )
+        .unwrap()
+}
+
+fn kept(key: &SecretCert, signature: &Signature) -> usize {
+    let compact = compact_binding(
+        key.0.primary_key.public_key(),
+        &key.0.public_subkeys[0].key,
+        signature,
+    )
+    .unwrap();
+    compact.config().unwrap().unhashed_subpackets.len()
+}
+
+#[test]
+fn a_real_back_signature_stays_on_a_sign_flagged_binding() {
+    let key = signing_key();
+    let binding = on_subkey(&key, SignatureType::SubkeyBinding, true, real_back(&key));
+    assert_eq!(kept(&key, &binding), 1);
+}
+
+/// A public back-signature can be copied. On anything but a sign-flagged binding it has no place, even
+/// though it verifies.
+#[test]
+fn a_real_back_signature_goes_from_anything_else() {
+    let key = signing_key();
+    let revocation = on_subkey(
+        &key,
+        SignatureType::SubkeyRevocation,
+        false,
+        real_back(&key),
+    );
+    assert_eq!(kept(&key, &revocation), 0, "on a revocation");
+    let unflagged = on_subkey(&key, SignatureType::SubkeyBinding, false, real_back(&key));
+    assert_eq!(kept(&key, &unflagged), 0, "on a binding that cannot sign");
+}
+
+/// An embedded signature that does not verify goes, also where a back-signature would belong.
+#[test]
+fn an_embedded_signature_that_does_not_verify_goes() {
+    let (key, other) = (signing_key(), signing_key());
+    let binding = on_subkey(&key, SignatureType::SubkeyBinding, true, real_back(&other));
+    assert_eq!(kept(&key, &binding), 0);
 }

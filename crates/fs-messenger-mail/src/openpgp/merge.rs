@@ -159,7 +159,7 @@ fn stripped(signature: &Signature) -> Option<Signature> {
 /// unhashed area, if it verifies, because rPGP and other programs need it there. In the hashed area one is
 /// already covered, and an embedded signature anywhere else is what anyone can write: its own hashed area
 /// is free, and would survive stripping.
-fn compact_binding(
+pub(super) fn compact_binding(
     primary: &PublicKey,
     subkey: &pgp::packet::PublicSubkey,
     signature: &Signature,
