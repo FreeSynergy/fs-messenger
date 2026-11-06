@@ -8,7 +8,8 @@ use async_trait::async_trait;
 use fs_store::ObjectId;
 use tokio::sync::OwnedMutexGuard;
 
-use crate::error::{Error, Result};
+use crate::error::Result;
+use crate::ingest_rules;
 use crate::model::{ToolCall, Usage};
 use crate::provider::RawMessage;
 
@@ -28,6 +29,9 @@ pub struct SyncReport {
     pub stored: usize,
     /// Messages that were already known.
     pub duplicates: usize,
+    /// Messages refused for what they are (invalid, too large). They do not stop the sync, and the
+    /// cursor goes past them.
+    pub rejected: usize,
 }
 
 /// The way in, for whoever runs a provider.
@@ -41,7 +45,8 @@ pub trait Ingest: Send + Sync {
     /// Store or update one call of an agent, in place, keyed by the agent's own reference. Answers
     /// the call as stored: `id` and `revision` are the engine's; risk, options, digest and `asked_of`
     /// are reset and `detail` moves into `summary`, because the call came from outside the engine.
-    /// A settled call stays as it is, and so does a call given a lower non-zero revision than held.
+    /// An outside question is stored as `working`: nobody here can answer it. An incoming revision
+    /// is ignored, and a settled call stays as it is. An empty `agent_ref` is refused.
     async fn record_tool_call(
         &self,
         message: ObjectId,
@@ -66,7 +71,7 @@ pub(crate) trait IngestSteps: Send + Sync {
 
     /// The fixed flow.
     async fn ingest_flow(&self, account: ObjectId, raw: RawMessage) -> Result<Ingested> {
-        check(&raw)?;
+        let raw = ingest_rules::accepted(raw)?;
         let _writes = self.exclusive().await;
         if let Some(id) = self.known(account, &raw).await? {
             self.merge_aliases(id, account, &raw).await?;
@@ -74,26 +79,4 @@ pub(crate) trait IngestSteps: Send + Sync {
         }
         Ok(Ingested::Stored(self.store_new(account, raw).await?))
     }
-}
-
-/// Without an alias a replay cannot be recognised; such a message would be stored twice.
-fn check(raw: &RawMessage) -> Result<()> {
-    if raw.aliases.is_empty() {
-        return Err(Error::Invalid(
-            "a provider must give every message at least one alias, creating its own if needed"
-                .into(),
-        ));
-    }
-    let bad = |s: &str| s.is_empty() || s.contains('|');
-    if raw
-        .aliases
-        .iter()
-        .chain([&raw.conversation])
-        .any(|a| bad(&a.scheme) || a.id.is_empty())
-    {
-        return Err(Error::Invalid(
-            "an alias needs an id and a scheme without `|`".into(),
-        ));
-    }
-    Ok(())
 }

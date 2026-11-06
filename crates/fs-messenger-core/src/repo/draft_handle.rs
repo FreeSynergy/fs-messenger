@@ -64,6 +64,10 @@ impl Draft for StoredDraft {
 
     async fn set_account(&mut self, account: ObjectId) -> Result<()> {
         self.check_open()?;
+        if self.data.conversation.is_some() {
+            let why = "this draft answers in a conversation, which has its own account";
+            return Err(Error::Conflict(why.into()));
+        }
         self.inner.load_account(account).await?;
         self.data.account = Some(account);
         Ok(())
@@ -76,7 +80,7 @@ impl Draft for StoredDraft {
                 "{media_type} is not a draft format"
             )));
         }
-        self.data.text = text;
+        self.data.text = text.replace('\0', "");
         self.data.media_type = media_type;
         Ok(())
     }
@@ -106,9 +110,12 @@ impl Draft for StoredDraft {
             let why = "nothing runs a scheduled send yet; the draft is saved and nothing left";
             return Err(Unsupported::new("message.schedule", why).into());
         }
-        let id = self.inner.send_draft(&self.data).await?;
-        self.open = false;
-        Ok(id)
+        let sent = self.inner.send_draft(&self.data).await;
+        // A downgrade means it left: another try would send it again.
+        if matches!(sent, Ok(_) | Err(Error::EncryptionDowngraded { .. })) {
+            self.open = false;
+        }
+        sent
     }
 
     async fn discard(&mut self) -> Result<()> {

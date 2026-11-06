@@ -14,35 +14,27 @@ use crate::model::EncryptionPlan;
 use crate::provider::{Outgoing, Provider};
 
 impl Inner {
-    /// What the provider plans, normalised. No provider, or one that cannot plan, is "no way".
+    /// What the account's provider plans for `recipients`.
     pub(super) async fn plan_for(
         &self,
         account: Option<ObjectId>,
         recipients: &[String],
     ) -> Result<EncryptionPlan> {
-        let Some(provider) = account.and_then(|a| self.provider(a)) else {
-            return Ok(gate::normalise(EncryptionPlan::default(), recipients));
-        };
-        match provider.encryption_plan(recipients).await {
-            Ok(plan) => Ok(gate::normalise(plan, recipients)),
-            Err(Error::Unsupported(_)) => {
-                Ok(gate::normalise(EncryptionPlan::default(), recipients))
-            }
-            Err(e) => Err(e),
-        }
+        let provider = account.and_then(|a| self.provider(a));
+        plan_with(provider.as_deref(), recipients).await
     }
 
-    /// The one way a message leaves the core.
+    /// The one way a message leaves the core. The provider is looked up once: whoever made the plan
+    /// is who gets the message, whatever is registered in the meantime.
     pub(super) async fn send_draft(&self, data: &DraftData) -> Result<ObjectId> {
         let recipients = data.recipients();
         let account = data
             .account
             .ok_or_else(|| Error::Invalid("no account chosen; nothing left".into()))?;
-        let plan = self.plan_for(Some(account), &recipients).await?;
+        let provider = self.provider(account);
+        let plan = plan_with(provider.as_deref(), &recipients).await?;
         gate::check(&plan, &recipients)?;
-        let provider: std::sync::Arc<dyn Provider> = self
-            .provider(account)
-            .ok_or_else(|| Error::Provider("the provider is gone".into()))?;
+        let provider = provider.ok_or_else(|| Error::Provider("no provider".into()))?;
 
         let (message, body) = self.record_sending(data, account, &plan).await?;
         let outgoing = Outgoing::approve(message.id(), plan, body)?;
@@ -55,5 +47,20 @@ impl Inner {
             }
         }
         Ok(id)
+    }
+}
+
+/// A plan, normalised. No provider, or one that cannot plan, is "no way".
+async fn plan_with(
+    provider: Option<&dyn Provider>,
+    recipients: &[String],
+) -> Result<EncryptionPlan> {
+    let Some(provider) = provider else {
+        return Ok(gate::normalise(EncryptionPlan::default(), recipients));
+    };
+    match provider.encryption_plan(recipients).await {
+        Ok(plan) => Ok(gate::normalise(plan, recipients)),
+        Err(Error::Unsupported(_)) => Ok(gate::normalise(EncryptionPlan::default(), recipients)),
+        Err(e) => Err(e),
     }
 }

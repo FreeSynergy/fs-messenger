@@ -25,6 +25,16 @@ impl Inner {
     ) -> Result<(Message, OutgoingBody)> {
         let _writes = self.writes.lock().await;
         let (_, sender) = self.load_account(account).await?;
+        let parent = match data.reply_to {
+            Some(id) => self
+                .reload(id)
+                .await?
+                .map(|m| m.aliases)
+                .unwrap_or_default(),
+            None => vec![],
+        };
+        // Before anything is stored: without the files there is nothing to send.
+        let attachments = self.outgoing_attachments(&data.attachments).await?;
         let conversation = if let Some(id) = data.conversation {
             self.load_conversation(id).await?
         } else {
@@ -33,7 +43,8 @@ impl Inner {
             } else {
                 Kind::Chat
             };
-            let name = data.recipients().join(", ");
+            // Never the hidden recipients: a name is shown.
+            let name = [data.to.as_slice(), &data.cc].concat().join(", ");
             self.create_conversation(account, vec![], &name, kind)
                 .await?
         };
@@ -46,10 +57,6 @@ impl Inner {
         env.bcc.clone_from(&data.bcc);
         env.context = Some(conversation_id.to_string());
         env.in_reply_to = data.reply_to.map(|id| id.to_string());
-        let parent = match data.reply_to {
-            Some(id) => self.load_note(id).await?.aliases,
-            None => vec![],
-        };
         let message = Message {
             summary: MessageSummary {
                 envelope: env,
@@ -86,15 +93,15 @@ impl Inner {
             bcc: data.bcc.clone(),
             text: data.text.clone(),
             media_type: data.media_type.clone(),
-            attachments: self.outgoing_attachments(&data.attachments).await?,
+            attachments,
             conversation: conversation.content.aliases,
             in_reply_to: parent,
         };
         Ok((message, body))
     }
 
-    /// A message deleted while it was on its way stays deleted.
-    async fn reload(&self, id: ObjectId) -> Result<Option<Message>> {
+    /// A message that was deleted in the meantime stays deleted.
+    pub(super) async fn reload(&self, id: ObjectId) -> Result<Option<Message>> {
         match self.load_note(id).await {
             Ok(m) => Ok(Some(m)),
             Err(Error::NotFound(_)) => Ok(None),

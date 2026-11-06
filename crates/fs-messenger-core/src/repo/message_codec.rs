@@ -11,9 +11,10 @@ use serde::{Deserialize, Serialize};
 use super::consts::{
     CONTENT_TYPE, IDX_ACCOUNT, IDX_ALIAS, IDX_BLOB, IDX_DESC, IDX_ENCRYPTION, IDX_FLAGGED,
     IDX_FROM, IDX_HAS_ATTACHMENT, IDX_JOB, IDX_KIND, IDX_ORDER, IDX_REPLY_ALIAS, IDX_TASK,
-    IDX_TEXT, IDX_UNREAD, SENSITIVE, TEXT_PLAIN, YES,
+    IDX_TEXT, IDX_UNREAD, SENSITIVE, YES,
 };
 use super::keys::{alias_key, desc_key, order_key};
+use super::text::body_media_type;
 use crate::error::Result;
 use crate::model::{
     Attachment, DeliveryState, Encryption, ExternalId, Kind, Message, MessageSummary, Reaction,
@@ -79,11 +80,7 @@ pub(super) fn message_from(o: StoredObject) -> Result<Message> {
         tool_call_refs: c.tool_call_refs,
         task_refs: c.task_refs,
         reasoning: c.reasoning,
-        body_media_type: if c.body_media_type.is_empty() {
-            TEXT_PLAIN.to_string()
-        } else {
-            c.body_media_type
-        },
+        body_media_type: body_media_type(&c.body_media_type),
         aliases: c.aliases,
         account: c.account,
         outgoing: c.outgoing,

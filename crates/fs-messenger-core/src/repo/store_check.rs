@@ -4,7 +4,8 @@
 //! ask what it does: try to write a sensitive object. A plain store answers `EncryptionRequired`.
 //! The check object is written once. Later checks offer it a different original, which an encrypted
 //! store rejects as `OriginalImmutable` after its own encryption check, so they write nothing and
-//! the log does not grow with every start. A store that opted out cannot be told apart this way.
+//! the log does not grow with every start. A store that opted out cannot be told apart this way,
+//! which is why `open_turso`, the only constructor of a normal build, also asks `is_encrypted`.
 
 use fs_store::{Blob, Envelope, ObjectId, Store, StoredObject};
 

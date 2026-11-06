@@ -16,11 +16,11 @@ pub enum MessageAction {
     Flag(bool),
     /// Mark it unread or read.
     Unread(bool),
-    /// React with this key; empty takes my reaction back.
+    /// React with this key; empty takes my reaction back. Not possible yet: nothing carries it.
     React(String),
     /// Send it on to these recipients; the same encryption rule applies as for any send.
     Forward(Vec<String>),
-    /// New text of my own message; the first version's id stays.
+    /// New text of my own message. Not possible yet: nothing carries it.
     Edit(String),
     /// Answers a question of an agent. Not possible yet: the guard follows.
     Decide(ToolCallDecision),

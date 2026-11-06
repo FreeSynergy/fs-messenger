@@ -71,6 +71,7 @@ impl IngestSteps for Inner {
 
 impl Inner {
     /// Fetch and ingest until the provider has no more. The cursor moves after each stored batch.
+    /// One bad message does not hold an account back; a store failure stops here, cursor unmoved.
     pub(super) async fn sync(&self, account: ObjectId) -> Result<SyncReport> {
         let (_, mut content) = self.load_account(account).await?;
         let provider = self
@@ -80,16 +81,20 @@ impl Inner {
         loop {
             let batch = provider.fetch(content.sync_cursor.as_ref()).await?;
             for raw in batch.messages {
-                match self.ingest_flow(account, raw).await? {
-                    Ingested::Stored(_) => report.stored += 1,
-                    Ingested::Duplicate(_) => report.duplicates += 1,
+                match self.ingest_flow(account, raw).await {
+                    Ok(Ingested::Stored(_)) => report.stored += 1,
+                    Ok(Ingested::Duplicate(_)) => report.duplicates += 1,
+                    Err(Error::Invalid(_)) => report.rejected += 1,
+                    Err(e) => return Err(e),
                 }
             }
-            if let Some(next) = batch.next {
+            let progress = batch.next.is_some() && batch.next != content.sync_cursor;
+            if let Some(next) = batch.next.filter(|_| progress) {
                 self.save_cursor(account, next.clone()).await?;
                 content.sync_cursor = Some(next);
             }
-            if !batch.more {
+            // `more` without a new position would ask for the same batch for ever.
+            if !batch.more || !progress {
                 return Ok(report);
             }
         }

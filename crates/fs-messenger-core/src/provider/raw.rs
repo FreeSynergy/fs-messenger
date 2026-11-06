@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use fs_store::Blob;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Encryption, ExternalId, Kind, SenderKind, ToolCall};
+use crate::model::{Encryption, ExternalId, Kind, ToolCall};
 
 /// Where a provider stands in its own stream. Opaque to the core.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,7 +39,7 @@ pub struct RawAttachment {
 /// A tool call as an agent reports it.
 #[derive(Clone, Debug, Default)]
 pub struct RawToolCall {
-    /// The agent's own reference; never used as `ToolCall.id`.
+    /// The agent's own reference, not empty; never used as `ToolCall.id`.
     pub agent_ref: String,
     /// The call. `id`, `risk`, `options`, `arguments_digest`, `asked_of` and `revision` are the
     /// engine's and not taken from here; `detail` moves into `summary`.
@@ -61,8 +61,6 @@ pub struct RawMessage {
     pub encryption: Encryption,
     /// Sender's address or actor IRI.
     pub sender: String,
-    /// From the sender's card, never a guess.
-    pub sender_kind: SenderKind,
     /// Primary recipients.
     pub to: Vec<String>,
     /// Secondary recipients.
@@ -108,7 +106,6 @@ impl RawMessage {
             kind: Kind::default(),
             encryption: Encryption::default(),
             sender: sender.into(),
-            sender_kind: SenderKind::default(),
             to: vec![],
             cc: vec![],
             subject: None,

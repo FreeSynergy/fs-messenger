@@ -22,10 +22,8 @@ pub(super) fn report() -> Capabilities {
         "message.send",
         "message.reply",
         "message.forward",
-        "message.edit",
         "message.delete",
         "message.flag",
-        "message.react",
         "message.search",
         "message.encryption",
         "message.compose",
@@ -39,6 +37,8 @@ pub(super) fn report() -> Capabilities {
         caps.supported(id);
     }
     for (id, why) in [
+        ("message.edit", "no provider can carry it yet"),
+        ("message.react", "no provider can carry it yet"),
         ("toolcall.decide", "the guard follows"),
         ("turn.stop", "the guard follows"),
         ("text.stream", "nothing streams yet"),

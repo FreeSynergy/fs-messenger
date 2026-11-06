@@ -88,6 +88,8 @@ pub struct TestProvider {
     pub since: Mutex<Vec<Option<ProviderCursor>>>,
     pub receipt: Mutex<SendReceipt>,
     pub fail_send: Mutex<bool>,
+    /// Always answers the same batch, which claims there is more.
+    pub stuck: Mutex<bool>,
 }
 
 impl TestProvider {
@@ -104,6 +106,7 @@ impl TestProvider {
                 encryption,
             }),
             fail_send: Mutex::new(false),
+            stuck: Mutex::new(false),
         })
     }
 
@@ -126,6 +129,13 @@ impl Provider for TestProvider {
 
     async fn fetch(&self, since: Option<&ProviderCursor>) -> Result<FetchBatch> {
         self.since.lock().unwrap().push(since.cloned());
+        if *self.stuck.lock().unwrap() {
+            return Ok(FetchBatch {
+                messages: vec![],
+                next: since.cloned(),
+                more: true,
+            });
+        }
         Ok(self.batches.lock().unwrap().pop_front().unwrap_or_default())
     }
 

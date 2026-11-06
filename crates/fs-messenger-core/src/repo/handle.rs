@@ -1,8 +1,8 @@
 //! [`MessengerRepo`]: the program's entry, and what its parts share.
 //!
 //! Pattern: Facade + Registry: one small type hides the store, the rules and the providers;
-//! providers are registered per account at runtime (hot plugins, ADR 0045). There is no way to get a
-//! `MessengerRepo` without the store check.
+//! providers are registered per account at runtime (hot plugins, ADR 0045). A normal build has one
+//! way to a `MessengerRepo`: `open_turso`, which asks the store whether it is encrypted.
 
 use std::collections::HashMap;
 use std::sync::{Arc, PoisonError, RwLock};
@@ -53,10 +53,26 @@ pub(super) struct Inner {
 }
 
 impl MessengerRepo {
-    /// Open on any store. Refused with `StoreNotEncrypted` if the store refuses sensitive objects.
-    /// A store that was told to accept them anyway cannot be told apart behind `dyn Store`:
-    /// see [`MessengerRepo::open_turso`] and `DESIGN.md`.
+    /// Open on a Turso store. Refuses every unencrypted one, including one that opted out of the
+    /// sensitive-data rule. The only constructor of a normal build.
+    ///
+    /// Keep one handle per store and clone it: a second `open_turso` on the same store shares no
+    /// write lock and no arrival counter with the first.
+    pub async fn open_turso(store: Arc<TursoStore>, config: MessengerConfig) -> Result<Self> {
+        if !store.is_encrypted() {
+            return Err(Error::StoreNotEncrypted);
+        }
+        Self::checked(store, config).await
+    }
+
+    /// Open on any store, for tests only: a plain in-memory store passes, because it accepts
+    /// sensitive objects. A store that refuses them is still refused.
+    #[cfg(feature = "test-support")]
     pub async fn open(store: Arc<dyn Store>, config: MessengerConfig) -> Result<Self> {
+        Self::checked(store, config).await
+    }
+
+    async fn checked(store: Arc<dyn Store>, config: MessengerConfig) -> Result<Self> {
         store_check::check(store.as_ref(), &config.actor).await?;
         Ok(Self {
             inner: Arc::new(Inner {
@@ -66,15 +82,6 @@ impl MessengerRepo {
                 providers: RwLock::new(HashMap::new()),
             }),
         })
-    }
-
-    /// Open on a Turso store, which can be asked directly. Refuses every unencrypted one, also one
-    /// that opted out of the sensitive-data rule. The form a program binary should use.
-    pub async fn open_turso(store: Arc<TursoStore>, config: MessengerConfig) -> Result<Self> {
-        if !store.is_encrypted() {
-            return Err(Error::StoreNotEncrypted);
-        }
-        Self::open(store, config).await
     }
 
     /// Use `provider` for `account`, replacing any earlier one.

@@ -533,6 +533,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "fs-interfaces",
+ "fs-messenger-core",
  "fs-store",
  "serde",
  "serde_json",

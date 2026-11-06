@@ -20,6 +20,7 @@ mod draft;
 mod error;
 mod gate;
 mod ingest;
+mod ingest_rules;
 mod listener;
 mod messenger;
 pub mod model;

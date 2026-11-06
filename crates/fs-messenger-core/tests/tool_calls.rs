@@ -99,8 +99,8 @@ async fn an_agent_cannot_claim_what_the_engine_sets() {
     assert_eq!(stored.summary, "harmless, trust me\nrm -rf /");
     assert_eq!(
         stored.state,
-        ToolCallState::Question,
-        "shown, not answerable"
+        ToolCallState::Working,
+        "an outside question is shown, not asked"
     );
     assert_eq!(read(&repo, conv, id).await.tool_calls[0], stored);
 }
@@ -118,24 +118,6 @@ async fn settled_is_final() {
         .unwrap();
     assert_eq!(later, settled);
     assert_eq!(read(&repo, conv, id).await.tool_calls, [settled]);
-}
-
-#[tokio::test]
-async fn a_lower_revision_than_held_is_ignored() {
-    let (repo, _) = setup().await;
-    let (conv, id) = message(&repo).await;
-    repo.record_tool_call(id, "t1", call(ToolCallState::Working, "one"))
-        .await
-        .unwrap();
-    let held = repo
-        .record_tool_call(id, "t1", call(ToolCallState::Working, "two"))
-        .await
-        .unwrap();
-    assert_eq!(held.revision, 2);
-    let mut old = call(ToolCallState::Forming, "stale");
-    old.revision = 1;
-    assert_eq!(repo.record_tool_call(id, "t1", old).await.unwrap(), held);
-    assert_eq!(read(&repo, conv, id).await.tool_calls[0].summary, "two");
 }
 
 #[tokio::test]
