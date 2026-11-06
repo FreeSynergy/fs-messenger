@@ -122,12 +122,12 @@ Search reads the first 256 KiB of a body and stops there; the message itself sta
 
 ## What a large body costs
 
-Each change of a message logs a before and an after image of it, content and index included, and those stay until compaction. A body over 64 KiB therefore lives in a store object of its own, as the immutable original of a `Document`. `fs-store` leaves originals out of update images, so a flag does not copy it. Measured on a 5 MiB body: four flag changes add 2.1 MiB of log, where they used to add 40 MiB.
+Each change of a message logs a before and an after image of it, content and index included, and those stay until compaction. A body over 64 KiB therefore lives in a store object of its own, as the immutable original of a `Document`. `fs-store` leaves originals out of update images, so a flag does not copy it. Measured on a 5 MiB body: four flag changes add 2.0 MiB of log (2,110,236 bytes), where the same body inside `content` adds 42 MiB (44,053,060 bytes).
 
 **What this does not solve, and what `fs-store` would have to do:**
 
-1. **Creating still doubles a body, and more.** A Create image carries the original, base64: the 5 MiB body measured 7.3 MiB of log on top of its 5 MiB in the object. A 25 MiB body is then about 58 MiB, somewhat **more** than the 51 MiB as inline text. Deleting it adds another image. The same holds for every attachment and every mail original. Needed: `fs-store` keeps large originals in one place and logs a reference, for instance content-addressed.
-2. **The index is copied by every change.** Update images include index fields, so up to 256 KiB of search text is copied twice per change: that is the 2.1 MiB above. Needed: images without the index, which can be derived. Not worked around here: a search index in another object would need a second query for every filter.
+1. **Creating still doubles a body, and more.** A Create image carries the original, base64: the 5 MiB body measured 6.9 MiB of log (7,257,991 bytes) on top of its 5 MiB in the object. Scaled up, not measured, a 25 MiB body is then about 60 MiB, somewhat **more** than the 51 MiB reported for inline text. Deleting it adds another image. The same holds for every attachment and every mail original. Needed: `fs-store` keeps large originals in one place and logs a reference, for instance content-addressed.
+2. **The index is copied by every change.** Update images include index fields, so up to 256 KiB of search text is copied twice per change: that is the 2.0 MiB above. Needed: images without the index, which can be derived. Not worked around here: a search index in another object would need a second query for every filter.
 3. Reasoning and tool results stay in `content`, within the limits. Drafts keep their whole text in `content`, and are only rewritten when saved.
 
 ## Store damage
