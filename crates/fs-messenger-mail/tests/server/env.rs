@@ -12,39 +12,9 @@ use tokio::sync::{Mutex, MutexGuard};
 pub async fn serial() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     let guard = LOCK.get_or_init(|| Mutex::new(())).lock().await;
-    relax_throttle().await;
     wipe(Who::Alice).await;
     wipe(Who::Bob).await;
     guard
-}
-
-/// A full run sends more mail than the default 25 per hour per sender domain and recipient. Off for this
-/// throwaway server, once per run, at runtime; the scripts stay as they are.
-async fn relax_throttle() {
-    static DONE: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
-    DONE.get_or_init(|| async {
-        let env = Env::load();
-        let call = |calls: serde_json::Value| {
-            let body = serde_json::json!({"using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"], "methodCalls": calls});
-            let url = format!("{}/jmap/", env.get("FS_MSGTEST_JMAP_URL"));
-            let (user, pass) = (env.get("FS_MSGTEST_MAIL_ADMIN_USER"), env.get("FS_MSGTEST_MAIL_ADMIN_PASSWORD"));
-            async move {
-                let answer: serde_json::Value = loopback_client().post(url).basic_auth(user, Some(pass)).json(&body)
-                    .send().await.expect("admin").json().await.expect("admin json");
-                answer
-            }
-        };
-        let found = call(serde_json::json!([["x:MtaInboundThrottle/query", {"filter": {}}, "q"]])).await;
-        let ids = found["methodResponses"][0][1]["ids"].as_array().cloned().unwrap_or_default();
-        let update: serde_json::Map<String, serde_json::Value> = ids
-            .iter()
-            .filter_map(|i| i.as_str())
-            .map(|i| (i.to_string(), serde_json::json!({"enable": false})))
-            .collect();
-        let answer = call(serde_json::json!([["x:MtaInboundThrottle/set", {"update": update}, "s"]])).await;
-        eprintln!("throttle: {}", answer["methodResponses"][0][1]["updated"]);
-    })
-    .await;
 }
 
 /// Destroy one mail of `who`, as another program of theirs would.
