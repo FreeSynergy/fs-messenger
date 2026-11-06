@@ -67,3 +67,38 @@ async fn over_imap() {
 async fn over_jmap() {
     replay_and_restart(Fetch::Jmap).await;
 }
+
+/// A stranger claims the `Message-ID` of a mail bob already has. His mail must still be stored, and
+/// the first one must stay as it is.
+async fn forged_message_id(fetch: Fetch) {
+    let _one = serial().await;
+    let b = tempfile::tempdir().unwrap();
+    let bob = Person::open(Who::Bob, b.path(), fetch, Submit::Smtp).await;
+    let t = token();
+    let mail = |body: &str| {
+        format!(
+            "From: {}\r\nTo: {}\r\nSubject: x\r\nMessage-ID: <{t}-same@msgtest.test>\r\n\r\n{body}\r\n",
+            Who::Alice.address(),
+            Who::Bob.address()
+        )
+    };
+    let (first, second) = (format!("First-{t}"), format!("Second-{t}"));
+    smtp_raw(Who::Alice, Who::Bob, mail(&first).as_bytes()).await;
+    bob.wait_for(&first).await;
+    smtp_raw(Who::Bob, Who::Bob, mail(&second).as_bytes()).await;
+    bob.wait_for(&second).await;
+    assert_eq!(bob.find(&first).await.len(), 1, "the first one stays");
+    assert_eq!(bob.find(&second).await.len(), 1, "the forged one is not suppressed");
+}
+
+#[tokio::test]
+#[ignore = "needs scripts/test-servers/up.sh; run with --ignored"]
+async fn a_forged_message_id_does_not_suppress_a_mail_over_imap() {
+    forged_message_id(Fetch::Imap).await;
+}
+
+#[tokio::test]
+#[ignore = "needs scripts/test-servers/up.sh; run with --ignored"]
+async fn a_forged_message_id_does_not_suppress_a_mail_over_jmap() {
+    forged_message_id(Fetch::Jmap).await;
+}

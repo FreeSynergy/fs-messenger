@@ -23,7 +23,7 @@ pub const UNDECRYPTED_MARK: &str =
 
 pub(super) const SCHEME_MESSAGE_ID: &str = "message-id";
 pub(super) const SCHEME_THREAD: &str = "mail-thread";
-/// For a mail without `Message-ID`: account, mailbox and the server's own id.
+/// Issued by the provider, not the sender: account, mailbox and the server's own id.
 const SCHEME_LOCAL: &str = "mail-local";
 const MEDIA_RFC822: &str = "message/rfc822";
 
@@ -183,14 +183,15 @@ impl MailProvider {
         };
         let fields = read.fields;
         let local = format!("{}/{}", self.identity.address, mail.stable_id);
-        let alias = read.outer_message_id.as_ref().map_or_else(
-            || ExternalId::new(SCHEME_LOCAL, local.clone()),
-            |id| ExternalId::new(SCHEME_MESSAGE_ID, id.clone()),
-        );
+        let alias = ExternalId::new(SCHEME_LOCAL, local.clone());
         let root = thread_root(&fields).unwrap_or(&local);
         let conversation = ExternalId::new(SCHEME_THREAD, root);
         let sender = fields.from.clone().unwrap_or_default();
         let mut raw = RawMessage::new(alias, conversation, sender.clone(), body);
+        raw.aliases.extend(
+            read.outer_message_id
+                .map(|id| ExternalId::new(SCHEME_MESSAGE_ID, id)),
+        );
         raw.encryption = read.encryption;
         raw.to = fields.to;
         raw.cc = fields.cc;
