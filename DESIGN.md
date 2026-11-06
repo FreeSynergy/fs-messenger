@@ -6,7 +6,7 @@ original (ADR 0020, 0030), stored through `fs-store`. Frontends never see protoc
 
 ## State
 
-Version 0.1.0. Mirrors the `messenger.capnp` contract, version 0.3 (`CONTRACT_VERSION`), with the dependency on `fs-interfaces` v0.27.0 (consumers: 0 of 2). Generated types are not in the public API.
+Version 0.1.1. Mirrors the `messenger.capnp` contract, version 0.3 (`CONTRACT_VERSION`), with the dependency on `fs-interfaces` v0.27.0 (consumers: 0 of 2). Generated types are not in the public API.
 
 | Area | State |
 |---|---|
@@ -32,6 +32,7 @@ Version 0.1.0. Mirrors the `messenger.capnp` contract, version 0.3 (`CONTRACT_VE
 | Large bodies: over 64 KiB in a store object of their own, see "What a large body costs" | done, with a limit named there |
 | An undecrypted message: no ciphertext in preview, name or search; it cannot be forwarded; delivered again under a provider-issued id in readable form it is replaced under the same id, keeping what the person did | done |
 | Tests | 167 against real `TursoStore` (in memory, or temp files where encryption matters); the `Provider` doubles only feed core logic |
+| Guard tests | see `crates/fs-messenger-guard/DESIGN.md` |
 
 ### Local only: says so here, and claims nothing more
 

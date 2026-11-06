@@ -30,6 +30,10 @@ The AI guard of FreeSynergy.Messenger: invitation, release, brake, emergency sto
 | Replacing a lost last key while the state is intact | no path: AIs stay shut out, the rest of the messenger works. Open point 3 |
 | Who is calling, proven | `Caller` is built by the tool layer that does not exist yet; ADR 0054 suggests the system user over a Unix socket |
 
+### Tests
+
+Against real, encrypted `TursoStore`s in temp files, restarted by dropping every handle and opening the files again. A hand-held clock moves expiry. Only three kinds of test double exist, and each only adds a failure or a behaviour around the real thing: a repository whose writes fail or wait, over the real one; providers that hang, panic or cannot stop; and a guard that does nothing, to reach the port alone. Each guarantee was checked by removing it from a clone and seeing a test fail.
+
 ## State table
 
 Program (`GuardMode`):
