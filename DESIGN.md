@@ -6,7 +6,7 @@ original (ADR 0020, 0030), stored through `fs-store`. Frontends never see protoc
 
 ## State
 
-Version 0.1.0, not tagged. Mirrors the `messenger.capnp` contract, version 0.3 (`CONTRACT_VERSION`), with the dependency on `fs-interfaces` v0.16.0 (consumers: 0 of 2). Generated types are not in the public API.
+Version 0.1.0, not tagged. Mirrors the `messenger.capnp` contract, version 0.3 (`CONTRACT_VERSION`), with the dependency on `fs-interfaces` v0.27.0 (consumers: 0 of 2). Generated types are not in the public API.
 
 | Area | State |
 |---|---|
@@ -180,9 +180,9 @@ A record that lost its sort keys is neither listed nor reported.
 Contract, for the owner:
 
 1. `Compose.draft(replyTo)` has no account: with several accounts nothing says which one sends. The core adds `Draft::set_account` (provisional, refused on a reply); with exactly one account, it is taken.
-2. `Draft.setSubject` is on branch `msg-contract-2` of `fs-interfaces`, not tagged. `Draft::set_subject` mirrors the name with no dependency change; `Outgoing::subject` exposes it.
+2. `Draft.setSubject` is in `fs-interfaces` v0.27.0. `Draft::set_subject` mirrors the name with no dependency change; `Outgoing::subject` exposes it.
 3. No page size, and no direction for `messages`.
-4. `MessageSummary.arrival`, `undecrypted`, `signature`, `MessagePage.skipped` and `unknown` on `Kind`, `ToolCallState`, `DeliveryState` are on `msg-contract-2`, not tagged. The core mirrors them; `skipped` is a count there and the ids here. The dependency stays on v0.16.0.
+4. `MessageSummary.arrival`, `undecrypted`, `signature`, `MessagePage.skipped` and `unknown` on `Kind`, `ToolCallState`, `DeliveryState` are in `fs-interfaces` v0.27.0. The core mirrors them; `skipped` is a count there and the ids here.
 5. "Read all I see" (see "Reading").
 
 Code:
@@ -201,4 +201,4 @@ Code:
 
 Feature `test-support`: `MessengerRepo::open`, off unless a build asks for it.
 
-`fs-store` (git tag v0.3.0), `fs-interfaces` (git tag v0.16.0): `Capabilities`, `Unsupported`. `serde`, `serde_json`, `chrono`, `thiserror`, `async-trait`, `tokio`; dev: `tempfile`. No network crates in this crate. `scripts/test-servers` belongs to the connector work, not to this crate.
+`fs-store` (git tag v0.3.0), `fs-interfaces` (git tag v0.27.0): `Capabilities`, `Unsupported`. `serde`, `serde_json`, `chrono`, `thiserror`, `async-trait`, `tokio`; dev: `tempfile`. No network crates in this crate. `scripts/test-servers` belongs to the connector work, not to this crate.

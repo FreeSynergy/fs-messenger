@@ -14,7 +14,7 @@ test-support = []
 [dependencies]
 fs-store = { git = "https://github.com/FreeSynergy/fs-store", tag = "v0.3.0" }
 # The provider rule (ADR 0045): `Capabilities` and `Unsupported`. No generated types in our public API.
-fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.16.0" }
+fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.27.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
