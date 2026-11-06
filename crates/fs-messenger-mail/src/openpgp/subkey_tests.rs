@@ -210,25 +210,3 @@ fn a_signature_made_after_the_key_ran_out_is_not_valid() {
         SignatureState::Valid { .. }
     ));
 }
-
-/// A real change, so the size is the only reason left to refuse it.
-#[test]
-fn a_merge_past_the_cap_is_refused() {
-    let key = generate_key("a@x").unwrap();
-    let held = key.public();
-    let mut other = key.public();
-    other
-        .0
-        .details
-        .revocation_signatures
-        .push(direct(&key, SignatureType::KeyRevocation, vec![]));
-    let size = held.to_binary().unwrap().len();
-    assert!(
-        held.merged_within(&other, 64 * 1024).is_some(),
-        "it is a real change"
-    );
-    assert!(
-        held.merged_within(&other, size).is_none(),
-        "and past the cap it is refused"
-    );
-}

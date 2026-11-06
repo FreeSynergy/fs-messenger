@@ -42,3 +42,58 @@ async fn a_flood_of_padded_signatures_does_not_grow_the_key_store() {
     let size: u64 = std::fs::metadata(b.path().join("keys.db")).unwrap().len();
     assert!(size < 1024 * 1024, "keys.db is {size} bytes");
 }
+
+/// The attack the short check ran on this server: a forged first mail with Alice's real key, padded up to
+/// the limit through an embedded signature. Then her real revocation, which must still count.
+async fn padded_first_contact_then_revocation(fetch: Fetch) {
+    use crate::forge::{key, revoked};
+    use crate::forge_embedded::padded_through_embedded;
+    use fs_messenger_core::Provider as _;
+    let _one = serial().await;
+    let b = tempfile::tempdir().unwrap();
+    let bob = Person::open(Who::Bob, b.path(), fetch, Submit::Smtp).await;
+    let from = Who::Alice.address();
+    let (alice, rpgp) = key(&from);
+    let t = token();
+    let forged = |n: u32, cert: &fs_messenger_mail::openpgp::PublicCert| {
+        format!(
+            "From: {from}\r\nTo: {}\r\nSubject: s{n}\r\nMessage-ID: <{t}-{n}@msgtest.test>\r\nAutocrypt: {}\r\n\r\nCap{n}-{t}\r\n",
+            Who::Bob.address(),
+            format_header(&from, cert).unwrap()
+        )
+    };
+    let first = padded_through_embedded(&alice.public(), 64_000);
+    smtp_raw(Who::Bob, Who::Bob, forged(1, &first).as_bytes()).await;
+    bob.wait_for(&format!("Cap1-{t}")).await;
+    let held = bob.provider.peer(&from).await.unwrap().expect("first seen");
+    assert!(
+        held.cert.len() < 6000,
+        "stored at {} bytes of base64",
+        held.cert.len()
+    );
+
+    smtp_raw(Who::Bob, Who::Bob, forged(2, &revoked(&rpgp)).as_bytes()).await;
+    bob.wait_for(&format!("Cap2-{t}")).await;
+    let plan = bob
+        .provider
+        .encryption_plan(std::slice::from_ref(&from))
+        .await
+        .unwrap();
+    assert_eq!(
+        plan.missing_keys,
+        [from],
+        "nothing is encrypted to her revoked key"
+    );
+}
+
+#[tokio::test]
+#[ignore = "needs scripts/test-servers/up.sh; run with --ignored"]
+async fn a_padded_first_contact_cannot_block_a_revocation_over_imap() {
+    padded_first_contact_then_revocation(Fetch::Imap).await;
+}
+
+#[tokio::test]
+#[ignore = "needs scripts/test-servers/up.sh; run with --ignored"]
+async fn a_padded_first_contact_cannot_block_a_revocation_over_jmap() {
+    padded_first_contact_then_revocation(Fetch::Jmap).await;
+}

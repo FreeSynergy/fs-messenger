@@ -19,6 +19,8 @@ mod env;
 mod flood;
 #[path = "../common/forge.rs"]
 mod forge;
+#[path = "../common/forge_embedded.rs"]
+mod forge_embedded;
 #[path = "../common/forge_subkeys.rs"]
 mod forge_subkeys;
 mod needles;

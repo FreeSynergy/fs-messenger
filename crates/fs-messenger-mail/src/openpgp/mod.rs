@@ -4,6 +4,7 @@ mod cert;
 mod decrypt;
 mod encrypt;
 mod generate;
+mod merge;
 mod usable;
 
 pub(crate) use cert::MAX_CERT_BYTES;
@@ -14,6 +15,8 @@ pub use generate::generate_key;
 pub(crate) use usable::may_vouch;
 pub use usable::{KeyRefusal, unix_now, usable_encryption_key};
 
+#[cfg(test)]
+mod merge_tests;
 #[cfg(test)]
 mod roundtrip_tests;
 #[cfg(test)]

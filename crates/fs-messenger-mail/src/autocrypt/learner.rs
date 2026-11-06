@@ -55,7 +55,9 @@ impl KeyLearner {
         let known = self.keys.peer(&address).await?;
         let decision = decide(known.as_ref(), offer, now);
         // What is kept is what the signatures cover: every later write logs this record again.
-        let kept = offer.cert.compact();
+        let Some(kept) = offer.cert.compact() else {
+            return Ok(Decision::Ignore);
+        };
         match (&decision, known) {
             (Decision::FirstSeen, _) => {
                 let peer = PeerKey::new(&address, &kept, KeySource::AutocryptFirstSeen, now)?;
