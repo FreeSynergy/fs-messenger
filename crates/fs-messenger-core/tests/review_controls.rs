@@ -40,7 +40,7 @@ async fn m3_crlf_in_a_sender_never_reaches_a_replys_recipients() {
 
 #[tokio::test]
 async fn m3_set_recipients_refuses_and_set_subject_strips_control_characters() {
-    let (repo, _) = setup().await;
+    let (repo, store) = setup().await;
     let (_, provider) = with_provider(&repo, Encryption::Mls, &["b@x"]).await;
     let mut d = repo.compose(None).await.unwrap();
     for bad in [
@@ -55,6 +55,12 @@ async fn m3_set_recipients_refuses_and_set_subject_strips_control_characters() {
         .await
         .unwrap();
     d.set_subject("Hi\r\nBcc: e@x".into()).await.unwrap();
+    let saved = d.save().await.unwrap();
+    let draft = store.get(saved).await.unwrap().unwrap();
+    assert_eq!(
+        draft.content["subject"], "HiBcc: e@x",
+        "clean when stored, not only when sent"
+    );
     d.send(None).await.unwrap();
     assert_eq!(provider.sent.lock().unwrap()[0].subject(), "HiBcc: e@x");
 }

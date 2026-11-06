@@ -30,7 +30,7 @@ Version 0.1.0, not tagged. Mirrors the `messenger.capnp` contract, version 0.3 (
 | Size limits at ingest and in `record_tool_call`: see "Limits". Over the limit a stub stays (`Ingested::TooLarge`, `MessageSummary.too_large`, 0 = it is not), so the mail is visible, not gone (ADR 0030): aliases, links, sender, date, subject, size, no content | done, provisional |
 | Large bodies: over 64 KiB in a store object of their own, see "What a large body costs" | done, with a limit named there |
 | An undecrypted message: no ciphertext in preview, name or search; it cannot be forwarded; delivered again under a provider-issued id in readable form it is replaced under the same id, keeping what the person did | done |
-| Tests | 149 against real `TursoStore` (in memory, or temp files where encryption matters); the `Provider` doubles only feed core logic |
+| Tests | 162 against real `TursoStore` (in memory, or temp files where encryption matters); the `Provider` doubles only feed core logic |
 
 ### Local only: says so here, and claims nothing more
 
