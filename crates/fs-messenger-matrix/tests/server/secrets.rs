@@ -1,52 +1,17 @@
 //! The binding rule: no access token, passphrase, Olm or Megolm key in any activity, hub path, `Debug`,
 //! `Display`, error or log line, or readable in the raw store file. Needles from the real secrets.
 
-use std::io::Write;
 use std::path::Path;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
 
 use fs_messenger_matrix::{MatrixAccount, MatrixProvider, Password};
 use fs_store::ActivityFilter;
 use fs_store::traits::{ActivityLog, ObjectQuery};
 use matrix_sdk_crypto::decrypt_room_key_export;
-use tracing_subscriber::fmt::MakeWriter;
 
+use crate::capture::captured;
 use crate::common::{Person, encrypted_room, token};
 use crate::http;
-
-/// All that is logged in this test binary, from every crate, at every level.
-#[derive(Clone, Default)]
-struct Captured(Arc<Mutex<Vec<u8>>>);
-
-impl Write for Captured {
-    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(data);
-        Ok(data.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-impl<'a> MakeWriter<'a> for Captured {
-    type Writer = Self;
-    fn make_writer(&'a self) -> Self {
-        self.clone()
-    }
-}
-
-fn captured() -> &'static Captured {
-    static LOG: OnceLock<Captured> = OnceLock::new();
-    LOG.get_or_init(|| {
-        let log = Captured::default();
-        tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_ansi(false)
-            .with_writer(log.clone())
-            .init();
-        log
-    })
-}
 
 /// A journal's record as it stands, through the store's own API.
 async fn record(person: &Person, key: &str) -> serde_json::Value {
@@ -146,7 +111,7 @@ async fn no_secret_in_activity_hub_path_debug_error_log_or_file() {
     );
 
     // Every log line of every crate, down to TRACE.
-    let lines = log.0.lock().unwrap().clone();
+    let lines = log.lines();
     assert!(
         lines.len() > 1000,
         "the capture works: {} bytes",

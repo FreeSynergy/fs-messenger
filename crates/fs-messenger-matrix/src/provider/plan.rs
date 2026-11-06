@@ -85,7 +85,12 @@ impl MatrixProvider {
         if room.state() != RoomState::Joined {
             return Ok(Verdict::none(id, Encryption::Unknown));
         }
-        if !room.latest_encryption_state().await?.is_encrypted() {
+        if !self
+            .account
+            .bounded(room.latest_encryption_state())
+            .await?
+            .is_encrypted()
+        {
             return Ok(Verdict::none(id, Encryption::None));
         }
         let algorithm = room.encryption_settings().and_then(|s| s.algorithm);
@@ -97,7 +102,11 @@ impl MatrixProvider {
             return Ok(Verdict::none(own, Encryption::Unknown));
         }
         let mut missing = Vec::new();
-        for member in room.members(RoomMemberships::ACTIVE).await? {
+        for member in self
+            .account
+            .bounded(room.members(RoomMemberships::ACTIVE))
+            .await?
+        {
             let user = member.user_id();
             if user.as_str() != self.account.user_id && !self.has_usable_device(user).await? {
                 missing.push(user.to_string());
@@ -121,7 +130,9 @@ impl MatrixProvider {
         {
             return Ok(true);
         }
-        encryption.request_user_identity(user).await?;
+        self.account
+            .bounded(encryption.request_user_identity(user))
+            .await?;
         Ok(encryption
             .get_user_devices(user)
             .await?
@@ -134,7 +145,11 @@ impl MatrixProvider {
         let rooms: Vec<Room> = self.client.get_dm_rooms(user).collect();
         for room in rooms {
             if room.state() == RoomState::Joined
-                && room.latest_encryption_state().await?.is_encrypted()
+                && self
+                    .account
+                    .bounded(room.latest_encryption_state())
+                    .await?
+                    .is_encrypted()
             {
                 return Ok(Some(room));
             }

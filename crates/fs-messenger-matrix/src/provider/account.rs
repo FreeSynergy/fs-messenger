@@ -3,6 +3,7 @@
 //! Pattern: Specification + Value object. A token over plain HTTP is readable on the way, so `http://`
 //! passes only for loopback: the local test server, or a tunnel.
 
+use std::future::Future;
 use std::time::Duration;
 
 use crate::error::MatrixError;
@@ -10,6 +11,8 @@ use crate::error::MatrixError;
 /// Timeline events per room in one `/sync`. More are fetched separately if a room has more.
 const DEFAULT_TIMELINE_LIMIT: u32 = 100;
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// One call into the SDK may make several requests: sending shares keys first.
+const REQUESTS_PER_CALL: u32 = 8;
 
 /// Who logs in, and where.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -35,6 +38,20 @@ impl MatrixAccount {
             device_name: "FreeSynergy.Messenger".to_owned(),
             timeline_limit: DEFAULT_TIMELINE_LIMIT,
             request_timeout: DEFAULT_REQUEST_TIMEOUT,
+        }
+    }
+
+    /// One call into the SDK, with a hard end. The SDK's own limits do not make one: it waits as long
+    /// as a server's `retry_after` says, whatever the retry limit. Dropping the call cancels it, so a
+    /// message may have left all the same; it then counts as failed, like any lost answer.
+    pub(crate) async fn bounded<T, E: Into<MatrixError>>(
+        &self,
+        work: impl Future<Output = Result<T, E>>,
+    ) -> Result<T, MatrixError> {
+        let limit = self.request_timeout * REQUESTS_PER_CALL;
+        match tokio::time::timeout(limit, work).await {
+            Ok(answer) => answer.map_err(Into::into),
+            Err(_) => Err(MatrixError::Sdk(format!("no answer within {limit:?}"))),
         }
     }
 

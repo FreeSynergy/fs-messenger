@@ -36,7 +36,7 @@ impl MatrixProvider {
             let mut options = MessagesOptions::backward().from(gap.from.as_str());
             options.to = gap.to;
             options.limit = UInt::from(budget.min(PAGE));
-            let page = room.messages(options).await?;
+            let page = self.account.bounded(room.messages(options)).await?;
             let count = u32::try_from(page.chunk.len()).unwrap_or(u32::MAX);
             budget = budget.saturating_sub(count.max(1));
             match page.end {

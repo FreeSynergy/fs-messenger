@@ -7,7 +7,7 @@
 //! The token only ever goes to the configured origin: a homeserver cannot move it, neither with the
 //! `well_known` of a login answer, which the SDK follows by default, nor with a redirect, which
 //! `reqwest` follows by default. Requests have a time limit and a retry limit: the SDK's default is to
-//! retry for ever.
+//! retry a failing server for ever. `MatrixAccount::bounded` is the hard end on top of that.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -113,12 +113,12 @@ impl MatrixProvider {
             return resume(account, opened.client, session).await;
         }
         let client = opened.client;
-        client
-            .matrix_auth()
+        let auth = client.matrix_auth();
+        let login = auth
             .login_username(&account.user_id, password.expose())
             .initial_device_display_name(&account.device_name)
-            .send()
-            .await?;
+            .send();
+        account.bounded(login).await?;
         let session = client
             .matrix_auth()
             .session()

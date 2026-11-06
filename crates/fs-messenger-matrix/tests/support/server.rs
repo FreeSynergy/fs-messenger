@@ -18,6 +18,11 @@ impl Reply {
         ))
     }
 
+    /// Hear the request and never answer.
+    pub fn never() -> Self {
+        Self(String::new())
+    }
+
     pub fn redirect(to: &str) -> Self {
         Self(format!(
             "HTTP/1.1 307 X\r\nLocation: {to}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
@@ -64,7 +69,11 @@ impl Server {
                         .find(|l| l.to_ascii_lowercase().starts_with("authorization:"))
                         .map(ToOwned::to_owned);
                     log.lock().unwrap().push((path.clone(), auth));
-                    let _ = socket.write_all(answer(&path).0.as_bytes()).await;
+                    let reply = answer(&path).0;
+                    if reply.is_empty() {
+                        std::future::pending::<()>().await;
+                    }
+                    let _ = socket.write_all(reply.as_bytes()).await;
                 });
             }
         });

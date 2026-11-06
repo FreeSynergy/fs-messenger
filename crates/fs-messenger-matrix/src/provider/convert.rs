@@ -3,6 +3,8 @@
 //! Pattern: Adapter over what the SDK made of an event. The mark comes from how the SDK came by the
 //! text: `Decrypted` is `megolm`, `PlainText` is `none`, anything else claims nothing.
 
+use std::future::IntoFuture;
+
 use fs_messenger_core::{Encryption, RawMessage};
 use matrix_sdk::deserialized_responses::{AlgorithmInfo, TimelineEvent, TimelineEventKind};
 use matrix_sdk::ruma::api::client::room::get_room_event;
@@ -81,7 +83,10 @@ impl MatrixProvider {
             .try_into()
             .map_err(|_| MatrixError::Sdk(format!("bad event id {event_id}")))?;
         let request = get_room_event::v3::Request::new(room_id.to_owned(), id);
-        let response = self.client.send(request).await?;
+        let response = self
+            .account
+            .bounded(self.client.send(request).into_future())
+            .await?;
         Ok(response.event.json().get().to_owned())
     }
 

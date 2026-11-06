@@ -4,6 +4,8 @@
 //! room a reply goes to, so the provider checks the room itself. Nothing reaches `Room::send` unless
 //! the room is encrypted right now, and the SDK only leaves encrypted rooms with encrypted events.
 
+use std::future::IntoFuture;
+
 use fs_interfaces::provider::Unsupported;
 use fs_messenger_core::{
     Encryption, Error as CoreError, ExternalId, Outgoing, Result as CoreResult, SendReceipt,
@@ -57,7 +59,8 @@ impl MatrixProvider {
         }
         // Held across the send: see `echo.rs`.
         let mut sent = self.sent.lock().await;
-        let result = room.send(content).await.map_err(sdk)?;
+        let delivery = room.send(content).into_future();
+        let result = self.account.bounded(delivery).await.map_err(sdk)?;
         sent.remember(result.response.event_id.to_string());
         drop(sent);
 
@@ -102,7 +105,11 @@ impl MatrixProvider {
             if let Some(room) = self.direct_room(only).await.map_err(sdk)? {
                 return Ok(room);
             }
-            return self.client.create_dm(only).await.map_err(sdk);
+            return self
+                .account
+                .bounded(self.client.create_dm(only))
+                .await
+                .map_err(sdk);
         }
         self.open_room(users).await.map_err(sdk)
     }

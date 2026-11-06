@@ -47,7 +47,10 @@ impl MatrixProvider {
         self.plan_replay(&mut cursor, position.as_deref());
 
         let settings = self.sync_settings(position.clone());
-        let response = self.client.sync_once(settings).await?;
+        let response = self
+            .account
+            .bounded(self.client.sync_once(settings))
+            .await?;
         let joined = response
             .rooms
             .joined

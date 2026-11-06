@@ -13,6 +13,7 @@
 //! server. What the server holds is read by plain HTTP, past the provider.
 
 mod acts;
+mod capture;
 mod common;
 mod http;
 

@@ -29,7 +29,7 @@ impl MatrixProvider {
     pub async fn invites(&self) -> Result<Vec<Invite>> {
         let mut invites = Vec::new();
         for room in self.client.invited_rooms() {
-            let details = room.invite_details().await?;
+            let details = self.account.bounded(room.invite_details()).await?;
             invites.push(Invite {
                 room_id: room.room_id().to_string(),
                 inviter: details.inviter.map(|m| m.user_id().to_string()),
@@ -41,7 +41,7 @@ impl MatrixProvider {
     /// Join a room this account is invited to. Keys sent before joining are not requested.
     pub async fn accept_invite(&self, room_id: &str) -> Result<()> {
         let room = self.room(room_id)?;
-        Ok(room.join().await?)
+        self.account.bounded(room.join()).await
     }
 
     /// Open a new end-to-end encrypted room and invite these people. Answers its id.
@@ -68,7 +68,7 @@ impl MatrixProvider {
         request.invite = invite;
         request.preset = Some(create_room::v3::RoomPreset::PrivateChat);
         request.initial_state = vec![encryption.to_raw_any()];
-        Ok(self.client.create_room(request).await?)
+        self.account.bounded(self.client.create_room(request)).await
     }
 
     /// Write this device's room keys to a file, encrypted with `passphrase`. There is no key backup
