@@ -5,7 +5,9 @@ mod common;
 use std::sync::Arc;
 
 use common::person;
-use fs_messenger_core::{AccountSetup, Encryption, Error, Messenger, MessengerConfig, MessengerRepo};
+use fs_messenger_core::{
+    AccountSetup, Encryption, Error, Messenger, MessengerConfig, MessengerRepo,
+};
 use fs_messenger_mail::mime::MailFields;
 use fs_messenger_mail::openpgp::{decrypt, generate_key};
 use fs_store::{Store, TursoStore};
@@ -32,25 +34,43 @@ async fn bcc_is_on_the_wire_only_and_the_payload_carries_protected_headers() {
     let me = person("me@example.org").await;
     let bob = generate_key("bob@example.org").unwrap();
     let hidden = generate_key("hidden@example.org").unwrap();
-    me.provider.import_peer_key("bob@example.org", &bob.public()).await.unwrap();
-    me.provider.import_peer_key("hidden@example.org", &hidden.public()).await.unwrap();
+    me.provider
+        .import_peer_key("bob@example.org", &bob.public())
+        .await
+        .unwrap();
+    me.provider
+        .import_peer_key("hidden@example.org", &hidden.public())
+        .await
+        .unwrap();
     let (repo, account) = core_with(&me).await;
 
     let mut d = repo.compose(None).await.unwrap();
     d.set_account(account).await.unwrap();
-    d.set_recipients(vec!["bob@example.org".into()], vec![], vec!["hidden@example.org".into()])
+    d.set_recipients(
+        vec!["bob@example.org".into()],
+        vec![],
+        vec!["hidden@example.org".into()],
+    )
+    .await
+    .unwrap();
+    d.set_text("Greetings\nmore text".into(), "text/plain".into())
         .await
         .unwrap();
-    d.set_text("Greetings\nmore text".into(), "text/plain".into()).await.unwrap();
     let id = d.send(None).await.unwrap();
 
     let sent = me.wire.sent.lock().unwrap();
     let (envelope, raw) = &sent[0];
-    assert_eq!(envelope.recipients, ["bob@example.org", "hidden@example.org"]);
+    assert_eq!(
+        envelope.recipients,
+        ["bob@example.org", "hidden@example.org"]
+    );
     let text = String::from_utf8_lossy(raw);
     assert!(!text.contains("hidden@"), "bcc in no outer header");
     assert!(!text.contains("Greetings"), "no subject or text outside");
-    assert!(text.contains(&format!("{id}@example.org")), "the id comes back as the sent copy's");
+    assert!(
+        text.contains(&format!("{id}@example.org")),
+        "the id comes back as the sent copy's"
+    );
 
     let outer = MailFields::read(raw).unwrap();
     let at = raw.windows(10).position(|w| w == b"-----BEGIN").unwrap();
@@ -60,8 +80,14 @@ async fn bcc_is_on_the_wire_only_and_the_payload_carries_protected_headers() {
     assert!(inner.header_protected, "RFC 9788");
     assert_eq!(inner.subject.as_deref(), Some("Greetings"));
     assert_eq!(outer.subject.as_deref(), Some("[...]"));
-    assert!(!String::from_utf8_lossy(&payload).contains("hidden@"), "bcc not inside either");
-    assert!(!inner.autocrypt.is_empty(), "the key offer is under the signature too");
+    assert!(
+        !String::from_utf8_lossy(&payload).contains("hidden@"),
+        "bcc not inside either"
+    );
+    assert!(
+        !inner.autocrypt.is_empty(),
+        "the key offer is under the signature too"
+    );
     assert!(String::from_utf8_lossy(&payload).contains("HP-Outer: Subject: [...]"));
 }
 
@@ -71,9 +97,15 @@ async fn nothing_reaches_a_strategy_without_a_key_for_everyone() {
     let (repo, account) = core_with(&me).await;
     let mut d = repo.compose(None).await.unwrap();
     d.set_account(account).await.unwrap();
-    d.set_recipients(vec!["nokey@example.org".into()], vec![], vec![]).await.unwrap();
+    d.set_recipients(vec!["nokey@example.org".into()], vec![], vec![])
+        .await
+        .unwrap();
     d.set_text("x".into(), "text/plain".into()).await.unwrap();
-    let Err(Error::EncryptionRefused { encryption, missing_keys }) = d.send(None).await else {
+    let Err(Error::EncryptionRefused {
+        encryption,
+        missing_keys,
+    }) = d.send(None).await
+    else {
         panic!("refused");
     };
     assert_eq!(encryption, Encryption::None);

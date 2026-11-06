@@ -43,7 +43,8 @@ pub fn classify(raw: &[u8]) -> Shape {
     if root.is_content_type("multipart", "encrypted") {
         return match children.as_slice() {
             [control, data]
-                if protocol.is_some_and(|p| p.eq_ignore_ascii_case("application/pgp-encrypted"))
+                if protocol
+                    .is_some_and(|p| p.eq_ignore_ascii_case("application/pgp-encrypted"))
                     && control.is_content_type("application", "pgp-encrypted") =>
             {
                 Shape::Encrypted {
@@ -78,7 +79,8 @@ protocol=\"application/pgp-encrypted\"; boundary=y\r\n\r\n--y\r\nContent-Type: a
     fn only_the_root_counts() {
         assert_eq!(classify(ENCRYPTED_INSIDE_PLAIN), Shape::Plain);
         assert_eq!(classify(b"From: a@b\r\n\r\ntext\r\n"), Shape::Plain);
-        let inline = b"From: a@b\r\n\r\n-----BEGIN PGP MESSAGE-----\r\nxx\r\n-----END PGP MESSAGE-----\r\n";
+        let inline =
+            b"From: a@b\r\n\r\n-----BEGIN PGP MESSAGE-----\r\nxx\r\n-----END PGP MESSAGE-----\r\n";
         assert_eq!(classify(inline), Shape::Plain);
     }
 

@@ -49,9 +49,7 @@ impl TlsTrust {
                 use rustls::pki_types::{CertificateDer, pem::PemObject};
                 for cert in CertificateDer::pem_slice_iter(pem.as_bytes()) {
                     let cert = cert.map_err(|e| MailError::Tls(e.to_string()))?;
-                    roots
-                        .add(cert)
-                        .map_err(|e| MailError::Tls(e.to_string()))?;
+                    roots.add(cert).map_err(|e| MailError::Tls(e.to_string()))?;
                 }
                 if roots.is_empty() {
                     return Err(MailError::Tls("no certificate in the given PEM".into()));

@@ -87,12 +87,14 @@ impl MailProvider {
         }
         let now = unix_now();
         let from = self.identity.address.clone();
-        let own: SecretCert = self.keys.own_key(&from).await?.ok_or_else(|| {
-            CoreError::EncryptionRefused {
-                encryption: Encryption::None,
-                missing_keys: vec![from.clone()],
-            }
-        })?;
+        let own: SecretCert =
+            self.keys
+                .own_key(&from)
+                .await?
+                .ok_or_else(|| CoreError::EncryptionRefused {
+                    encryption: Encryption::None,
+                    missing_keys: vec![from.clone()],
+                })?;
         let visible = [message.to(), message.cc()].concat();
         let certs = self.certs_of(&visible, now).await?;
         let hidden_certs = self.certs_of(message.bcc(), now).await?;
@@ -127,16 +129,20 @@ impl MailProvider {
         };
         let payload = build_payload(&input)?;
 
-        let own_sub = usable_encryption_key(&own_public, now).map_err(no_own_key(&from))?;
+        let own_sub = usable_encryption_key(&own_public, now).map_err(refused_now(&from))?;
         let mut targets = EncryptionTargets {
             visible: vec![own_sub],
             hidden: Vec::with_capacity(hidden_certs.len()),
         };
         for cert in &certs {
-            targets.visible.push(usable_encryption_key(cert, now).map_err(no_own_key(&from))?);
+            targets
+                .visible
+                .push(usable_encryption_key(cert, now).map_err(refused_now(&from))?);
         }
         for cert in &hidden_certs {
-            targets.hidden.push(usable_encryption_key(cert, now).map_err(no_own_key(&from))?);
+            targets
+                .hidden
+                .push(usable_encryption_key(cert, now).map_err(refused_now(&from))?);
         }
         let armored = sign_and_encrypt(&payload, &own, &targets)?;
         let raw = build_outer(&input, &armored)?;
@@ -167,7 +173,7 @@ fn alias_of<'a>(aliases: &'a [ExternalId], scheme: &str) -> Option<&'a str> {
 }
 
 /// A key checked a moment ago failed now. Refuse rather than send to fewer people.
-fn no_own_key(from: &str) -> impl Fn(crate::openpgp::KeyRefusal) -> CoreError {
+fn refused_now(from: &str) -> impl Fn(crate::openpgp::KeyRefusal) -> CoreError {
     let from = from.to_string();
     move |_| CoreError::EncryptionRefused {
         encryption: Encryption::None,

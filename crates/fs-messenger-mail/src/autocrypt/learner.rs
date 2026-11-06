@@ -105,4 +105,3 @@ impl KeyLearner {
         Ok(true)
     }
 }
-

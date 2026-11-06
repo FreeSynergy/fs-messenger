@@ -47,7 +47,11 @@ impl JmapSubmit {
             .unwrap_or_default();
         let identity = identities
             .iter()
-            .find(|i| i["email"].as_str().is_some_and(|e| e.eq_ignore_ascii_case(from)))
+            .find(|i| {
+                i["email"]
+                    .as_str()
+                    .is_some_and(|e| e.eq_ignore_ascii_case(from))
+            })
             .and_then(|i| i["id"].as_str())
             .ok_or_else(|| err(format!("no identity for {from}")))?
             .to_string();
@@ -72,7 +76,11 @@ impl MailSubmit for JmapSubmit {
         let account = self.client.session().await?.account.clone();
         let (sent, identity) = self.prepare(&account, &envelope.from).await?;
         let blob = self.client.upload(raw.to_vec()).await?;
-        let rcpt: Vec<Value> = envelope.recipients.iter().map(|r| json!({"email": r})).collect();
+        let rcpt: Vec<Value> = envelope
+            .recipients
+            .iter()
+            .map(|r| json!({"email": r}))
+            .collect();
         let call = json!([
             ["Email/import", {"accountId": account, "emails": {
                 "mail": {"blobId": blob, "mailboxIds": {sent: true}, "keywords": {"$seen": true}}}}, "i"],
@@ -83,10 +91,14 @@ impl MailSubmit for JmapSubmit {
         let answers = self.client.call(&[MAIL, SUBMISSION], call).await?;
         let import = JmapClient::answer(&answers, "i")?;
         let Some(email) = created_id(import, "mail") else {
-            return Err(err(format!("Email/import refused: {}", import["notCreated"])));
+            return Err(err(format!(
+                "Email/import refused: {}",
+                import["notCreated"]
+            )));
         };
         let submission = JmapClient::answer(&answers, "s");
-        match submission.map(|args| (created_id(args, "go").is_some(), args["notCreated"].clone())) {
+        match submission.map(|args| (created_id(args, "go").is_some(), args["notCreated"].clone()))
+        {
             Ok((true, _)) => Ok(SentCopy::Stored),
             Ok((false, why)) => {
                 self.destroy(&account, email).await;

@@ -3,7 +3,9 @@
 use fs_messenger_core::Encryption;
 use fs_messenger_mail::UNDECRYPTED_MARK;
 
-use crate::common::{Fetch, Person, Submit, Who, contains, raw_by_message_id, serial, smtp_raw, token};
+use crate::common::{
+    Fetch, Person, Submit, Who, contains, message_id_of, raw_by_message_id, serial, smtp_raw, token,
+};
 
 async fn plain(fetch: Fetch) {
     let _one = serial().await;
@@ -19,14 +21,21 @@ async fn plain(fetch: Fetch) {
     );
     smtp_raw(Who::Alice, Who::Bob, raw.as_bytes()).await;
     let got = bob.wait_for(&format!("PlainBody{t}")).await;
-    assert_eq!(got.summary.encryption, Encryption::None, "never more than it is");
+    assert_eq!(
+        got.summary.encryption,
+        Encryption::None,
+        "never more than it is"
+    );
     // `trim_end`: lettre ends the DATA with one more CRLF of its own.
     assert_eq!(got.body_text.trim_end(), format!("PlainBody{t}"));
     assert_eq!(got.summary.envelope.name, format!("Plain{t}"));
     // The control of the needle check: on a plain mail the same check does find the text.
     let on_server = raw_by_message_id(Who::Bob, &id).await.unwrap();
     assert!(contains(&on_server, &format!("PlainBody{t}")));
-    assert!(contains(&got.original.as_ref().unwrap().bytes, &format!("PlainBody{t}")));
+    assert!(contains(
+        &got.original.as_ref().unwrap().bytes,
+        &format!("PlainBody{t}")
+    ));
 }
 
 #[tokio::test]
@@ -60,14 +69,16 @@ async fn a_mail_for_a_lost_key_is_kept_and_marked() {
         .await
         .expect("send");
     // Wait until it is there, read by the holder of the key; its id names it for the new device.
-    let id = old_bob.wait_for(&format!("Lost-{t}")).await.aliases[0].id.clone();
+    let id = message_id_of(&old_bob.wait_for(&format!("Lost-{t}")).await);
 
     let new_bob = Person::open(Who::Bob, c.path(), Fetch::Imap, Submit::Smtp).await;
-    fs_messenger_core::Ingest::sync(&new_bob.repo, new_bob.account).await.expect("no error loses it");
+    fs_messenger_core::Ingest::sync(&new_bob.repo, new_bob.account)
+        .await
+        .expect("no error loses it");
     let held = new_bob.find(UNDECRYPTED_MARK).await;
     let mine = held
         .iter()
-        .find(|m| m.aliases.iter().any(|x| x.id == id))
+        .find(|m| m.links.iter().any(|x| x.id == id))
         .expect("stored, visibly undecrypted");
     assert_eq!(mine.summary.encryption, Encryption::None);
     let server = raw_by_message_id(Who::Bob, &id).await.unwrap();

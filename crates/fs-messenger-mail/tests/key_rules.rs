@@ -23,10 +23,17 @@ async fn the_plan_names_exactly_who_lacks_a_key_also_hidden_ones() {
     let me = person("me@example.org").await;
     let known = generate_key(PEER).unwrap().public();
     me.provider.import_peer_key(PEER, &known).await.unwrap();
-    let plan = me.provider.encryption_plan(&[PEER.to_string()]).await.unwrap();
+    let plan = me
+        .provider
+        .encryption_plan(&[PEER.to_string()])
+        .await
+        .unwrap();
     assert_eq!(plan.encryption, Encryption::Openpgp);
     assert!(plan.missing_keys.is_empty());
-    let who = ["PEER@example.org".to_string(), "gap@example.org".to_string()];
+    let who = [
+        "PEER@example.org".to_string(),
+        "gap@example.org".to_string(),
+    ];
     let plan = me.provider.encryption_plan(&who).await.unwrap();
     assert_eq!(plan.encryption, Encryption::None);
     assert_eq!(plan.missing_keys, ["gap@example.org"]);
@@ -50,19 +57,33 @@ async fn without_an_own_key_the_plan_names_the_sender() {
 async fn first_seen_wins_and_a_forged_key_only_becomes_a_visible_candidate() {
     let keys = store().await;
     let learner = KeyLearner::new(keys.clone());
-    let (good, evil) = (generate_key(PEER).unwrap().public(), generate_key(PEER).unwrap().public());
+    let (good, evil) = (
+        generate_key(PEER).unwrap().public(),
+        generate_key(PEER).unwrap().public(),
+    );
     let offer = |cert: &fs_messenger_mail::openpgp::PublicCert, proven| Offer {
         cert: cert.clone(),
         proven_by_known_key: proven,
     };
-    assert_eq!(learner.learn(PEER, &offer(&good, false)).await.unwrap(), Decision::FirstSeen);
-    assert_eq!(learner.learn(PEER, &offer(&evil, false)).await.unwrap(), Decision::Conflict);
+    assert_eq!(
+        learner.learn(PEER, &offer(&good, false)).await.unwrap(),
+        Decision::FirstSeen
+    );
+    assert_eq!(
+        learner.learn(PEER, &offer(&evil, false)).await.unwrap(),
+        Decision::Conflict
+    );
     let held = keys.peer(PEER).await.unwrap().unwrap();
     assert_eq!(held.fingerprint, good.fingerprint(), "the known key stays");
     assert_eq!(held.candidate.unwrap().fingerprint, evil.fingerprint());
     // The same key again is no change, and does not clear the conflict.
     let same = learner.learn(PEER, &offer(&good, false)).await.unwrap();
-    assert_eq!(same, Decision::SameKey { take_offered: false });
+    assert_eq!(
+        same,
+        Decision::SameKey {
+            take_offered: false
+        }
+    );
     assert!(keys.peer(PEER).await.unwrap().unwrap().candidate.is_some());
     // A person decides.
     assert!(learner.accept_candidate(PEER).await.unwrap());
@@ -76,26 +97,50 @@ async fn first_seen_wins_and_a_forged_key_only_becomes_a_visible_candidate() {
 async fn a_proof_rotates_and_a_stale_offer_cannot_turn_it_back() {
     let keys = store().await;
     let learner = KeyLearner::new(keys.clone());
-    let (old, new) = (generate_key(PEER).unwrap().public(), generate_key(PEER).unwrap().public());
+    let (old, new) = (
+        generate_key(PEER).unwrap().public(),
+        generate_key(PEER).unwrap().public(),
+    );
     let offer = |cert: &fs_messenger_mail::openpgp::PublicCert, proven| Offer {
         cert: cert.clone(),
         proven_by_known_key: proven,
     };
     learner.learn(PEER, &offer(&old, false)).await.unwrap();
-    assert_eq!(learner.learn(PEER, &offer(&new, true)).await.unwrap(), Decision::Rotate);
-    assert_eq!(keys.peer(PEER).await.unwrap().unwrap().source, KeySource::AutocryptRotated);
-    assert_eq!(learner.learn(PEER, &offer(&old, false)).await.unwrap(), Decision::Conflict);
-    assert_eq!(keys.peer(PEER).await.unwrap().unwrap().fingerprint, new.fingerprint());
+    assert_eq!(
+        learner.learn(PEER, &offer(&new, true)).await.unwrap(),
+        Decision::Rotate
+    );
+    assert_eq!(
+        keys.peer(PEER).await.unwrap().unwrap().source,
+        KeySource::AutocryptRotated
+    );
+    assert_eq!(
+        learner.learn(PEER, &offer(&old, false)).await.unwrap(),
+        Decision::Conflict
+    );
+    assert_eq!(
+        keys.peer(PEER).await.unwrap().unwrap().fingerprint,
+        new.fingerprint()
+    );
 }
 
 #[tokio::test]
 async fn keys_do_not_go_into_a_plain_store_and_survive_a_restart_in_an_encrypted_one() {
     let dir = tempfile::tempdir().unwrap();
     let plain = Arc::new(TursoStore::open(dir.path().join("plain.db")).await.unwrap());
-    assert!(FsKeyStore::open_turso(plain.clone(), "me").is_err(), "refused outright");
+    assert!(
+        FsKeyStore::open_turso(plain.clone(), "me").is_err(),
+        "refused outright"
+    );
     let secret = generate_key("me@example.org").unwrap();
     let behind_trait = FsKeyStore::open(plain, "me");
-    assert!(behind_trait.put_own_key("me@example.org", &secret).await.is_err(), "sensitive objects");
+    assert!(
+        behind_trait
+            .put_own_key("me@example.org", &secret)
+            .await
+            .is_err(),
+        "sensitive objects"
+    );
 
     let path = dir.path().join("enc.db");
     let open = || OpenOptions {
@@ -118,5 +163,12 @@ async fn keys_do_not_go_into_a_plain_store_and_survive_a_restart_in_an_encrypted
     assert!(format!("{back:?}").contains("redacted"));
     let other = generate_key("me@example.org").unwrap();
     keys.put_own_key("me@example.org", &other).await.unwrap();
-    assert_eq!(keys.own_key("me@example.org").await.unwrap().unwrap().fingerprint(), other.fingerprint());
+    assert_eq!(
+        keys.own_key("me@example.org")
+            .await
+            .unwrap()
+            .unwrap()
+            .fingerprint(),
+        other.fingerprint()
+    );
 }

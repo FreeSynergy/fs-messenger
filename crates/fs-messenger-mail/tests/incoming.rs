@@ -4,13 +4,13 @@ mod common;
 
 use common::{Offline, person};
 use fs_messenger_core::{Encryption, Provider, RawMessage};
+use fs_messenger_mail::UNDECRYPTED_MARK;
 use fs_messenger_mail::autocrypt::format_header;
 use fs_messenger_mail::mime::{OUTER_SUBJECT, PayloadInput, build_outer, build_payload};
 use fs_messenger_mail::openpgp::{
     EncryptionTargets, SecretCert, SignatureState, sign_and_encrypt, unix_now,
     usable_encryption_key,
 };
-use fs_messenger_mail::UNDECRYPTED_MARK;
 
 async fn own(p: &Offline) -> SecretCert {
     p.provider.ensure_own_key().await.unwrap()
@@ -39,7 +39,11 @@ fn mail(from: &str, to: &str, signer: &SecretCert, reader: &SecretCert, header: 
         visible: vec![usable_encryption_key(&public, unix_now()).unwrap()],
         hidden: vec![],
     };
-    build_outer(&input, &sign_and_encrypt(&payload, signer, &targets).unwrap()).unwrap()
+    build_outer(
+        &input,
+        &sign_and_encrypt(&payload, signer, &targets).unwrap(),
+    )
+    .unwrap()
 }
 
 async fn deliver(p: &Offline, raw: &[u8]) -> RawMessage {
@@ -58,12 +62,26 @@ async fn decrypted_means_openpgp_with_protected_headers_and_the_original_untouch
     let got = deliver(&bob, &raw).await;
     assert_eq!(got.encryption, Encryption::Openpgp);
     assert_eq!(got.body_text, "the secret text\n");
-    assert_eq!(got.subject.as_deref(), Some("real subject"), "from inside, not {OUTER_SUBJECT}");
+    assert_eq!(
+        got.subject.as_deref(),
+        Some("real subject"),
+        "from inside, not {OUTER_SUBJECT}"
+    );
+    assert_eq!(
+        got.aliases[0].scheme, "mail-local",
+        "only what the provider issued dedupes"
+    );
+    assert_eq!(
+        got.links[0].id, "m1@example.org",
+        "the sender's id only links"
+    );
     assert_eq!(got.original.unwrap().bytes, raw, "byte for byte (ADR 0030)");
     let inspected = bob.provider.inspect(&raw).await.unwrap();
     assert_eq!(
         inspected.signature,
-        SignatureState::Valid { fingerprint: ka.fingerprint() }
+        SignatureState::Valid {
+            fingerprint: ka.fingerprint()
+        }
     );
 }
 
@@ -104,7 +122,6 @@ async fn garbage_is_stored_too_under_an_alias_of_its_own() {
     let got = deliver(&bob, b"\x00\x01 no header at all").await;
     assert_eq!(got.encryption, Encryption::None);
     assert!(got.aliases[0].id.starts_with("b@example.org/box/1/"));
-    assert!(!got.aliases.is_empty());
     assert!(got.original.is_some());
 }
 
@@ -134,7 +151,11 @@ async fn plain_text_around_a_ciphertext_is_plain() {
         &armor[..end]
     );
     let got = deliver(&bob, raw.as_bytes()).await;
-    assert_eq!(got.encryption, Encryption::None, "only the root can make a mail encrypted");
+    assert_eq!(
+        got.encryption,
+        Encryption::None,
+        "only the root can make a mail encrypted"
+    );
 }
 
 #[tokio::test]
@@ -162,11 +183,18 @@ async fn a_signature_by_a_stranger_does_not_read_as_valid() {
         person("e@example.org").await,
     );
     let (ka, kb, ke) = (own(&alice).await, own(&bob).await, own(&eve).await);
-    bob.provider.import_peer_key(&alice.address, &ka.public()).await.unwrap();
+    bob.provider
+        .import_peer_key(&alice.address, &ka.public())
+        .await
+        .unwrap();
     let header = format_header(&alice.address, &ka.public()).unwrap();
     let raw = mail(&alice.address, &bob.address, &ke, &kb, &header);
     let got = deliver(&bob, &raw).await;
-    assert_eq!(got.encryption, Encryption::Openpgp, "it was decrypted; that is all the state says");
+    assert_eq!(
+        got.encryption,
+        Encryption::Openpgp,
+        "it was decrypted; that is all the state says"
+    );
     let inspected = bob.provider.inspect(&raw).await.unwrap();
     assert_eq!(inspected.signature, SignatureState::Unverified);
 }
@@ -174,6 +202,14 @@ async fn a_signature_by_a_stranger_does_not_read_as_valid() {
 #[tokio::test]
 async fn a_mail_never_counts_as_mine_because_of_its_from() {
     let bob = person("b@example.org").await;
-    let got = deliver(&bob, b"From: b@example.org\r\nMessage-ID: <f@e>\r\n\r\nspoof\r\n").await;
+    let got = deliver(
+        &bob,
+        b"From: b@example.org\r\nMessage-ID: <f@e>\r\n\r\nspoof\r\n",
+    )
+    .await;
     assert!(!got.outgoing, "only the sent mailbox can say that");
+    assert!(
+        got.links.is_empty(),
+        "and no link that could match a receipt of ours"
+    );
 }

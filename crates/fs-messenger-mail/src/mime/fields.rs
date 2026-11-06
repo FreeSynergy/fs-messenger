@@ -95,12 +95,11 @@ impl MailFields {
     pub fn read(raw: &[u8]) -> Option<Self> {
         let parsed = MessageParser::new().parse(raw)?;
         let m = parsed.root();
-        let text: Vec<String> = m
-            .text_bodies()
-            .map(|t| t.replace("\r\n", "\n"))
-            .collect();
+        let text: Vec<String> = m.text_bodies().map(|t| t.replace("\r\n", "\n")).collect();
         let markdown = m.text_body().len() == 1
-            && m.text_body().next().is_some_and(|p| p.is_content_type("text", "markdown"));
+            && m.text_body()
+                .next()
+                .is_some_and(|p| p.is_content_type("text", "markdown"));
         Some(Self {
             message_id: m.message_id().map(str::to_string),
             in_reply_to: ids(m.in_reply_to()),
@@ -113,7 +112,12 @@ impl MailFields {
                 .date()
                 .and_then(|d| Utc.timestamp_opt(d.to_timestamp(), 0).single()),
             text_body: text.join("\n"),
-            text_media_type: if markdown { "text/markdown" } else { "text/plain" }.to_string(),
+            text_media_type: if markdown {
+                "text/markdown"
+            } else {
+                "text/plain"
+            }
+            .to_string(),
             attachments: attachments(m),
             autocrypt: m
                 .headers()

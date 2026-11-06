@@ -47,7 +47,9 @@ pub fn decrypt(
     }
     let (message, _) = Message::from_armor(BufReader::new(Cursor::new(armored)))?;
     if !message.is_encrypted() {
-        return Err(MailError::Pgp("the OpenPGP message is not encrypted".into()));
+        return Err(MailError::Pgp(
+            "the OpenPGP message is not encrypted".into(),
+        ));
     }
     let empty = Password::empty();
     let passwords = own.iter().map(|_| &empty).collect();
@@ -95,4 +97,3 @@ pub fn verify_detached(armored: &[u8], content: &[u8], signers: &[PublicCert]) -
             fingerprint: cert.fingerprint(),
         })
 }
-

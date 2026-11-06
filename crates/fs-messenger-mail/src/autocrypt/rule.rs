@@ -32,7 +32,11 @@ pub enum Decision {
 pub fn decide(known: Option<&PeerKey>, offer: &Offer, now: u64) -> Decision {
     let usable = usable_encryption_key(&offer.cert, now).is_ok();
     let Some(known) = known else {
-        return if usable { Decision::FirstSeen } else { Decision::Ignore };
+        return if usable {
+            Decision::FirstSeen
+        } else {
+            Decision::Ignore
+        };
     };
     if known.fingerprint == offer.cert.fingerprint() {
         return same_key(known, offer, now);
@@ -52,7 +56,9 @@ pub fn decide(known: Option<&PeerKey>, offer: &Offer, now: u64) -> Decision {
 fn same_key(known: &PeerKey, offer: &Offer, now: u64) -> Decision {
     let check = |cert| usable_encryption_key(cert, now);
     let Ok(held) = known.certificate() else {
-        return Decision::SameKey { take_offered: false };
+        return Decision::SameKey {
+            take_offered: false,
+        };
     };
     let take_offered = match (check(&held), check(&offer.cert)) {
         // Newly revoked: only if its signatures verify, which `Invalid` would say.

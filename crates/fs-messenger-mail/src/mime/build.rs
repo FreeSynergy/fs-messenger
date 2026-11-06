@@ -52,7 +52,11 @@ pub struct PayloadInput<'a> {
 pub fn subject_from_text(text: &str) -> String {
     let line = text.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
     let short: String = line.trim().chars().take(SUBJECT_CHARS).collect();
-    if short.is_empty() { "(no subject)".to_string() } else { short }
+    if short.is_empty() {
+        "(no subject)".to_string()
+    } else {
+        short
+    }
 }
 
 fn list(addresses: &[String]) -> Address<'static> {
@@ -115,7 +119,10 @@ pub fn build_payload(input: &PayloadInput<'_>) -> Result<Vec<u8>, MailError> {
     let mut b = addressed(input, input.subject)
         .header("HP-Outer", Raw::new(format!("From: {}", input.from)))
         .header("HP-Outer", Raw::new(format!("Subject: {OUTER_SUBJECT}")))
-        .header("HP-Outer", Raw::new(format!("Message-ID: <{}>", input.message_id)));
+        .header(
+            "HP-Outer",
+            Raw::new(format!("Message-ID: <{}>", input.message_id)),
+        );
     if !input.to.is_empty() {
         b = b.header("HP-Outer", Raw::new(format!("To: {}", input.to.join(", "))));
     }
@@ -130,8 +137,11 @@ pub fn build_outer(input: &PayloadInput<'_>, armored: &str) -> Result<Vec<u8>, M
     let crlf = armored.replace("\r\n", "\n").replace('\n', "\r\n");
     let root =
         ContentType::new("multipart/encrypted").attribute("protocol", "application/pgp-encrypted");
-    let control = MimePart::new("application/pgp-encrypted", "Version: 1\r\n".as_bytes().to_vec())
-        .transfer_encoding("7bit");
+    let control = MimePart::new(
+        "application/pgp-encrypted",
+        "Version: 1\r\n".as_bytes().to_vec(),
+    )
+    .transfer_encoding("7bit");
     let data = MimePart::new(
         ContentType::new("application/octet-stream").attribute("name", "encrypted.asc"),
         crlf.into_bytes(),

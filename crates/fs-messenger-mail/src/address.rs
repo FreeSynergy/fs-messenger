@@ -20,7 +20,10 @@ mod tests {
 
     #[test]
     fn name_and_case_do_not_matter() {
-        assert_eq!(normalise_address("Bob <BOB@Example.org>"), "bob@example.org");
+        assert_eq!(
+            normalise_address("Bob <BOB@Example.org>"),
+            "bob@example.org"
+        );
         assert_eq!(normalise_address(" bob@example.org "), "bob@example.org");
     }
 }

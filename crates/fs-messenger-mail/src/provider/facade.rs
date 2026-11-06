@@ -112,13 +112,24 @@ impl Provider for MailProvider {
 
     fn capabilities(&self) -> Capabilities {
         let mut caps = Capabilities::new("fs-messenger-mail");
-        for id in ["provider.kind", "message.fetch", "message.send", "encryption.plan"] {
+        for id in [
+            "provider.kind",
+            "message.fetch",
+            "message.send",
+            "encryption.plan",
+        ] {
             caps.supported(id);
         }
         caps.unsupported("message.push", "no IMAP IDLE or JMAP push yet; call fetch");
-        caps.unsupported("key.discovery", "keys come from Autocrypt only; no WKD, no key server");
+        caps.unsupported(
+            "key.discovery",
+            "keys come from Autocrypt only; no WKD, no key server",
+        );
         caps.unsupported("encryption.smime", "S/MIME is not built");
-        caps.unsupported("transport.starttls", "implicit TLS only; the test server has no such port");
+        caps.unsupported(
+            "transport.starttls",
+            "implicit TLS only; the test server has no such port",
+        );
         caps
     }
 

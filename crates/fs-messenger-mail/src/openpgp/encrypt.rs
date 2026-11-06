@@ -1,13 +1,13 @@
 //! Signing and encrypting one payload.
 //!
 //! Pattern: Facade over rPGP's message builder. RFC 3156 section 6.2, the combined form: one OpenPGP
-//! message that is signed and encrypted. SEIPDv2 with AES-256 and OCB (RFC 9580), no compression.
+//! message that is signed and encrypted. `SEIPDv2` with AES-256 and OCB (RFC 9580), no compression.
 //! Hidden recipients get an anonymous session key packet, so that the others cannot read their key id
 //! from the message.
 
 use pgp::composed::{ArmorOptions, MessageBuilder, SignedPublicSubKey};
-use pgp::crypto::{aead::AeadAlgorithm, aead::ChunkSize, hash::HashAlgorithm};
 use pgp::crypto::sym::SymmetricKeyAlgorithm;
+use pgp::crypto::{aead::AeadAlgorithm, aead::ChunkSize, hash::HashAlgorithm};
 use pgp::types::Password;
 
 use super::SecretCert;
@@ -43,6 +43,10 @@ pub fn sign_and_encrypt(
     for key in &targets.hidden {
         builder.encrypt_to_key_anonymous(&mut rng, *key)?;
     }
-    builder.sign(&signer.0.primary_key, Password::empty(), HashAlgorithm::Sha512);
+    builder.sign(
+        &signer.0.primary_key,
+        Password::empty(),
+        HashAlgorithm::Sha512,
+    );
     Ok(builder.to_armored_string(&mut rng, ArmorOptions::default())?)
 }

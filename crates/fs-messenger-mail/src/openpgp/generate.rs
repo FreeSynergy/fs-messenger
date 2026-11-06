@@ -1,7 +1,7 @@
 //! Creating our own key.
 //!
 //! Pattern: Builder (rPGP's): an RFC 9580 v6 key, Ed25519 primary for certifying and signing, X25519
-//! subkey for encrypting, advertising SEIPDv2 only. No passphrase: the secret rests only in an
+//! subkey for encrypting, advertising `SEIPDv2` only. No passphrase: the secret rests only in an
 //! encrypted store (ADR 0024, 0029). Provisional: no expiry; rotation is `Unsupported` as a flow.
 
 use pgp::composed::{EncryptionCaps, KeyType, SecretKeyParamsBuilder, SubkeyParamsBuilder};
@@ -10,7 +10,6 @@ use pgp::types::KeyVersion;
 
 use super::SecretCert;
 use crate::error::{MailError, Result};
-
 
 /// A new key for `address`.
 pub fn generate_key(address: &str) -> Result<SecretCert, MailError> {

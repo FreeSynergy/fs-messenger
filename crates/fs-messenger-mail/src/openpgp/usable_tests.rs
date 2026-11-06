@@ -9,7 +9,11 @@ use pgp::types::{Duration, KeyDetails, KeyVersion, Password, Timestamp};
 
 use super::*;
 
-fn direct(key: &SecretCert, typ: SignatureType, extra: Vec<SubpacketData>) -> pgp::packet::Signature {
+fn direct(
+    key: &SecretCert,
+    typ: SignatureType,
+    extra: Vec<SubpacketData>,
+) -> pgp::packet::Signature {
     let primary = &key.0.primary_key;
     let mut config = SignatureConfig::from_key(rand::thread_rng(), primary, typ).unwrap();
     let mut hashed = vec![
@@ -18,7 +22,9 @@ fn direct(key: &SecretCert, typ: SignatureType, extra: Vec<SubpacketData>) -> pg
     ];
     hashed.extend(extra.into_iter().map(|d| Subpacket::regular(d).unwrap()));
     config.hashed_subpackets = hashed;
-    config.sign_key(primary, &Password::empty(), primary.public_key()).unwrap()
+    config
+        .sign_key(primary, &Password::empty(), primary.public_key())
+        .unwrap()
 }
 
 #[test]
@@ -38,7 +44,10 @@ fn a_revoked_key_is_refused() {
     public.0.details.revocation_signatures.push(revocation);
     let bytes = public.to_binary().unwrap();
     let parsed = PublicCert::from_binary(&bytes).unwrap();
-    assert_eq!(usable_encryption_key(&parsed, unix_now()).err(), Some(KeyRefusal::Revoked));
+    assert_eq!(
+        usable_encryption_key(&parsed, unix_now()).err(),
+        Some(KeyRefusal::Revoked)
+    );
 }
 
 #[test]
@@ -82,5 +91,49 @@ fn a_signature_that_does_not_verify_is_refused() {
     let mut public = a.public();
     // A subkey of someone else's, under a's primary key: the binding cannot verify.
     public.0.public_subkeys = b.public().0.public_subkeys.clone();
-    assert_eq!(usable_encryption_key(&public, unix_now()).err(), Some(KeyRefusal::Invalid));
+    assert_eq!(
+        usable_encryption_key(&public, unix_now()).err(),
+        Some(KeyRefusal::Invalid)
+    );
+}
+
+fn known(cert: &PublicCert) -> crate::keys::PeerKey {
+    crate::keys::PeerKey::new("a@x", cert, crate::keys::KeySource::AutocryptFirstSeen, 1).unwrap()
+}
+
+fn offer(cert: &PublicCert) -> crate::autocrypt::Offer {
+    crate::autocrypt::Offer {
+        cert: cert.clone(),
+        proven_by_known_key: false,
+    }
+}
+
+/// The owner's revocation counts even in an unproven header: nobody else can make one. And a forger who
+/// replays the older form cannot take it back.
+#[test]
+fn a_revocation_is_taken_and_never_given_up() {
+    use crate::autocrypt::{Decision, decide};
+    let key = generate_key("a@x").unwrap();
+    let live = key.public();
+    let mut revoked = key.public();
+    let revocation = direct(&key, SignatureType::KeyRevocation, vec![]);
+    revoked.0.details.revocation_signatures.push(revocation);
+    let now = unix_now();
+    assert_eq!(
+        decide(Some(&known(&live)), &offer(&revoked), now),
+        Decision::SameKey { take_offered: true }
+    );
+    assert_eq!(
+        decide(Some(&known(&revoked)), &offer(&live), now),
+        Decision::SameKey {
+            take_offered: false
+        }
+    );
+    // Neither is a revoked key a first contact, or a replacement.
+    assert_eq!(decide(None, &offer(&revoked), now), Decision::Ignore);
+    let other = generate_key("a@x").unwrap().public();
+    assert_eq!(
+        decide(Some(&known(&other)), &offer(&revoked), now),
+        Decision::Ignore
+    );
 }

@@ -99,9 +99,10 @@ impl ImapFetch {
         let mailbox = session.examine(name).await.map_err(err)?;
         let uid_validity = mailbox.uid_validity.unwrap_or(0);
         let after = match batch.cursor.mailboxes.get(name) {
-            Some(MailboxCursor::Imap { uid_validity: held, last_uid }) if *held == uid_validity => {
-                *last_uid
-            }
+            Some(MailboxCursor::Imap {
+                uid_validity: held,
+                last_uid,
+            }) if *held == uid_validity => *last_uid,
             _ => 0,
         };
         // `n:*` always matches the newest mail, even if its UID is below `n`.
@@ -115,7 +116,11 @@ impl ImapFetch {
         uids.truncate(limit);
         let mut last_uid = after;
         if !uids.is_empty() {
-            let set = uids.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+            let set = uids
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(",");
             let fetched: Vec<_> = session
                 .uid_fetch(&set, "(UID BODY.PEEK[])")
                 .await
@@ -144,10 +149,13 @@ impl ImapFetch {
                 });
             }
         }
-        batch
-            .cursor
-            .mailboxes
-            .insert(name.to_string(), MailboxCursor::Imap { uid_validity, last_uid });
+        batch.cursor.mailboxes.insert(
+            name.to_string(),
+            MailboxCursor::Imap {
+                uid_validity,
+                last_uid,
+            },
+        );
         Ok(())
     }
 }

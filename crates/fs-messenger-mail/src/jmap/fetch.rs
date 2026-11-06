@@ -29,7 +29,11 @@ struct Mailboxes {
 fn strings(value: &Value) -> Vec<String> {
     value
         .as_array()
-        .map(|l| l.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        .map(|l| {
+            l.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -49,9 +53,7 @@ impl JmapFetch {
         let answers = self.client.call(&[MAIL], call).await?;
         let list = &JmapClient::answer(&answers, "m")?["list"];
         let by_role = |role: &str| {
-            list.as_array()?
-                .iter()
-                .find(|m| m["role"] == role)?["id"]
+            list.as_array()?.iter().find(|m| m["role"] == role)?["id"]
                 .as_str()
                 .map(str::to_string)
         };
@@ -86,7 +88,10 @@ impl JmapFetch {
         };
         let ids = strings(&JmapClient::answer(&answers, "q")?["ids"]);
         let cursor = if ids.len() < limit {
-            MailboxCursor::Jmap { state, position: None }
+            MailboxCursor::Jmap {
+                state,
+                position: None,
+            }
         } else {
             MailboxCursor::Jmap {
                 state,
@@ -116,7 +121,10 @@ impl JmapFetch {
             .as_str()
             .ok_or_else(|| err("Email/changes answered no newState"))?
             .to_string();
-        let cursor = MailboxCursor::Jmap { state: next, position: None };
+        let cursor = MailboxCursor::Jmap {
+            state: next,
+            position: None,
+        };
         Ok(Some((ids, cursor, args["hasMoreChanges"] == true)))
     }
 
@@ -159,24 +167,23 @@ impl JmapFetch {
         batch: &mut FetchedBatch,
     ) -> Result<()> {
         let held = batch.cursor.mailboxes.get(mailbox).cloned();
-        let (ids, next, more) = match held {
-            Some(MailboxCursor::Jmap { state, position: None }) => {
-                match self.changes(&state, limit).await? {
-                    Some(answer) => answer,
-                    None => {
-                        let (ids, next) = self.listing(mailbox, None, 0, limit).await?;
-                        (ids, next, true)
-                    }
-                }
-            }
-            Some(MailboxCursor::Jmap { state, position: Some(at) }) => {
-                let (ids, next) = self.listing(mailbox, Some(state), at, limit).await?;
-                (ids, next, true)
-            }
-            _ => {
-                let (ids, next) = self.listing(mailbox, None, 0, limit).await?;
-                (ids, next, true)
-            }
+        let (state, position) = match held {
+            Some(MailboxCursor::Jmap { state, position }) => (Some(state), position),
+            _ => (None, None),
+        };
+        let changes = match (&state, position) {
+            (Some(state), None) => self.changes(state, limit).await?,
+            _ => None,
+        };
+        let (ids, next, more) = if let Some(answer) = changes {
+            answer
+        } else {
+            // A first listing, its next page, or the server can no longer say what changed.
+            let state = state.filter(|_| position.is_some());
+            let (ids, next) = self
+                .listing(mailbox, state, position.unwrap_or(0), limit)
+                .await?;
+            (ids, next, true)
         };
         self.download(ids, mailbox, role, &mut batch.mails).await?;
         batch.more |= more;

@@ -8,7 +8,9 @@ use fs_messenger_mail::openpgp::{
     EncryptionTargets, generate_key, sign_and_encrypt, unix_now, usable_encryption_key,
 };
 
-use crate::common::{Fetch, Person, Submit, Who, raw_by_message_id, serial, smtp_raw, token};
+use crate::common::{
+    Fetch, Person, Submit, Who, message_id_of, raw_by_message_id, serial, smtp_raw, token,
+};
 
 fn forged_plain(t: &str, header: &str) -> String {
     format!(
@@ -38,7 +40,12 @@ async fn a_forged_header_does_not_replace_a_known_key() {
     smtp_raw(Who::Bob, Who::Bob, forged_plain(&t, &header).as_bytes()).await;
     let got = bob.wait_for(&format!("Forged-{t}")).await;
     assert_eq!(got.summary.encryption, Encryption::None);
-    let held = bob.provider.peer(&Who::Alice.address()).await.unwrap().unwrap();
+    let held = bob
+        .provider
+        .peer(&Who::Alice.address())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(held.fingerprint, genuine, "the known key stays");
     assert_eq!(
         held.candidate.as_ref().map(|c| c.fingerprint.clone()),
@@ -48,10 +55,13 @@ async fn a_forged_header_does_not_replace_a_known_key() {
 
     // 2. Worse: alice's genuine signed mail, with the attacker's header put on the outside.
     let text = format!("Genuine-{t}");
-    alice.send(None, &[Who::Bob.address()], &[], &text, &[]).await.expect("send");
+    alice
+        .send(None, &[Who::Bob.address()], &[], &text, &[])
+        .await
+        .expect("send");
     let real = bob.wait_for(&text).await;
-    let id = &real.aliases.iter().find(|x| x.scheme == "message-id").unwrap().id;
-    let bytes = raw_by_message_id(Who::Bob, id).await.unwrap();
+    let id = message_id_of(&real);
+    let bytes = raw_by_message_id(Who::Bob, &id).await.unwrap();
     let wrapped = String::from_utf8(bytes).unwrap();
     let start = wrapped.find("From: ").expect("a From header");
     let body = wrapped[start..]
@@ -66,15 +76,31 @@ async fn a_forged_header_does_not_replace_a_known_key() {
         }
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     }
-    fs_messenger_core::Ingest::sync(&bob.repo, bob.account).await.expect("sync");
-    let held = bob.provider.peer(&Who::Alice.address()).await.unwrap().unwrap();
-    assert_eq!(held.fingerprint, genuine, "a valid signature does not cover an outer header");
+    fs_messenger_core::Ingest::sync(&bob.repo, bob.account)
+        .await
+        .expect("sync");
+    let held = bob
+        .provider
+        .peer(&Who::Alice.address())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        held.fingerprint, genuine,
+        "a valid signature does not cover an outer header"
+    );
 
     // 3. What bob sends still reaches alice, under the genuine key.
     let answer = format!("Still-{t}");
-    bob.send(None, &[Who::Alice.address()], &[], &answer, &[]).await.expect("send");
+    bob.send(None, &[Who::Alice.address()], &[], &answer, &[])
+        .await
+        .expect("send");
     let read = alice.wait_for(&answer).await;
-    assert_eq!(read.summary.encryption, Encryption::Openpgp, "alice can read it");
+    assert_eq!(
+        read.summary.encryption,
+        Encryption::Openpgp,
+        "alice can read it"
+    );
 }
 
 /// The new key inside the payload, signed with the old key: this is a rotation.
@@ -114,7 +140,12 @@ async fn a_rotation_signed_by_the_known_key_is_taken() {
         hidden: vec![],
     };
     let armored = sign_and_encrypt(&payload, &old, &targets).unwrap();
-    smtp_raw(Who::Alice, Who::Bob, &build_outer(&input, &armored).unwrap()).await;
+    smtp_raw(
+        Who::Alice,
+        Who::Bob,
+        &build_outer(&input, &armored).unwrap(),
+    )
+    .await;
 
     let got = bob.wait_for(&body).await;
     assert_eq!(got.summary.encryption, Encryption::Openpgp);

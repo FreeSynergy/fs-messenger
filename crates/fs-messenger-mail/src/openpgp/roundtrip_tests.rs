@@ -8,8 +8,14 @@ use crate::error::MailError;
 fn encrypt_to(signer: &SecretCert, visible: &[&PublicCert], hidden: &[&PublicCert]) -> String {
     let now = unix_now();
     let targets = EncryptionTargets {
-        visible: visible.iter().map(|c| usable_encryption_key(c, now).unwrap()).collect(),
-        hidden: hidden.iter().map(|c| usable_encryption_key(c, now).unwrap()).collect(),
+        visible: visible
+            .iter()
+            .map(|c| usable_encryption_key(c, now).unwrap())
+            .collect(),
+        hidden: hidden
+            .iter()
+            .map(|c| usable_encryption_key(c, now).unwrap())
+            .collect(),
     };
     sign_and_encrypt(b"the secret text", signer, &targets).unwrap()
 }
@@ -19,9 +25,18 @@ fn a_signed_mail_opens_and_verifies() -> Result<(), MailError> {
     let (alice, bob) = (generate_key("a@x")?, generate_key("b@x")?);
     let armored = encrypt_to(&alice, &[&bob.public(), &alice.public()], &[]);
     assert!(!armored.contains("secret"));
-    let (text, state) = decrypt(armored.as_bytes(), std::slice::from_ref(&bob), &[alice.public()])?;
+    let (text, state) = decrypt(
+        armored.as_bytes(),
+        std::slice::from_ref(&bob),
+        &[alice.public()],
+    )?;
     assert_eq!(text, b"the secret text");
-    assert_eq!(state, SignatureState::Valid { fingerprint: alice.fingerprint() });
+    assert_eq!(
+        state,
+        SignatureState::Valid {
+            fingerprint: alice.fingerprint()
+        }
+    );
     Ok(())
 }
 
@@ -35,7 +50,11 @@ fn the_sender_can_read_his_own_copy() -> Result<(), MailError> {
 
 #[test]
 fn a_signature_by_someone_else_is_not_valid() -> Result<(), MailError> {
-    let (alice, bob, eve) = (generate_key("a@x")?, generate_key("b@x")?, generate_key("e@x")?);
+    let (alice, bob, eve) = (
+        generate_key("a@x")?,
+        generate_key("b@x")?,
+        generate_key("e@x")?,
+    );
     let armored = encrypt_to(&eve, &[&bob.public()], &[]);
     let (_, state) = decrypt(armored.as_bytes(), &[bob], &[alice.public()])?;
     assert_eq!(state, SignatureState::Unverified);
@@ -44,7 +63,11 @@ fn a_signature_by_someone_else_is_not_valid() -> Result<(), MailError> {
 
 #[test]
 fn a_hidden_recipient_can_read_it_and_others_cannot_tell() -> Result<(), MailError> {
-    let (alice, bob, hidden) = (generate_key("a@x")?, generate_key("b@x")?, generate_key("h@x")?);
+    let (alice, bob, hidden) = (
+        generate_key("a@x")?,
+        generate_key("b@x")?,
+        generate_key("h@x")?,
+    );
     let armored = encrypt_to(&alice, &[&bob.public()], &[&hidden.public()]);
     let (text, _) = decrypt(armored.as_bytes(), &[hidden], &[])?;
     assert_eq!(text, b"the secret text");
@@ -54,7 +77,11 @@ fn a_hidden_recipient_can_read_it_and_others_cannot_tell() -> Result<(), MailErr
 
 #[test]
 fn whoever_is_not_addressed_opens_nothing() -> Result<(), MailError> {
-    let (alice, bob, eve) = (generate_key("a@x")?, generate_key("b@x")?, generate_key("e@x")?);
+    let (alice, bob, eve) = (
+        generate_key("a@x")?,
+        generate_key("b@x")?,
+        generate_key("e@x")?,
+    );
     let armored = encrypt_to(&alice, &[&bob.public()], &[]);
     assert!(decrypt(armored.as_bytes(), &[eve], &[]).is_err());
     Ok(())
@@ -99,7 +126,15 @@ fn a_detached_signature_verifies_only_over_its_content() -> Result<(), MailError
     )?;
     let armored = signature.to_armored_bytes(ArmorOptions::default())?;
     let good = verify_detached(&armored, b"content", &[alice.public()]);
-    assert_eq!(good, SignatureState::Valid { fingerprint: alice.fingerprint() });
-    assert_eq!(verify_detached(&armored, b"changed", &[alice.public()]), SignatureState::Unverified);
+    assert_eq!(
+        good,
+        SignatureState::Valid {
+            fingerprint: alice.fingerprint()
+        }
+    );
+    assert_eq!(
+        verify_detached(&armored, b"changed", &[alice.public()]),
+        SignatureState::Unverified
+    );
     Ok(())
 }

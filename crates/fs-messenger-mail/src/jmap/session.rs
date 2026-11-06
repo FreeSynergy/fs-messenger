@@ -43,7 +43,11 @@ fn rebased(url: &str, session_url: &str) -> Result<String> {
 }
 
 fn checked(url: String, session_url: &str, rebase: bool) -> Result<String> {
-    let url = if rebase { rebased(&url, session_url)? } else { url };
+    let url = if rebase {
+        rebased(&url, session_url)?
+    } else {
+        url
+    };
     if url.starts_with("https://") {
         Ok(url)
     } else {

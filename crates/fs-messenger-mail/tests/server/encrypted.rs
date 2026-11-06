@@ -1,9 +1,12 @@
 //! alice to bob, encrypted, through `Draft.send`, over every pair of submission and fetch.
 
 use fs_messenger_core::{DeliveryState, Encryption, Messenger};
+use fs_messenger_mail::mime::MailFields;
 use fs_messenger_mail::openpgp::SignatureState;
 
-use crate::common::{Fetch, Person, Submit, Who, raw_by_message_id, serial, token};
+use crate::common::{
+    Fetch, Person, Submit, Who, contains, message_id_of, raw_by_message_id, serial, token,
+};
 
 async fn round_trip(submit: Submit, fetch: Fetch) {
     let _one = serial().await;
@@ -18,16 +21,29 @@ async fn round_trip(submit: Submit, fetch: Fetch) {
     let file: &[u8] = b"\x00binary\xffAttach-bytes\r\nand a line\n";
     let bob_addr = Who::Bob.address();
     let sent_id = alice
-        .send(None, &[bob_addr.clone()], &[], &text, &[("a.bin", "application/x-test", file)])
+        .send(
+            None,
+            &[bob_addr.clone()],
+            &[],
+            &text,
+            &[("a.bin", "application/x-test", file)],
+        )
         .await
         .expect("send");
 
     let got = bob.wait_for(&format!("Body-{t}")).await;
-    assert_eq!(got.summary.encryption, Encryption::Openpgp, "{submit:?}/{fetch:?}");
+    assert_eq!(
+        got.summary.encryption,
+        Encryption::Openpgp,
+        "{submit:?}/{fetch:?}"
+    );
     assert_eq!(got.body_text, text);
     assert!(got.body_html.is_empty());
     assert_eq!(got.summary.envelope.name, format!("Subject-{t}"));
-    assert_eq!(got.summary.envelope.attributed_to.as_deref(), Some(Who::Alice.address().as_str()));
+    assert_eq!(
+        got.summary.envelope.attributed_to.as_deref(),
+        Some(Who::Alice.address().as_str())
+    );
     assert!(!got.outgoing);
 
     assert_eq!(got.attachments.len(), 1);
@@ -38,17 +54,26 @@ async fn round_trip(submit: Submit, fetch: Fetch) {
     assert_eq!(bob.repo.attachment(meta.blob).await.unwrap().bytes, file);
 
     // ADR 0030: what is stored is what the server has, byte for byte.
-    let message_id = &got.aliases.iter().find(|x| x.scheme == "message-id").unwrap().id;
-    let on_server = raw_by_message_id(Who::Bob, message_id).await.expect("on the server");
+    let message_id = message_id_of(&got);
+    let on_server = raw_by_message_id(Who::Bob, &message_id)
+        .await
+        .expect("on the server");
     assert_eq!(got.original.as_ref().unwrap().bytes, on_server);
 
     // The signature really verified, with the key that came with the mail.
     let inspected = bob.provider.inspect(&on_server).await.unwrap();
     assert_eq!(inspected.encryption, Encryption::Openpgp);
-    let learned = bob.provider.peer(&Who::Alice.address()).await.unwrap().expect("learned");
+    let learned = bob
+        .provider
+        .peer(&Who::Alice.address())
+        .await
+        .unwrap()
+        .expect("learned");
     assert_eq!(
         inspected.signature,
-        SignatureState::Valid { fingerprint: learned.fingerprint.clone() }
+        SignatureState::Valid {
+            fingerprint: learned.fingerprint.clone()
+        }
     );
 
     // A reply: bob's answer lands in alice's thread, under her message.
@@ -58,12 +83,22 @@ async fn round_trip(submit: Submit, fetch: Fetch) {
         .expect("reply");
     let answer = alice.wait_for(&reply).await;
     assert_eq!(answer.summary.encryption, Encryption::Openpgp);
-    assert_eq!(answer.summary.envelope.in_reply_to, Some(sent_id.to_string()));
+    assert_eq!(
+        answer.summary.envelope.in_reply_to,
+        Some(sent_id.to_string())
+    );
     let own = alice.message(sent_id).await;
-    assert_eq!(answer.summary.envelope.context, own.summary.envelope.context);
+    assert_eq!(
+        answer.summary.envelope.context,
+        own.summary.envelope.context
+    );
 
     // The sent copy came back with the sync and is not a second message.
-    assert_eq!(alice.find(&format!("Body-{t}")).await.len(), 1, "the sent copy is recognised");
+    assert_eq!(
+        alice.find(&format!("Body-{t}")).await.len(),
+        1,
+        "the sent copy is recognised"
+    );
     assert_eq!(own.summary.state, DeliveryState::Sent);
     assert!(own.outgoing);
 }
@@ -104,11 +139,30 @@ async fn bcc_can_read_and_is_named_nowhere() {
     let t = token();
     let text = format!("Hidden-{t}");
     alice
-        .send(None, &[Who::Alice.address()], &[Who::Bob.address()], &text, &[])
+        .send(
+            None,
+            &[Who::Alice.address()],
+            &[Who::Bob.address()],
+            &text,
+            &[],
+        )
         .await
         .expect("send");
     let got = bob.wait_for(&text).await;
     assert_eq!(got.summary.encryption, Encryption::Openpgp);
-    let bytes = got.original.as_ref().unwrap().bytes.clone();
-    assert!(!crate::common::contains(&bytes, &Who::Bob.address()), "bcc in a header");
+    let id = message_id_of(&got);
+    // The sent copy holds no trace of him. The delivered one has the server's own `Delivered-To`, the
+    // one place that must name him, so check what the sender wrote: `To`, `Cc`, and the payload.
+    let copy = raw_by_message_id(Who::Alice, &id)
+        .await
+        .expect("the sent copy");
+    assert!(
+        !contains(&copy, &Who::Bob.address()),
+        "bcc in the sent copy"
+    );
+    let delivered = &got.original.as_ref().unwrap().bytes;
+    let outer = MailFields::read(delivered).unwrap();
+    assert_eq!(outer.to, [Who::Alice.address()]);
+    assert!(outer.cc.is_empty());
+    assert_eq!(got.summary.envelope.to, [Who::Alice.address()]);
 }

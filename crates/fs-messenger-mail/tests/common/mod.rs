@@ -58,7 +58,10 @@ impl MailFetch for Wire {
 #[async_trait]
 impl MailSubmit for Wire {
     async fn submit(&self, envelope: &MailEnvelope, raw: &[u8]) -> Result<SentCopy, MailError> {
-        self.sent.lock().unwrap().push((envelope.clone(), raw.to_vec()));
+        self.sent
+            .lock()
+            .unwrap()
+            .push((envelope.clone(), raw.to_vec()));
         Ok(SentCopy::Stored)
     }
 }

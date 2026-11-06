@@ -4,8 +4,8 @@
 //! every self-signature must verify, the key must not be revoked or expired, and a live encryption
 //! subkey must exist. Provisional: a subkey revocation fails rPGP's binding check, so such a whole
 //! certificate is refused as invalid instead of falling back to another subkey; a key that encrypts
-//! only with its primary key is refused too. A v4 key that does not advertise SEIPDv2 is refused:
-//! SEIPDv1 is `Unsupported` outgoing.
+//! only with its primary key is refused too. A v4 key that does not advertise `SEIPDv2` is refused:
+//! `SEIPDv1` is `Unsupported` outgoing.
 
 use pgp::composed::SignedPublicSubKey;
 use pgp::packet::{Signature, SignatureType};
@@ -28,7 +28,7 @@ pub enum KeyRefusal {
     /// It has no live subkey for encryption.
     #[error("it cannot encrypt")]
     CannotEncrypt,
-    /// A v4 key that does not advertise SEIPDv2.
+    /// A v4 key that does not advertise `SEIPDv2`.
     #[error("it does not support SEIPDv2")]
     NoModernEncryption,
 }
@@ -46,7 +46,9 @@ fn newest<'a>(sigs: impl Iterator<Item = &'a Signature>) -> Option<&'a Signature
 
 /// Whether a key created at `created` with this self-signature has run out at `now`.
 fn expired(created: u64, sig: &Signature, now: u64) -> bool {
-    let lifetime = sig.key_expiration_time().map_or(0, |d| u64::from(d.as_secs()));
+    let lifetime = sig
+        .key_expiration_time()
+        .map_or(0, |d| u64::from(d.as_secs()));
     lifetime != 0 && created + lifetime <= now
 }
 
@@ -73,7 +75,9 @@ pub fn usable_encryption_key(
     if expired(created, own, now) {
         return Err(KeyRefusal::Expired);
     }
-    if cert.0.version() != KeyVersion::V6 && !own.features().is_some_and(|f| f.seipd_v2()) {
+    if cert.0.version() != KeyVersion::V6
+        && !own.features().is_some_and(pgp::packet::Features::seipd_v2)
+    {
         return Err(KeyRefusal::NoModernEncryption);
     }
     let mut saw_expired = false;
@@ -83,7 +87,9 @@ pub fn usable_encryption_key(
             .signatures
             .iter()
             .filter(|s| s.typ() == Some(SignatureType::SubkeyBinding));
-        let Some(binding) = newest(bindings) else { continue };
+        let Some(binding) = newest(bindings) else {
+            continue;
+        };
         let flags = binding.key_flags();
         if !flags.encrypt_comms() && !flags.encrypt_storage() {
             continue;

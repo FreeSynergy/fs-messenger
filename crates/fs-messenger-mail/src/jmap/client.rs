@@ -76,7 +76,7 @@ impl JmapClient {
         request.basic_auth(&self.config.user, Some(self.config.password.expose()))
     }
 
-    async fn checked(response: reqwest::Response) -> Result<reqwest::Response> {
+    fn checked(response: reqwest::Response) -> Result<reqwest::Response> {
         let status = response.status();
         if status.is_success() {
             Ok(response)
@@ -90,7 +90,7 @@ impl JmapClient {
             .get_or_try_init(|| async {
                 let url = &self.config.session_url;
                 let response = self.authed(self.http.get(url)).send().await.map_err(err)?;
-                let body = Self::checked(response).await?.bytes().await.map_err(err)?;
+                let body = Self::checked(response)?.bytes().await.map_err(err)?;
                 Session::read(&body, url, self.config.rebase_on_session_origin)
             })
             .await
@@ -108,7 +108,7 @@ impl JmapClient {
             .send()
             .await
             .map_err(err)?;
-        let answer: Value = Self::checked(response).await?.json().await.map_err(err)?;
+        let answer: Value = Self::checked(response)?.json().await.map_err(err)?;
         match answer.get("methodResponses") {
             Some(Value::Array(list)) => Ok(list.clone()),
             _ => Err(err("the answer has no methodResponses")),
@@ -126,7 +126,7 @@ impl JmapClient {
             .send()
             .await
             .map_err(err)?;
-        let answer: Value = Self::checked(response).await?.json().await.map_err(err)?;
+        let answer: Value = Self::checked(response)?.json().await.map_err(err)?;
         answer["blobId"]
             .as_str()
             .map(str::to_string)
@@ -143,7 +143,7 @@ impl JmapClient {
             .replace("{name}", "mail.eml")
             .replace("{type}", "message/rfc822");
         let response = self.authed(self.http.get(url)).send().await.map_err(err)?;
-        let body = Self::checked(response).await?.bytes().await.map_err(err)?;
+        let body = Self::checked(response)?.bytes().await.map_err(err)?;
         Ok(body.to_vec())
     }
 
@@ -166,7 +166,6 @@ impl JmapClient {
 
     /// As [`JmapClient::response`], with a method's error as an error.
     pub(super) fn answer<'a>(responses: &'a [Value], id: &str) -> Result<&'a Value> {
-        Self::response(responses, id)?
-            .map_err(|e| err(format!("call {id} answered {}", e.kind)))
+        Self::response(responses, id)?.map_err(|e| err(format!("call {id} answered {}", e.kind)))
     }
 }
