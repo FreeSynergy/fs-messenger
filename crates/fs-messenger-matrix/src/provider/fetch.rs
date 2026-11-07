@@ -3,7 +3,7 @@
 //! Pattern: Adapter, part of `MatrixProvider` (the type is spread over the files of this folder): `fetch` of the `Provider` trait over the SDK's `/sync`. One
 //! fetch, in order: sync, plan and read gaps, convert, retry what waits for a key, say where we
 //! are. A failure anywhere fails the fetch, so the cursor stays and the next one replays; the core
-//! dedupes.
+//! dedupes. `worth_replaying` is a Specification (a pure predicate) inside this Adapter.
 
 use std::time::Duration;
 
