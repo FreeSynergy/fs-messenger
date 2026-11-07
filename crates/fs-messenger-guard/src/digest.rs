@@ -6,7 +6,7 @@
 //! so nothing can move from one field to another. No input is hashed as its own explicit value, so `{}` and "no input" differ and later input changes
 //! the digest. Keys are not secret, and nothing here is: the digest is shown to the person's device.
 
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 use sha2::{Digest, Sha256};
 
 use crate::arguments::Arguments;

@@ -7,7 +7,7 @@
 
 use chrono::{DateTime, Utc};
 use fs_messenger_core::{ToolCallChoice, ToolCallDecision};
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use super::calls::Limits;
 use super::doc::{CallRecord, GuardDoc};

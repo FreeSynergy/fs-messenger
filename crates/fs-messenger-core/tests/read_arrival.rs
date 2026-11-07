@@ -5,7 +5,7 @@ mod common;
 use chrono::{TimeZone, Utc};
 use common::{account, at, conversation_of, raw, raw_at, setup};
 use fs_messenger_core::{Ingest, Ingested, Messenger, MessengerRepo, RawMessage};
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 async fn stored(repo: &MessengerRepo, me: ObjectId, m: RawMessage) -> ObjectId {
     let Ingested::Stored(id) = repo.ingest(me, m).await.unwrap() else {
@@ -117,8 +117,8 @@ async fn c13_next_unread_follows_arrival_not_dates() {
 
 #[tokio::test]
 async fn c13_the_sequence_goes_on_after_a_restart() {
-    let store: std::sync::Arc<dyn fs_store::Store> =
-        std::sync::Arc::new(fs_store::TursoStore::open_in_memory().await.unwrap());
+    let store: std::sync::Arc<dyn fs_objects::Store> =
+        std::sync::Arc::new(fs_objects::TursoStore::open_in_memory().await.unwrap());
     let repo = common::repo_over(store.clone(), 50).await;
     let me = account(&repo, "me@example.org").await;
     let before = stored(&repo, me.id, raw_at("before", "t", 1)).await;

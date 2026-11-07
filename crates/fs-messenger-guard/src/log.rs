@@ -8,7 +8,7 @@
 
 use chrono::{DateTime, Utc};
 use fs_messenger_core::ToolCallRisk;
-use fs_store::{ActivityKind, ObjectId};
+use fs_objects::{ActivityKind, ObjectId};
 use serde::{Deserialize, Serialize};
 
 /// The fixed id the log entries hang on.

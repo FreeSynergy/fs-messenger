@@ -6,7 +6,7 @@
 //! same event id with `undecrypted` unset makes the core replace the text in place.
 
 use fs_messenger_core::{Encryption, ExternalId, Kind, RawMessage};
-use fs_store::Blob;
+use fs_objects::Blob;
 
 use super::alias::EventAlias;
 use super::event::ParsedEvent;

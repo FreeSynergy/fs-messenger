@@ -14,7 +14,7 @@ use fs_messenger_core::{
     ToolCallRisk, ToolCallState, TurnScope, Usage,
 };
 use fs_messenger_guard::{Gate, Guard, GuardError, GuardMode, STATE_ID, Verdict};
-use fs_store::{ObjectId, TursoStore};
+use fs_objects::{ObjectId, TursoStore};
 struct NoListener;
 
 #[async_trait]
@@ -284,7 +284,7 @@ async fn no_path_reaches_the_state_even_in_the_messengers_own_store() {
     let read = || {
         let store = shared.clone();
         async move {
-            use fs_store::traits::UnloggedObjects;
+            use fs_objects::traits::UnloggedObjects;
             store.read_unlogged(state_id).await.unwrap().unwrap()
         }
     };

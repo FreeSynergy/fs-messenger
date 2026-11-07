@@ -10,7 +10,7 @@ use fs_messenger_core::{
     Encryption, EncryptionPlan, Error, Ingest, Ingested, MessageAction, Messenger, MessengerRepo,
     Outgoing, Provider, Result, SendReceipt,
 };
-use fs_store::{ObjectId, Query};
+use fs_objects::{ObjectId, Query};
 
 /// Plans well, and in that moment another provider gets registered for the account.
 struct SwapsWhilePlanning {

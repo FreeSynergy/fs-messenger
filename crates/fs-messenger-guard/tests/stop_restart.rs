@@ -11,7 +11,7 @@ use common::{AI, World};
 use fs_messenger_guard::{
     Gate, Guard, GuardError, GuardMode, GuardRepository, Method, Refusal, Verdict,
 };
-use fs_store::TursoStore;
+use fs_objects::TursoStore;
 
 /// As after a restart: only the store's files and the marker stay.
 async fn restart_on(r: Rig) -> (Arc<fs_messenger_guard::GuardEngine>, Arc<Faulty>, Rig2) {

@@ -8,7 +8,7 @@
 //! What happens to a report while the guard is shut is decided in one place, `report_landing.rs`,
 //! which every way of storing an agent's tool call goes through.
 
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use super::handle::Inner;
 use super::report_landing::Landing;

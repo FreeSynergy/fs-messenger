@@ -1,6 +1,6 @@
 //! [`Journal`]: an ordered, atomic log of key-value changes that the stores persist through.
 //!
-//! Pattern: Strategy: the stores do not know `fs-store`. One `append` is all or nothing, which is
+//! Pattern: Strategy: the stores do not know `fs-objects`. One `append` is all or nothing, which is
 //! what a store's `save_changes` promises to the SDK: a ratchet step and what depends on it must not
 //! come apart in a crash.
 

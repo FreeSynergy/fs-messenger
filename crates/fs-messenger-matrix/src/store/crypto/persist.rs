@@ -105,7 +105,7 @@ pub(super) async fn change_ops(changes: &Changes) -> Result<Vec<Op>, StoreFail> 
     }
     for secret in &changes.secrets {
         let name = secret.secret_name.to_string();
-        let unique = fs_store::ObjectId::new().to_string();
+        let unique = fs_objects::ObjectId::new().to_string();
         ops.push(put(&[kind::SECRET, &name, &unique], &*secret.secret)?);
     }
     if let Some(token) = &changes.next_batch_token {

@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use fs_messenger_matrix::{MatrixAccount, MatrixError, MatrixProvider};
-use fs_store::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
+use fs_objects::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

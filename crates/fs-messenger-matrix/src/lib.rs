@@ -2,7 +2,7 @@
 //!
 //! [`MatrixProvider`] implements the core's `Provider` trait over `matrix-sdk`. It sends only into
 //! encrypted rooms and marks an incoming message `megolm` only if decryption really happened. The SDK's
-//! stores live in an encrypted `fs-store`, in pure Rust, not in SQLite. See `DESIGN.md` of this crate.
+//! stores live in an encrypted `fs-objects`, in pure Rust, not in SQLite. See `DESIGN.md` of this crate.
 //!
 //! Pattern: none (this file only declares modules and re-exports the public API; no logic, section 3
 //! of the coding rules).

@@ -13,7 +13,7 @@ use fs_messenger_mail::keys::{FsKeyStore, KeySource, KeyStore, PeerKey};
 use fs_messenger_mail::openpgp::{generate_key, unix_now};
 use fs_messenger_mail::submit::SmtpConfig;
 use fs_messenger_mail::{Endpoint, Password, TlsTrust};
-use fs_store::{
+use fs_objects::{
     ActivityFilter, Cipher, EncryptionKey, Envelope, OpenOptions, StaticKeyProvider, Store,
     StoredObject, TursoStore,
 };

@@ -3,7 +3,7 @@
 //! Pattern: Adapter. A draft is an object of its own type, so it never shows up among the messages;
 //! when it is sent, a new `Note` is created, published at the time of sending.
 
-use fs_store::{Envelope, ObjectId, Query, StoredObject};
+use fs_objects::{Envelope, ObjectId, Query, StoredObject};
 use serde::{Deserialize, Serialize};
 
 use super::consts::{CONTENT_TYPE, DRAFT, IDX_BLOB, SENSITIVE, TEXT_PLAIN};

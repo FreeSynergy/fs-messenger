@@ -8,7 +8,7 @@ use std::sync::Arc;
 use fs_messenger_core::Provider;
 use fs_messenger_matrix::store::{FsJournal, Journal, Op};
 use fs_messenger_matrix::{MatrixAccount, MatrixProvider, Password};
-use fs_store::TursoStore;
+use fs_objects::TursoStore;
 use review_common::support::server::{Reply, Server};
 use review_common::{account, login, ordinary, support};
 use serde_json::json;

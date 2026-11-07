@@ -9,7 +9,7 @@ use fs_messenger_core::{
     Subscription, ToolCall, ToolCallDecision,
 };
 use fs_messenger_guard::Question;
-use fs_store::{ActivityFilter, Store};
+use fs_objects::{ActivityFilter, Store};
 use tokio::sync::mpsc;
 
 use super::World;

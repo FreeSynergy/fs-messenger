@@ -12,7 +12,7 @@ use fs_messenger_core::{
     DeliveryState, Encryption, Event, EventFilter, Ingest, Ingested, Kind, MessageAction,
     Messenger, MessengerConfig, MessengerRepo, ToolCall, ToolCallState,
 };
-use fs_store::{OpenOptions, TursoStore};
+use fs_objects::{OpenOptions, TursoStore};
 
 #[tokio::test]
 async fn created_updated_deleted_arrive_in_order() {

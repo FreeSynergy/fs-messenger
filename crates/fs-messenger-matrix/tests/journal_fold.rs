@@ -3,8 +3,8 @@
 mod support;
 
 use fs_messenger_matrix::store::{FsJournal, Journal, Op};
-use fs_store::Query;
-use fs_store::traits::ObjectQuery;
+use fs_objects::Query;
+use fs_objects::traits::ObjectQuery;
 
 #[tokio::test]
 async fn a_long_journal_folds_and_loses_nothing() {

@@ -4,7 +4,7 @@ mod common;
 
 use common::{account, conversation_of, message_id, raw, setup, with_provider};
 use fs_messenger_core::{Encryption, Ingest, Ingested, Messenger, MessengerRepo, SignatureCheck};
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 use serde_json::{from_value, json};
 
 async fn stored(repo: &MessengerRepo, me: ObjectId, m: fs_messenger_core::RawMessage) -> ObjectId {

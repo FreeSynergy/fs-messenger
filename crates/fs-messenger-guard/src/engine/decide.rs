@@ -6,7 +6,7 @@
 //! refusal listeners hear how the call stands, from memory only.
 
 use fs_messenger_core::{DecisionProblem, ToolCallChoice, ToolCallDecision};
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use super::core::GuardEngine;
 use super::store_access::View;

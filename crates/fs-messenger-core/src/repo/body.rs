@@ -4,7 +4,7 @@
 //! in `content` would be copied by every flag. An update image leaves out an object's original, so
 //! the body sits there. `DESIGN.md` says what this does not solve.
 
-use fs_store::{Blob, Envelope, StoredObject};
+use fs_objects::{Blob, Envelope, StoredObject};
 
 use super::consts::{CONTENT_TYPE, DOCUMENT, SENSITIVE};
 use super::handle::Inner;
@@ -52,7 +52,7 @@ impl Inner {
         if let Some(id) = m.stored.body_blob {
             // Already gone is store damage, and what was wanted anyway: it must not fail a delete.
             match self.store.delete(id, &self.config.actor).await {
-                Ok(_) | Err(fs_store::Error::NotFound(_)) => {}
+                Ok(_) | Err(fs_objects::Error::NotFound(_)) => {}
                 Err(e) => return Err(e.into()),
             }
         }

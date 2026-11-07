@@ -7,7 +7,7 @@
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
-use fs_store::{ObjectId, Query};
+use fs_objects::{ObjectId, Query};
 use tokio::time::timeout;
 
 use super::consts::{IDX_OPEN_CALL, NOTE, YES};

@@ -9,7 +9,7 @@ use fs_messenger_core::{
     Ingest, Ingested, Messenger, ToolCall, ToolCallKind, ToolCallOutcome, ToolCallState,
 };
 use fs_messenger_guard::Guard;
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 fn report(state: ToolCallState) -> ToolCall {
     ToolCall {

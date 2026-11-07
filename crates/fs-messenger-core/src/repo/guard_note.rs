@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 
 use chrono::Utc;
-use fs_store::{Envelope, ObjectId};
+use fs_objects::{Envelope, ObjectId};
 
 use super::consts::{CONVERSATION, NOTE, TEXT_PLAIN};
 use super::conversation_codec::{ConversationContent, ConversationRecord};

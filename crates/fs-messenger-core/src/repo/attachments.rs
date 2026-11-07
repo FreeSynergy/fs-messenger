@@ -4,7 +4,7 @@
 //! so messages stay small. Messages and drafts name them in the index, and an attachment goes when
 //! the last one that names it has gone.
 
-use fs_store::{Blob, Envelope, ObjectId, Query, StoredObject};
+use fs_objects::{Blob, Envelope, ObjectId, Query, StoredObject};
 
 use super::consts::{CONTENT_TYPE, DOCUMENT, IDX_BLOB, SENSITIVE};
 use super::handle::Inner;

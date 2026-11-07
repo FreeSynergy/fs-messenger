@@ -9,7 +9,7 @@ Version 0.2.0 (the workspace's), not tagged. Tested against the pinned tuwunel 1
 | Area | State |
 |---|---|
 | Login with password, session restore, same device and identity after a restart | done, against the server |
-| Stores: `CryptoStore` and `StateStore` over an encrypted `fs-store`, pure Rust, no SQLite | done: the SDK's own suites pass (35 and 28 tests; one more is `#[ignore]`d by the suite itself), restart against the server |
+| Stores: `CryptoStore` and `StateStore` over an encrypted `fs-objects`, pure Rust, no SQLite | done: the SDK's own suites pass (35 and 28 tests; one more is `#[ignore]`d by the suite itself), restart against the server |
 | Sync into the core: rooms are conversations, `m.room.message` are messages, room and event id are the alias (`EventAlias`), `m.in_reply_to` threads, cursor persists in the core, replay does not duplicate, own copy recognised | done, against the server |
 | Gaps: a limited `/sync`, a newly joined room and a replay are read through `/messages`: at most 20 pages and 500 events per fetch, a page or a `/sync` answer over its limit cut and the rest kept as a gap; at most 8 open gaps per room, joined when they touch; see "What a server cannot do" | done, against the server for the ordinary case; the cuts only against a raw server |
 | First reading of a room: a room counts as read (`cursor.rooms`) only through the cursor of a fetch that went through. After a failed fetch, or a cursor the core did not keep, the SDK stands ahead of the core; the replay then reads a room the cursor does not know from its start, not only down to the old position | done, tested against a raw server (three failure places) |
@@ -51,8 +51,8 @@ Names are those of section 2 of `conventions/coding.md`, and only where the code
 | `provider/{fetch,send,convert,history,connect,rooms}.rs` | Adapter, part of `MatrixProvider` | the same type, split by topic: sync, sending, events to messages, `/messages`, login, the provider's own room methods |
 | `store/crypto/*`, `store/state/*` (`decorate`, `store`) | Decorator | the SDK's memory stores, with a journal in front |
 | `store/forward.rs` | Decorator, the plain half | nearly a hundred methods only pass on |
-| `store/journal.rs` | Strategy | the `Journal` trait: the stores do not know `fs-store` |
-| `store/fs_journal.rs` | Adapter | `FsJournal` implements `Journal` over `fs-store` |
+| `store/journal.rs` | Strategy | the `Journal` trait: the stores do not know `fs-objects` |
+| `store/fs_journal.rs` | Adapter | `FsJournal` implements `Journal` over `fs-objects` |
 | `secret.rs` | Newtype | `Password`, `SecretText`: a secret cannot be printed |
 | `receive/alias.rs` | Value object | `EventAlias`: small, private fields, compared by value, written to and read from one text without loss |
 | `receive/cursor.rs` | Memento | `MatrixCursor`: a snapshot of where the provider stands; the core keeps it as opaque text and hands it back |
@@ -69,17 +69,17 @@ No pattern of section 2 fits `provider/deadline.rs` and `provider/echo.rs`, and 
 
 ## Stores: pure Rust, and how
 
-`matrix-sdk` 0.19.1 with default features brings `matrix-sdk-sqlite` (rusqlite, libsqlite3-sys: C) and aws-lc (C). Both are off. Choice (a) of the assignment holds: its `StateStore` and `CryptoStore` traits are implemented over `fs-store`, in about 1500 lines, inline tests included, against the 6100 of the SDK's SQLite versions of those two.
+`matrix-sdk` 0.19.1 with default features brings `matrix-sdk-sqlite` (rusqlite, libsqlite3-sys: C) and aws-lc (C). Both are off. Choice (a) of the assignment holds: its `StateStore` and `CryptoStore` traits are implemented over `fs-objects`, in about 1500 lines, inline tests included, against the 6100 of the SDK's SQLite versions of those two.
 
 **Decorator over the SDK's own memory stores.** Reads come from `MemoryStore`, so all its query logic is the SDK's. Every write goes first to a journal, then to memory. Opening replays the journal into a new memory store.
 
 **One `save_changes` is one object**, written by `put_unlogged` in one transaction, so it is all or nothing. After 512 segments the journal folds into a base segment, and whatever lies before the newest base is ignored.
 
-**Why `put_unlogged`.** A logged `put` keeps the old image in the activity log until compaction, and compaction only removes what the hub acknowledged. For a crypto store that would keep every old ratchet state on disk. **Limits:** `fs-store` says that old pages can stay in the file until reused, so old states may linger inside the encrypted file. A value is wiped from RAM as a `SecretText`, but the plain `serde_json::Value` of a segment on its way to the store, and the SDK's memory store, are not.
+**Why `put_unlogged`.** A logged `put` keeps the old image in the activity log until compaction, and compaction only removes what the hub acknowledged. For a crypto store that would keep every old ratchet state on disk. **Limits:** `fs-objects` says that old pages can stay in the file until reused, so old states may linger inside the encrypted file. A value is wiped from RAM as a `SecretText`, but the plain `serde_json::Value` of a segment on its way to the store, and the SDK's memory store, are not.
 
 **Everything is in RAM** while the provider runs: the SDK's memory stores hold it all, as `MemoryStore` was built to. Fine for one person's account; not measured at scale. Folding reads everything.
 
-**At rest.** The journal refuses a store for which `is_encrypted` is false, also one that opted out of the sensitive-data rule. Every segment carries the sensitive category. There is no SDK passphrase: the key comes from `fs-store`'s `KeyProvider`, and pickles have no key of their own. **A program should use a store of its own for this**, not synchronised to a hub.
+**At rest.** The journal refuses a store for which `is_encrypted` is false, also one that opted out of the sensitive-data rule. Every segment carries the sensitive category. There is no SDK passphrase: the key comes from `fs-objects`'s `KeyProvider`, and pickles have no key of their own. **A program should use a store of its own for this**, not synchronised to a hub.
 
 **Not kept across a restart, on purpose:** presence, receipts, global profiles, composer drafts, recently visited rooms, the UTD hook's data and the server capability caches (the SDK fills them again or this crate does not use them); the send queue and thread subscriptions (not used). The event cache and media store are the SDK's in-memory defaults.
 
@@ -89,13 +89,13 @@ No pattern of section 2 fits `provider/deadline.rs` and `provider/echo.rs`, and 
 |---|---|---|
 | `ring` | C and assembly | `rustls`, the TLS of `reqwest` (also in `fs-messenger-mail`) |
 | `blake3` | C and assembly, on x86-64 unless its `pure` feature is on | `matrix-sdk-store-encryption`, a dependency of `matrix-sdk-base` |
-| `simsimd` | C | `turso_core`, so already in `fs-store` and in the core |
+| `simsimd` | C | `turso_core`, so already in `fs-objects` and in the core |
 
 `aegis` (through `turso_core`) is built with its `pure-rust` feature (`cargo tree -e features`), so its C is not compiled, though `cc` is listed for it. No `libsqlite3-sys`, `rusqlite`, `aws-lc`, `openssl-sys` or `native-tls` in `cargo tree -e normal`.
 
 ## Secrets (blocker before merge)
 
-No access token, password, passphrase, Olm or Megolm key in an activity, a hub path, `Debug`, `Display`, an error or a log line. There is no recovery key: no backup, no recovery. There is no store passphrase of the SDK: the key comes from `fs-store`'s `KeyProvider`, and this crate never holds it.
+No access token, password, passphrase, Olm or Megolm key in an activity, a hub path, `Debug`, `Display`, an error or a log line. There is no recovery key: no backup, no recovery. There is no store passphrase of the SDK: the key comes from `fs-objects`'s `KeyProvider`, and this crate never holds it.
 
 * **Own redacting types.** `Password`, and `SecretText` for every journal value, whatever it holds, so no code decides which one is secret. No `Display`, `Debug` prints a placeholder, memory is wiped on drop, readable only inside this crate. `Debug` of `MatrixProvider` shows ids, and does not ask the client.
 * **Errors.** A `serde_json` message quotes what it read: `invalid type: string "..."`. So errors give the kind and position only, and a pickle that fails says which and not why. Tested with a damaged record.
@@ -219,4 +219,4 @@ The server tests are `#[ignore]`d; `tests/server/main.rs` says how to run them. 
 
 ## Crates
 
-`matrix-sdk`, `matrix-sdk-base` (`=0.19.1`, Apache-2.0), `rustls` with ring (TLS, as in the mail crate). `matrix_sdk::crypto` is not re-exported, hence `matrix-sdk-base`. `fs-store`, `fs-interfaces`, `fs-messenger-core`, `async-trait`, `chrono`, `serde`, `serde_json`, `thiserror`, `tokio`, `tracing`, `zeroize`.
+`matrix-sdk`, `matrix-sdk-base` (`=0.19.1`, Apache-2.0), `rustls` with ring (TLS, as in the mail crate). `matrix_sdk::crypto` is not re-exported, hence `matrix-sdk-base`. `fs-objects`, `fs-interfaces`, `fs-messenger-core`, `async-trait`, `chrono`, `serde`, `serde_json`, `thiserror`, `tokio`, `tracing`, `zeroize`.

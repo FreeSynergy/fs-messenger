@@ -155,12 +155,12 @@ async fn a_server_cannot_make_the_provider_wait_an_hour() {
 async fn a_plain_store_is_refused_before_anything_is_sent() {
     let server = Server::start(|_| Reply::json(500, &json!({}))).await;
     let dir = tempfile::tempdir().unwrap();
-    let options = fs_store::OpenOptions {
+    let options = fs_objects::OpenOptions {
         allow_sensitive_unencrypted: true,
-        ..fs_store::OpenOptions::default()
+        ..fs_objects::OpenOptions::default()
     };
-    let opted_out = fs_store::TursoStore::open_with(dir.path().join("plain.db"), options).await;
-    let in_memory = fs_store::TursoStore::open_in_memory().await;
+    let opted_out = fs_objects::TursoStore::open_with(dir.path().join("plain.db"), options).await;
+    let in_memory = fs_objects::TursoStore::open_in_memory().await;
     for plain in [opted_out.unwrap(), in_memory.unwrap()] {
         let plain = Arc::new(plain);
         let password = Password::new("pw");

@@ -1,6 +1,6 @@
 [package]
 name = "fs-messenger-matrix"
-description = "Matrix provider of FreeSynergy.Messenger: matrix-sdk behind the core's Provider, end-to-end encrypted only, stores over fs-store"
+description = "Matrix provider of FreeSynergy.Messenger: matrix-sdk behind the core's Provider, end-to-end encrypted only, stores over fs-objects"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,7 +9,7 @@ rust-version = "1.96"
 
 [dependencies]
 fs-messenger-core = { path = "../fs-messenger-core" }
-fs-store = { git = "https://github.com/FreeSynergy/fs-store", tag = "v0.3.0" }
+fs-objects = { git = "https://github.com/FreeSynergy/fs-objects", tag = "v0.5.0" }
 fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.27.0" }
 
 # Pinned exactly: 0.x, and its store traits change with every release. No default features: those

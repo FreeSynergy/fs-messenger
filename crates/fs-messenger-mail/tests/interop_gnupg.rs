@@ -53,7 +53,7 @@ fn v4_with_seipd2(address: &str, modern: bool) -> Vec<u8> {
 
 /// The real way out: `Draft.send` through the core; what the strategy got is the mail.
 async fn send(me: &Offline, bcc: &[String]) -> Result<Vec<u8>> {
-    let store: Arc<dyn fs_store::Store> = Arc::new(fs_store::TursoStore::open_in_memory().await?);
+    let store: Arc<dyn fs_objects::Store> = Arc::new(fs_objects::TursoStore::open_in_memory().await?);
     let config = MessengerConfig::new("https://local.invalid/me");
     let repo = MessengerRepo::open(store, config).await?;
     let (address, kind) = (me.address.clone(), "mail".to_string());

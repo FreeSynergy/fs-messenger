@@ -1,4 +1,4 @@
-//! [`TursoGuardRepository`]: the state in `fs-store`, out of reach of undo.
+//! [`TursoGuardRepository`]: the state in `fs-objects`, out of reach of undo.
 //!
 //! Pattern: Adapter. The state is written through `UnloggedObjects`, so it has no activity with a before
 //! image, and undo, redo and the change feed cannot reach it. The log is log-only activities on an id
@@ -11,8 +11,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
-use fs_store::traits::{ActivityLog, UnloggedObjects};
-use fs_store::{ActivityFilter, Envelope, ObjectId, StoredObject, TursoStore};
+use fs_objects::traits::{ActivityLog, UnloggedObjects};
+use fs_objects::{ActivityFilter, Envelope, ObjectId, StoredObject, TursoStore};
 use serde_json::Value;
 
 use super::traits::GuardRepository;
@@ -57,7 +57,7 @@ impl TursoGuardRepository {
         }
         let id = STATE_ID
             .parse()
-            .map_err(|e: fs_store::Error| e.to_string())?;
+            .map_err(|e: fs_objects::Error| e.to_string())?;
         let mut claimed = CLAIMED.lock().unwrap_or_else(PoisonError::into_inner);
         if !claimed.insert(address(&store)) {
             return Err("this store already has a guard".into());

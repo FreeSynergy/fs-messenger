@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use chrono::{SubsecRound, Utc};
-use fs_store::{Activity, ActivityFilter, ActivityId, Store};
+use fs_objects::{Activity, ActivityFilter, ActivityId, Store};
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
 

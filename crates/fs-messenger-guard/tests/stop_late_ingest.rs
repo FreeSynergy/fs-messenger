@@ -15,7 +15,7 @@ use fs_messenger_core::{
     RawToolCall, ToolCall, ToolCallKind, ToolCallOutcome, ToolCallState,
 };
 use fs_messenger_guard::{Guard, Method, Verdict};
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 fn working() -> ToolCall {
     ToolCall {
