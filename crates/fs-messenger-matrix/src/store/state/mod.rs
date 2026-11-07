@@ -1,7 +1,8 @@
 //! [`FsStateStore`]: the SDK's `StateStore`: rooms, members, room state, the sync token.
 //!
-//! Pattern: Decorator over the SDK's memory store: `persist.rs` turns a change into journal entries,
-//! `restore.rs` rebuilds the memory store, `decorate.rs` is the trait. What is not kept across a
+//! Pattern: none (this file only declares modules and re-exports; no logic, section 3 of the coding
+//! rules). The type is a Decorator over the SDK's memory store (`store.rs`, `decorate.rs`,
+//! `restore.rs`); `persist.rs` turns a change into journal entries. What is not kept across a
 //! restart is listed in `DESIGN.md`: caches the SDK fills again, and features this crate does not use.
 
 mod decorate;

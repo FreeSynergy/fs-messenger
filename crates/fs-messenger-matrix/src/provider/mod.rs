@@ -8,13 +8,13 @@ mod connect;
 mod convert;
 mod deadline;
 mod echo;
-mod facade;
 mod fetch;
 mod history;
+mod matrix_provider;
 mod plan;
 mod rooms;
 mod send;
 
 pub use account::MatrixAccount;
-pub use facade::MatrixProvider;
+pub use matrix_provider::MatrixProvider;
 pub use rooms::Invite;

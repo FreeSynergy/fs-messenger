@@ -1,6 +1,6 @@
 //! What this provider reads out of an event's JSON.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Pattern: none, allowed by section 2 (small group of pure functions for one concept: reading an event's JSON).
 //! Pure rules: pure rules over untrusted JSON. A field of the wrong shape counts as absent, and the
 //! event as "not a message", so a stranger's odd event cannot fail a sync.
 

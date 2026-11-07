@@ -1,6 +1,6 @@
 //! One sync: what happened since the cursor, as `RawMessage`s.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). One
+//! Pattern: Adapter, part of MatrixProvider (the type is spread over the files of this folder): `fetch` of the `Provider` trait over the SDK's `/sync`. One
 //! fetch, in order: sync, plan and read gaps, convert, retry what waits for a key, say where we
 //! are. A failure anywhere fails the fetch, so the cursor stays and the next one replays; the core
 //! dedupes.

@@ -1,8 +1,9 @@
 //! `encryption_plan`: is there really an encrypted way, and who stands in the way.
 //!
-//! Pattern: Specification, for the gate "encrypted only": `Verdict::passes` is a pure predicate over a
-//! value, `weakest` combines two verdicts into the worse one, `within_member_limit` is a second
-//! predicate. (The questions to the SDK that fill a `Verdict` are plain methods, not part of it.) A
+//! Pattern: Specification, for the gate "encrypted only": `Verdict::passes` and `within_member_limit`
+//! are pure predicates over a value. `weakest` is not one: it picks the weaker of two `Encryption`
+//! values, and nothing here combines predicates. The questions to the SDK that fill a `Verdict` are
+//! methods of `MatrixProvider` (Adapter, part of it). A
 //! check over what the SDK knows now. The same check runs in `send`, so it holds even if nobody
 //! asked for a plan. A recipient is a room (`!...`) or a person (`@...`).
 

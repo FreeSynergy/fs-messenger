@@ -1,6 +1,6 @@
 //! One event to one `RawMessage`, and another try at what had no key.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Pattern: Adapter, part of MatrixProvider (the type is spread over the files of this folder): the SDK's events turned into `RawMessage`s, and the retry of what had no key.
 //! Free functions over what the SDK made of an event. The mark comes from how the SDK came by the
 //! text: `Decrypted` is `megolm`, `PlainText` is `none`, anything else claims nothing.
 

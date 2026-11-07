@@ -1,6 +1,7 @@
 //! Rebuilding the memory store from the journal.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Pattern: Decorator, part of FsStateStore (the type is spread over the files of its folder): opening it rebuilds
+//! the wrapped memory store from the journal.
 //! Free functions: journal entries back to one `StateChanges`, which the memory store takes as if
 //! it had just arrived, redactions included.
 

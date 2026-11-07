@@ -1,6 +1,6 @@
 //! The hard ends: one call into the SDK, and one whole `send` or plan.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). Two
+//! Pattern: none, but not allowed by section 2: it has behaviour and no pattern of the table fits (not pure functions; see DESIGN.md, open points). Two
 //! methods that put a time limit around a future. The SDK's own limits do not make a hard end: it
 //! waits as long as a server's `retry_after` says, whatever the retry limit.
 

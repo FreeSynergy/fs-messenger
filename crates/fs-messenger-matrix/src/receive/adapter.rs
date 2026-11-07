@@ -1,6 +1,6 @@
 //! Building the `RawMessage`: aliases, threading, the encryption mark, the original.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). The
+//! Pattern: none, allowed by section 2 (small group of pure functions for one concept: a Matrix event to a `RawMessage`). The
 //! mark says what really happened to this event, never what the room promises: a plain event in an
 //! encrypted room is `none`, an event nobody could decrypt is `unknown`. When the key comes, the
 //! same event id with `undecrypted` unset makes the core replace the text in place.

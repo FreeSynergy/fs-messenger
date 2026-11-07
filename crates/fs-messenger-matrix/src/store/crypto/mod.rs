@@ -1,7 +1,8 @@
 //! [`FsCryptoStore`]: the SDK's `CryptoStore`: Olm account, sessions, Megolm keys, device lists.
 //!
-//! Pattern: Decorator over the SDK's `MemoryStore`: `persist.rs` turns a change into journal entries,
-//! `restore.rs` rebuilds the memory store from them, `decorate.rs` is the trait.
+//! Pattern: none (this file only declares modules and re-exports; no logic, section 3 of the coding
+//! rules). The type is a Decorator over the SDK's `MemoryStore` (`store.rs`, `decorate.rs`,
+//! `restore.rs`); `persist.rs` turns a change into journal entries.
 
 mod decorate;
 mod kind;

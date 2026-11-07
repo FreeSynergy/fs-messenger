@@ -1,6 +1,6 @@
 //! Bytes as text, for the few binary values in a journal.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Pattern: none, allowed by section 2 (small group of pure functions for one concept: bytes as hex).
 //! Pure functions: small values, so hex is enough and needs no dependency.
 
 const DIGITS: &[u8; 16] = b"0123456789abcdef";

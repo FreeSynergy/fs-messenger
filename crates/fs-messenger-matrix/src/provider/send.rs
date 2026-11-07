@@ -1,6 +1,6 @@
 //! Sending: find the room, check it again, send, report what really happened.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). The
+//! Pattern: Adapter, part of MatrixProvider (the type is spread over the files of this folder): `send` of the `Provider` trait over the SDK's room API. The
 //! core's plan went first, but the plan only sees recipients and not the room a reply goes to, so
 //! the provider checks the room itself. Nothing reaches `Room::send` unless the room is encrypted
 //! right now, and the SDK only leaves encrypted rooms with encrypted events.

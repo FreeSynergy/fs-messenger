@@ -1,6 +1,6 @@
 //! [`SentEvents`]: what this provider has sent, so a copy that returns is not delivered as new.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). A
+//! Pattern: none, but not allowed by section 2: it has behaviour and no pattern of the table fits (not pure functions; see DESIGN.md, open points). A
 //! bounded set over a bounded set. The core recognises a copy by its receipt, but only once the
 //! receipt is stored. Between `send` returning and that, a sync in another task would deliver the
 //! copy as a second message (core's open point "echo race"). Sending and syncing exclude each

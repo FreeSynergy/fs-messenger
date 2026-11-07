@@ -1,6 +1,6 @@
 //! Reading journal records back into the SDK's types.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Pattern: none, allowed by section 2 (small group of pure functions for one concept: reading journal records back).
 //! Pure functions. The value of a record is not named in an error: it may be a key.
 
 use matrix_sdk_base::ruma::{OwnedRoomId, OwnedUserId, RoomId, UserId};

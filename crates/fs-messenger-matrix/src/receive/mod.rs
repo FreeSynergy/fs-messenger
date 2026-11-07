@@ -1,9 +1,10 @@
 //! Matrix events to what the core takes.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
-//! `alias.rs` is the alias (two public fields, no newtype), `event.rs` reads an event's JSON,
-//! `adapter.rs` builds the `RawMessage`, `cursor.rs` is what the core keeps for this provider and
-//! `gaps.rs` plans and merges its open gaps. All pure, no network.
+//! Pattern: none (this file only declares modules and re-exports; no logic, section 3 of the coding
+//! rules). `alias.rs` is the alias (a Value object), `ids.rs` the one encoding of server ids,
+//! `event.rs` reads an event's JSON, `adapter.rs` builds the `RawMessage`, `cursor.rs` is what the
+//! core keeps for this provider (a Memento) and `gaps.rs` plans and merges its open gaps. All pure,
+//! no network.
 
 mod adapter;
 mod alias;

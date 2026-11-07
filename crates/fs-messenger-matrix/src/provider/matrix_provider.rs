@@ -1,7 +1,9 @@
 //! [`MatrixProvider`]: one Matrix account behind the core's `Provider` trait.
 //!
-//! Pattern: Facade over the SDK client, and a Strategy itself to the core. What it cannot do answers
-//! `Unsupported`, through the trait's defaults and in `capabilities`.
+//! Pattern: Adapter: the struct wraps the SDK's `Client` and implements the core's `Provider` over it.
+//! What it cannot do answers `Unsupported`, through the trait's defaults and in `capabilities`. The
+//! type is spread over the files of this folder (`fetch`, `send`, `convert`, `history`, `connect`,
+//! `rooms`, `plan`); each says `Adapter, part of MatrixProvider`.
 
 use async_trait::async_trait;
 use fs_interfaces::provider::Capabilities;

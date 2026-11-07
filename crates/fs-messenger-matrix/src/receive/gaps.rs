@@ -1,6 +1,6 @@
 //! Planning gaps without letting them pile up.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). A
+//! Pattern: none, allowed by section 2 (small group of pure functions for one concept: planning and merging the open gaps of a cursor). A
 //! gap of a room that touches an open one is joined to it, and a room never keeps more than
 //! [`MAX_GAPS_PER_ROOM`]: the oldest two are then made one, which covers both and everything between
 //! them. Nothing is dropped; a hostile server only makes the one gap read again, never the cursor grow.

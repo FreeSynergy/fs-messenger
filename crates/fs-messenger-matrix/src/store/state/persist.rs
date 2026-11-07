@@ -1,6 +1,6 @@
 //! What a change of the state store looks like in the journal.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Pattern: none, allowed by section 2 (small group of pure functions for one concept: a change of the state store as journal entries).
 //! Free functions: `StateChanges` to journal entries. Raw events stay the text they were, so
 //! nothing is reordered on the way. Receipts, presence and global profiles are left out: see
 //! `DESIGN.md`.

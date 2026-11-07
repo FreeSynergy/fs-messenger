@@ -1,6 +1,7 @@
 //! Rebuilding the memory store from the journal.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Pattern: Decorator, part of FsCryptoStore (the type is spread over the files of its folder): opening it rebuilds
+//! the wrapped memory store from the journal.
 //! Free functions: journal entries back to `Changes`, which the memory store then takes as if they
 //! had just happened. An unreadable entry fails the opening: a crypto store with holes would make
 //! new keys and lose the old identity without saying so.
