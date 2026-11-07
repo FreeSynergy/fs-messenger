@@ -1,10 +1,9 @@
 //! What the server holds is ciphertext, and the original we keep is what the server holds.
 
 use fs_messenger_core::Encryption;
-use fs_messenger_matrix::SCHEME_EVENT;
 use serde_json::Value;
 
-use crate::common::{Person, alias_of, encrypted_room, token};
+use crate::common::{Person, encrypted_room, event_id_of, token};
 use crate::http;
 
 #[tokio::test]
@@ -18,7 +17,7 @@ async fn the_server_never_sees_the_text() {
     alice.send(&[&room], &needle).await.expect("send");
     let at_bob = bob.wait_for(&needle).await;
     assert_eq!(at_bob.summary.encryption, Encryption::Megolm);
-    let event = alias_of(&at_bob, SCHEME_EVENT);
+    let event = event_id_of(&at_bob);
 
     // A plain HTTP call, past the SDK, from a device that holds no keys.
     let view = bob.server_view().await;
@@ -44,5 +43,5 @@ async fn the_server_never_sees_the_text() {
     // Alice's own copy, after the provider recognised it.
     let mine = alice.find(&needle).await.pop().unwrap();
     assert_eq!(mine.summary.encryption, Encryption::Megolm);
-    assert_eq!(alias_of(&mine, SCHEME_EVENT), event);
+    assert_eq!(event_id_of(&mine), event);
 }

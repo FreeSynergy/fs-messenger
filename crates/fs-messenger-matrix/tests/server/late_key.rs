@@ -3,10 +3,10 @@
 //! The key comes as a real one: from another device of the same user, as an encrypted export file.
 
 use fs_messenger_core::Encryption;
-use fs_messenger_matrix::{Password, SCHEME_EVENT, UNDECRYPTED_MARK};
+use fs_messenger_matrix::{Password, UNDECRYPTED_MARK};
 use serde_json::Value;
 
-use crate::common::{Person, alias_of, encrypted_room, token};
+use crate::common::{Person, encrypted_room, event_id_of, token};
 
 #[tokio::test]
 #[ignore = "needs a homeserver; see tests/server/main.rs"]
@@ -35,7 +35,7 @@ async fn undecrypted_then_the_key_arrives() {
     assert!(phone.find(&text).await.is_empty(), "the text is not here");
     let original: Value = serde_json::from_slice(&held.original.as_ref().unwrap().bytes).unwrap();
     assert_eq!(original["type"], "m.room.encrypted", "the original is kept");
-    let event = alias_of(held, SCHEME_EVENT);
+    let event = event_id_of(held);
     assert_eq!(original["event_id"], event.as_str());
 
     // Nothing changes on its own.

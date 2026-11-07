@@ -18,7 +18,7 @@ use matrix_sdk::ruma::{OwnedEventId, RoomId, UserId};
 
 use super::MatrixProvider;
 use crate::error::MatrixError;
-use crate::receive::{SCHEME_EVENT, SCHEME_ROOM};
+use crate::receive::{EventAlias, SCHEME_ROOM};
 
 fn invalid(why: impl Into<String>) -> CoreError {
     CoreError::Invalid(why.into())
@@ -28,10 +28,12 @@ fn sdk(e: impl Into<MatrixError>) -> CoreError {
     e.into().into()
 }
 
-fn parent_of(message: &Outgoing) -> Option<OwnedEventId> {
+/// The parent to answer: an alias this provider issued, for an event of this very room.
+fn parent_of(message: &Outgoing, room: &Room) -> Option<OwnedEventId> {
     let ids = message.in_reply_to().iter();
-    ids.filter(|a: &&ExternalId| a.scheme == SCHEME_EVENT)
-        .find_map(|a| a.id.as_str().try_into().ok())
+    ids.filter_map(|a: &ExternalId| EventAlias::from_external(a))
+        .filter(|alias| alias.room == room.room_id().as_str())
+        .find_map(|alias| alias.event.as_str().try_into().ok())
 }
 
 impl MatrixProvider {
@@ -54,7 +56,7 @@ impl MatrixProvider {
         }
 
         let mut content = RoomMessageEventContent::text_plain(message.text());
-        if let Some(parent) = parent_of(message) {
+        if let Some(parent) = parent_of(message, &room) {
             content.relates_to = Some(Relation::Reply(Reply::with_event_id(parent)));
         }
         // Held across the send: see `echo.rs`.
@@ -70,10 +72,10 @@ impl MatrixProvider {
             None => Encryption::None,
         };
         Ok(SendReceipt {
-            aliases: vec![ExternalId::new(
-                SCHEME_EVENT,
-                result.response.event_id.as_str(),
-            )],
+            aliases: vec![
+                EventAlias::new(room.room_id().as_str(), result.response.event_id.as_str())
+                    .external(),
+            ],
             conversation: Some(ExternalId::new(SCHEME_ROOM, room.room_id().as_str())),
             encryption,
         })

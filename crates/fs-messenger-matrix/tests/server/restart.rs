@@ -1,9 +1,8 @@
 //! A restart resumes from the cursor, a replay duplicates nothing, keys and identity survive.
 
 use fs_messenger_core::{Encryption, Messenger, Provider};
-use fs_messenger_matrix::SCHEME_EVENT;
 
-use crate::common::{Person, alias_of, encrypted_room, token};
+use crate::common::{Person, encrypted_room, event_id_of, token};
 use crate::http;
 
 #[tokio::test]
@@ -133,7 +132,7 @@ async fn session_and_keys_survive_a_restart() {
         opened.count() >= 3,
         "old messages still decrypt after two restarts"
     );
-    let event = alias_of(&bob.find(&first).await.pop().unwrap(), SCHEME_EVENT);
+    let event = event_id_of(&bob.find(&first).await.pop().unwrap());
     assert!(event.starts_with('$'));
     assert_eq!(bob.repo.accounts().await.unwrap().len(), 1);
 }

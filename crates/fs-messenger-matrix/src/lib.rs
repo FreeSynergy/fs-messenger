@@ -23,5 +23,5 @@ pub mod store;
 
 pub use error::{MatrixError, StoreFail};
 pub use provider::{Invite, MatrixAccount, MatrixProvider};
-pub use receive::{SCHEME_EVENT, SCHEME_ROOM, UNDECRYPTED_MARK};
+pub use receive::{EventAlias, SCHEME_EVENT, SCHEME_ROOM, UNDECRYPTED_MARK};
 pub use secret::{Password, SecretText};

@@ -1,10 +1,9 @@
 //! A plain room can be read, marked `none`, and never written to.
 
 use fs_messenger_core::{Encryption, Error, Provider};
-use fs_messenger_matrix::SCHEME_EVENT;
 use serde_json::Value;
 
-use crate::common::{Person, alias_of, encrypted_room, token};
+use crate::common::{Person, encrypted_room, event_id_of, token};
 use crate::http;
 
 /// Carol, another client, opens a plain room with Alice and says something. Answers
@@ -36,7 +35,7 @@ async fn a_plain_event_arrives_marked_none_with_its_original() {
     assert_eq!(got.summary.encryption, Encryption::None);
     assert!(!got.summary.encryption.is_end_to_end());
     assert_eq!(got.body_text, text);
-    assert_eq!(alias_of(&got, SCHEME_EVENT), event);
+    assert_eq!(event_id_of(&got), event);
     // As /sync gave it, byte for byte. /event says the same, plus `room_id`, and its `unsigned.age`
     // differs in every answer, so the comparison takes out the one and stops at the other.
     let original = String::from_utf8(got.original.unwrap().bytes).unwrap();

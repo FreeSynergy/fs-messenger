@@ -7,7 +7,7 @@ use std::time::Duration;
 use fs_messenger_core::{
     Account, AccountSetup, Message, Messenger, MessengerConfig, MessengerRepo,
 };
-use fs_messenger_matrix::{MatrixAccount, MatrixProvider, Password};
+use fs_messenger_matrix::{EventAlias, MatrixAccount, MatrixProvider, Password};
 use tempfile::TempDir;
 
 use crate::http;
@@ -177,12 +177,11 @@ pub async fn encrypted_room(alice: &Person, bob: &Person) -> String {
     room
 }
 
-/// The alias of `m` in `scheme`.
-pub fn alias_of(m: &Message, scheme: &str) -> String {
-    let known = m.aliases.iter().chain(&m.receipts);
+/// The Matrix event id inside the alias of `m`: the alias is `<room>|<event>`.
+pub fn event_id_of(m: &Message) -> String {
+    let mut known = m.aliases.iter().chain(&m.receipts);
     known
-        .filter(|a| a.scheme == scheme)
-        .map(|a| a.id.clone())
-        .next()
-        .expect("an alias")
+        .find_map(EventAlias::from_external)
+        .expect("an event alias")
+        .event
 }

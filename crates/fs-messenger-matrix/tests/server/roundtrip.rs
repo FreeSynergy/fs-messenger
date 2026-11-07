@@ -1,9 +1,8 @@
 //! Alice to Bob through the core's `Draft.send`, and back: text, threading, `megolm`.
 
 use fs_messenger_core::{Encryption, Messenger};
-use fs_messenger_matrix::SCHEME_EVENT;
 
-use crate::common::{Person, alias_of, encrypted_room, token};
+use crate::common::{Person, encrypted_room, event_id_of, token};
 
 #[tokio::test]
 #[ignore = "needs a homeserver; see tests/server/main.rs"]
@@ -22,7 +21,7 @@ async fn alice_to_bob_and_back_with_threading() {
         Some(alice.user_id.as_str())
     );
     assert!(!at_bob.outgoing);
-    let event = alias_of(&at_bob, SCHEME_EVENT);
+    let event = event_id_of(&at_bob);
     assert!(event.starts_with('$'), "the event id is the alias: {event}");
 
     // Bob answers: the reply knows its parent on both sides, in the same conversation.
