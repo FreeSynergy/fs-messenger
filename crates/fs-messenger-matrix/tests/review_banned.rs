@@ -1,6 +1,10 @@
 //! Sixth review, finding 1: a room the account may not read any more (banned, forgotten) must never
 //! block the account. A `M_FORBIDDEN` on `/messages` ends that room's gap by name; other errors stay
 //! repeatable. A raw server, not Matrix; what Synapse really answers was not asked.
+//!
+//! Seventh review, finding 2: a ban reaches the provider under `leave` (sync v2 never says `Banned`;
+//! the SDK marks every room of `leave` as left), so the first test below proves the *left* rule and
+//! the 403 give-up, not a `Banned` branch (that one is a unit test in `provider/replay.rs`).
 
 mod review_common;
 
@@ -56,7 +60,7 @@ fn ban_then_b(broken: Arc<AtomicBool>) -> impl Fn(&str) -> Reply + Send + Sync +
 }
 
 #[tokio::test]
-async fn a_ban_and_one_failed_fetch_do_not_block_the_account() {
+async fn a_ban_seen_as_a_leave_and_one_failed_fetch_do_not_block_the_account() {
     let broken = Arc::new(AtomicBool::new(true));
     let server = Server::start(ban_then_b(broken.clone())).await;
     let provider = provider(&server).await;
@@ -79,9 +83,22 @@ async fn a_ban_and_one_failed_fetch_do_not_block_the_account() {
         cursor = batch.next;
     }
     assert!(seen.iter().any(|i| i.contains("$b1")), "lost: {seen:?}");
-    let asked = |p: &str| p.contains("/messages") && is_room(p, "a") && p.contains("from=s3");
-    let heard = server.heard().into_iter().filter(|(p, _)| asked(p)).count();
-    assert_eq!(heard, 0, "a banned room was planned for reading");
+    // The room is read again by the replay, bounded by the old position (never from its start), and
+    // the 403 gives it up by name instead of blocking the fetches after the failure.
+    let read_a = |p: &str| p.contains("/messages") && is_room(p, "a") && p.contains("from=s3");
+    let heard: Vec<String> = server
+        .heard()
+        .into_iter()
+        .map(|(p, _)| p)
+        .filter(|p| read_a(p))
+        .collect();
+    assert!(!heard.is_empty(), "the replay was to read the left room");
+    assert!(heard.iter().all(|p| p.contains("to=s2")), "{heard:?}");
+    let cursor: Value = serde_json::from_str(&cursor.unwrap().0).unwrap();
+    assert!(
+        cursor["given_up"].to_string().contains("!a:x.test"),
+        "{cursor}"
+    );
 }
 
 /// Two joined rooms with limited timelines; `!a` answers `a_status`, `!b` has a message.

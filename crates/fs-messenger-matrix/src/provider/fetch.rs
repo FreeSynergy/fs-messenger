@@ -87,6 +87,20 @@ impl MatrixProvider {
             }
             events.push((room_id, timeline.events));
         }
+        // A room the cursor knew that now shows only as an invitation or a knock (removed, then
+        // invited again, inside this stretch): `/sync` says nothing of what it said before. That is
+        // read down to where we were, as for a left room; a refusal gives the gap up by name.
+        let away = response
+            .rooms
+            .invited
+            .into_keys()
+            .chain(response.rooms.knocked.into_keys());
+        for room_id in away {
+            if cursor.rooms.iter().any(|r| r == room_id.as_str()) {
+                let gap = Gap::new(room_id.to_string(), next_batch.clone(), position.clone());
+                cursor.plan_gap(gap);
+            }
+        }
         self.forget_rooms_not_joined(&mut cursor);
         // A cut with nothing open before says `more` once and reads the gap next time, so that one
         // fetch stays small. A cut with gaps open already does not: those carry the work, and a
