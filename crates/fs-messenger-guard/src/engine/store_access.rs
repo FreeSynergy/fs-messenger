@@ -1,6 +1,6 @@
 //! How the engine reaches its store: within a time limit, and fail-shut.
 //!
-//! Pattern: Decorator over the repository. Every read goes through, so a record gone bad is seen at
+//! Pattern: Facade over the repository, no Decorator (`GuardRepository` is not implemented here). Every
 //! once; no answer in time reads as unreadable, and unreadable reads as stopped. A stop that could
 //! not be written is laid over every read, and a task of its own keeps trying to write it until it
 //! has: nobody has to call anything for that.
@@ -13,6 +13,7 @@ use tokio::sync::MutexGuard;
 use tokio::time::timeout;
 
 use super::core::GuardEngine;
+use super::marker;
 use crate::digest::unhex;
 use crate::error::Refusal;
 use crate::model::GuardMode;
@@ -57,14 +58,29 @@ impl GuardEngine {
 
     /// The latch and the mark. From here on `check` refuses, and something keeps trying to write it.
     pub(super) fn mark_unsaved(&self, mark: StopMark) {
+        let mut unsaved = self.unsaved.lock().unwrap_or_else(PoisonError::into_inner);
+        self.stop_gen.fetch_add(1, Ordering::SeqCst);
         self.stopped.store(true, Ordering::SeqCst);
-        *self.unsaved.lock().unwrap_or_else(PoisonError::into_inner) = Some(mark);
+        *unsaved = Some(mark);
+        drop(unsaved);
         self.ensure_retry();
     }
 
-    pub(crate) fn clear_stop(&self) {
-        *self.unsaved.lock().unwrap_or_else(PoisonError::into_inner) = None;
+    /// How many stops have come in so far. A `reopen` takes it when it is asked for.
+    pub(super) fn stop_count(&self) -> u64 {
+        self.stop_gen.load(Ordering::SeqCst)
+    }
+
+    /// Latch and mark go, unless a stop came in after `seen`: that one wins, and nothing is cleared.
+    /// Check and clear are one step under the mark's lock, so no stop falls in between.
+    pub(crate) fn clear_stop_unless_newer(&self, seen: u64) -> bool {
+        let mut unsaved = self.unsaved.lock().unwrap_or_else(PoisonError::into_inner);
+        if self.stop_gen.load(Ordering::SeqCst) != seen {
+            return false;
+        }
+        *unsaved = None;
         self.stopped.store(false, Ordering::SeqCst);
+        true
     }
 
     /// The lock, within the time limit, so that a stalled store cannot queue everyone up behind it.
@@ -127,6 +143,11 @@ impl GuardEngine {
         let Ok(_ops) = self.lock_ops().await else {
             return;
         };
+        if let Some(mark) = self.unsaved_mark() {
+            // A reopen may have removed the marker while this stop was waiting: put it back.
+            let path = self.config.stop_marker.clone();
+            let _ = timeout(self.config.store_wait, marker::write(path, mark)).await;
+        }
         if let View::Doc(doc) = self.view().await {
             let _ = self.save(&doc).await;
         }

@@ -1,6 +1,6 @@
 //! [`Gate`] on the engine: where anyone who wants to act comes in.
 //!
-//! Pattern: Template method over the pure `GuardDoc::evaluate`: read, evaluate, then do what it says
+//! Pattern: Facade over the pure `GuardDoc::evaluate`: read, evaluate, then do what it says
 //! under one lock, and look at the latch once more before anything is allowed. An `allowOnce` is used
 //! up in the state before the answer goes out; if that cannot be written the answer is no.
 
@@ -54,7 +54,7 @@ impl GuardEngine {
         call.stage = CallStage::Running;
         call.revision += 1;
         let call = call.clone();
-        // The last look: a stop that came in meanwhile wins.
+        // An early look only: it spares the write. The one that counts is right before `Allow`.
         if self.is_latched() {
             return Verdict::Refuse(Refusal::Stopped);
         }
@@ -67,6 +67,10 @@ impl GuardEngine {
         entry.capability.clone_from(&call.capability);
         // The call was allowed and the state holds that; a log that fails does not undo it.
         let _ = self.log_entry(&entry).await;
+        // The last look, after the slow steps: a stop that came in meanwhile has the call cancelled.
+        if self.is_latched() {
+            return Verdict::Refuse(Refusal::Stopped);
+        }
         Verdict::Allow(Allowance::Once { call: call.id })
     }
 
@@ -115,11 +119,11 @@ impl Gate for GuardEngine {
         match doc.evaluate(&profile, turn, capability, arguments, now, &limits) {
             Evaluation::Refuse(refusal) => Verdict::Refuse(refusal),
             Evaluation::AllowClass(risk) => {
-                // The last look: a stop that came in meanwhile wins.
+                // The log is slow, so the last look comes after it, right before `Allow`.
+                self.log_class_use(&profile, capability, risk).await;
                 if self.is_latched() {
                     return Verdict::Refuse(Refusal::Stopped);
                 }
-                self.log_class_use(&profile, capability, risk).await;
                 Verdict::Allow(Allowance::Class(risk))
             }
             Evaluation::UseApproval(at) => self.use_approval(doc, at).await,

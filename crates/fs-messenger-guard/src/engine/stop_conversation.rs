@@ -1,6 +1,6 @@
 //! `Conversation.stop`.
 //!
-//! Pattern: Template method: its records, what is shown, its provider, in that order, and no step's
+//! Pattern: Facade over the pure state (a fixed order of steps, not a trait with default methods): its records, what is shown, its provider, in that order, and no step's
 //! failure skips the next. Needs no proof: it can only end work. A provider that cannot end a turn is
 //! answered as `Unsupported`, after everything else was done.
 

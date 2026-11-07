@@ -1,6 +1,6 @@
 //! Putting a question to a person, and what limits that.
 //!
-//! Pattern: Template method: the record goes in only after the question stands in the messenger, and
+//! Pattern: Facade over the pure state (a fixed order of steps, not a trait with default methods): the record goes in only after the question stands in the messenger, and
 //! if it cannot be written the question is taken back. The limits are in `DESIGN.md`: a bare
 //! `input_required` can be retried at once and for ever, and new input can come as fast.
 

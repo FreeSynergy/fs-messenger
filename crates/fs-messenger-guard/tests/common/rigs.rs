@@ -30,6 +30,8 @@ pub struct Faulty {
     pub hold_load: AtomicBool,
     /// The next save does the same.
     pub hold_save: AtomicBool,
+    /// The next log entry does the same.
+    pub hold_append: AtomicBool,
     pub fail_reads: AtomicBool,
     pub entered: Notify,
     pub go: Notify,
@@ -50,6 +52,7 @@ impl Faulty {
             panic_appends: AtomicBool::new(false),
             hold_load: AtomicBool::new(false),
             hold_save: AtomicBool::new(false),
+            hold_append: AtomicBool::new(false),
             fail_reads: AtomicBool::new(false),
             entered: Notify::new(),
             go: Notify::new(),
@@ -97,6 +100,10 @@ impl GuardRepository for Faulty {
         );
         if self.fail_writes.load(Ordering::SeqCst) {
             return Err("disk full".into());
+        }
+        if self.hold_append.swap(false, Ordering::SeqCst) {
+            self.entered.notify_one();
+            self.go.notified().await;
         }
         self.real.append(entry).await
     }

@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock, Weak};
 use std::time::Duration;
 
@@ -98,6 +98,8 @@ pub struct GuardEngine {
     pub(super) clock: Arc<dyn Clock>,
     pub(crate) ops: Mutex<()>,
     pub(super) stopped: AtomicBool,
+    /// Counts stops. A `reopen` clears the latch only if no stop came in since it was asked for.
+    pub(super) stop_gen: AtomicU64,
     /// Stops whose proof is being judged. They count as stopped.
     pub(super) pending: AtomicUsize,
     pub(super) unsaved: StdMutex<Option<StopMark>>,
@@ -144,6 +146,7 @@ impl GuardEngine {
             clock,
             ops: Mutex::new(()),
             stopped: AtomicBool::new(marked.is_some()),
+            stop_gen: AtomicU64::new(0),
             pending: AtomicUsize::new(0),
             unsaved: StdMutex::new(marked),
             retrying: AtomicBool::new(false),

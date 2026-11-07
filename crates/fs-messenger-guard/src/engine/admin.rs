@@ -1,6 +1,7 @@
 //! [`Guard`] on the engine, apart from the stop: invite, release, revoke, reopen.
 //!
-//! Pattern: Template method: `signed_change` fixes the order (lock, read, proof, rule, copy, write, log).
+//! Pattern: Facade over the pure state; `signed_change` is a plain helper that fixes the order (lock, read,
+//! proof, rule, copy, write, log).
 //! A refusal uses up nothing and writes nothing. Reopen writes before it opens: if it cannot be
 //! written, it stays shut.
 
@@ -170,6 +171,8 @@ impl Guard for GuardEngine {
     }
 
     async fn reopen(&self, proof: &GuardProof) -> Result<(), GuardError> {
+        // A stop that comes in from here on is later than this reopen, and wins over it.
+        let seen = self.stop_count();
         let _ops = self.lock_ops().await?;
         let mut doc = Self::writable(self.view().await)?;
         let request = ProofRequest {
@@ -187,13 +190,22 @@ impl Guard for GuardEngine {
         doc.apply_reopen();
         doc.used_proofs.insert(used);
         self.save(&doc).await.map_err(GuardError::NotPersisted)?;
+        if self.stop_count() != seen {
+            return Err(Refusal::Stopped.into());
+        }
         // A marker that stays makes the next start stopped: fail-shut, and said.
         let removing = marker::remove(self.config.stop_marker.clone());
         let not_removed = tokio::time::timeout(self.config.store_wait, removing)
             .await
             .unwrap_or_else(|_| Err("the disk did not answer in time".into()))
             .err();
-        self.clear_stop();
+        if !self.clear_stop_unless_newer(seen) {
+            // A stop came in while the marker went: it wrote its marker before this removed it.
+            if let Some(mark) = self.unsaved_mark() {
+                let _ = marker::write(self.config.stop_marker.clone(), mark).await;
+            }
+            return Err(Refusal::Stopped.into());
+        }
         let not_logged = self
             .log_entry(&GuardLogEntry::new("reopen", &signer))
             .await

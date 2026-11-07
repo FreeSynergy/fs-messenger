@@ -1,6 +1,6 @@
 //! `MessageAction.decide` on the engine.
 //!
-//! Pattern: Template method over the pure `GuardDoc::apply_decision`: on a copy, written whole or not
+//! Pattern: Facade over the pure `GuardDoc::apply_decision`: on a copy, written whole or not
 //! at all. Nothing but a written decision changes anything; a refusal touches neither the state nor
 //! the log. What a message shows is written afterwards and decides nothing. On a stale or settled
 //! refusal listeners hear how the call stands, from memory only.

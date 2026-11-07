@@ -159,7 +159,10 @@ async fn a_stop_during_a_reopen_that_is_being_written_wins() {
     let stopping = tokio::spawn(async move { engine.stop(&stop).await });
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     r.faulty.go.notify_one();
-    reopening.await.unwrap().unwrap();
+    assert!(
+        reopening.await.unwrap().is_err(),
+        "a reopen that a stop overtook says so"
+    );
     stopping.await.unwrap().unwrap();
 
     assert_eq!(verdict(&r.engine).await, Verdict::Refuse(Refusal::Stopped));

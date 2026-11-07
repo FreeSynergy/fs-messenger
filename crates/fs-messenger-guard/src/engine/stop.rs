@@ -1,6 +1,6 @@
 //! The emergency stop.
 //!
-//! Pattern: Template method with a fixed order, which is the guarantee. 1. Latch, before any read: no
+//! Pattern: Facade with a fixed order of steps, which is the guarantee. 1. Latch, before any read: no
 //! store can hold this up. 2. Judge the proof, within a time limit; a proof shown to be bad takes that
 //! latch back, and anything else leaves it. 3. Marker file, store, what is shown, the providers and
 //! the log, each as a task of its own: they go on if the caller walks away, and one that hangs or
@@ -153,12 +153,20 @@ impl GuardEngine {
             .unwrap_or_else(|_| Err("the disk did not answer in time".into()))
             .err();
         let Ok(_ops) = self.lock_ops().await else {
-            let why = "the lock did not come free in time; trying again";
+            // The mark stays (a `reopen` does not clear a stop that came in after it began), and the
+            // retry task writes marker and store as soon as the lock is free.
+            let why = "the lock did not come free in time; the stop stays and is written again";
             return (not_marked, Some(why.to_string()));
         };
-        // A `reopen` that began first clears latch, mark and marker when it ends: set them again.
-        self.mark_unsaved(mark.clone());
-        let again = timeout(wait, marker::write(path, mark)).await;
+        // A `reopen` that began first has removed the marker meanwhile, or the marker landed after
+        // a `reopen` that came later: the stop in force decides which of the two it is.
+        let again = match self.unsaved_mark() {
+            Some(held) => timeout(wait, marker::write(path, held)).await,
+            None if !self.stopped.load(Ordering::SeqCst) => {
+                timeout(wait, marker::remove(path)).await
+            }
+            None => Ok(Ok(())),
+        };
         if let Ok(result) = again {
             not_marked = result.err();
         }
