@@ -17,6 +17,7 @@ use tokio::sync::Mutex;
 
 use super::marker;
 use crate::clock::{Clock, SystemClock};
+use crate::destination::DestinationLookup;
 use crate::device::{DeviceVerifier, Ed25519Verifier};
 use crate::enrol::LocalEnrolment;
 use crate::error::GuardError;
@@ -113,6 +114,9 @@ pub struct GuardEngine {
     pub(super) class_logged: StdMutex<HashMap<(String, String), DateTime<Utc>>>,
     pub(super) port: OnceLock<GuardPort>,
     pub(super) sensitivity: OnceLock<Arc<dyn SensitivityLookup>>,
+    /// Shell: not asked yet.
+    #[allow(dead_code)]
+    pub(super) destinations: OnceLock<Arc<dyn DestinationLookup>>,
 }
 
 impl GuardEngine {
@@ -160,6 +164,7 @@ impl GuardEngine {
             class_logged: StdMutex::new(HashMap::new()),
             port: OnceLock::new(),
             sensitivity: OnceLock::new(),
+            destinations: OnceLock::new(),
         });
         engine.ensure_retry();
         let enrolment = LocalEnrolment::new(engine.clone());
@@ -170,6 +175,12 @@ impl GuardEngine {
     /// as marked. Answers `false` if a source was set already.
     pub fn set_sensitivity(&self, source: Arc<dyn SensitivityLookup>) -> bool {
         self.sensitivity.set(source).is_ok()
+    }
+
+    /// Where the destinations of questions come from. Once; before it is set every destination is
+    /// unknown. Answers `false` if a source was set already.
+    pub fn set_destinations(&self, source: Arc<dyn DestinationLookup>) -> bool {
+        self.destinations.set(source).is_ok()
     }
 
     /// The log, oldest first.

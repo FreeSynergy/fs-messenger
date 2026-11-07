@@ -17,10 +17,11 @@ async fn an_invited_ai_without_a_release_is_refused_a_read_not_asked() {
     assert_eq!(verdict, Verdict::Refuse(Refusal::NotReleased));
 }
 
-/// A call that names no object is not looked up: a released `readsOnly` class allows it. A read that
-/// names the object goes through `check_object` (`tests/sensitive_reads.rs`).
+/// A call that names no object counts as marked (strategy 4d(2), 2026-11-07): even with `readsOnly`
+/// released it asks and never allows. Before, it allowed (F2 of the review of 9ea2830). Whoever wants
+/// `Allow` for a read names the object (`check_object`, `tests/sensitive_reads.rs`).
 #[tokio::test]
-async fn a_released_reads_only_class_allows_a_read_that_names_no_object() {
+async fn a_released_reads_only_class_still_asks_for_a_read_that_names_no_object() {
     let w = World::with_ai().await;
     w.release(AI, fs_messenger_core::ToolCallRisk::ReadsOnly, "readsOnly")
         .await;
@@ -29,5 +30,5 @@ async fn a_released_reads_only_class_allows_a_read_that_names_no_object() {
         .engine
         .check(&Caller::new(AI), "message.open", &input)
         .await;
-    assert!(matches!(verdict, Verdict::Allow(_)), "{verdict:?}");
+    assert!(matches!(verdict, Verdict::Ask(_)), "{verdict:?}");
 }
