@@ -4,7 +4,7 @@
 //! provider issued. The original stays as it is (ADR 0030); text, name, preview, search, encryption
 //! and signature follow what can now be read.
 
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use super::handle::Inner;
 use super::message_codec::{message_from, message_to};

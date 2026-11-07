@@ -168,7 +168,7 @@ async fn only_an_agent_account_takes_a_model() {
             .await
             .is_err()
     );
-    link.account = fs_store::ObjectId::new();
+    link.account = fs_objects::ObjectId::new();
     assert!(ModelProvider::llama_cpp(config, link).await.is_err());
 }
 

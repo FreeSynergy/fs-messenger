@@ -6,7 +6,7 @@ use common::{alias, conversation_of, message_id, raw, setup, with_provider};
 use fs_messenger_core::{
     Encryption, ExternalId, Ingest, Ingested, Messenger, MessengerRepo, RawMessage,
 };
-use fs_store::{ObjectId, Query};
+use fs_objects::{ObjectId, Query};
 use serde_json::json;
 
 async fn stored(repo: &MessengerRepo, me: ObjectId, m: RawMessage) -> ObjectId {

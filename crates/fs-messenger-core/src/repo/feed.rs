@@ -4,7 +4,7 @@
 //! events a listener cares about. `updated` is for what a person would see change, so an alias
 //! learned in the background stays silent.
 
-use fs_store::{Activity, StoredObject};
+use fs_objects::{Activity, StoredObject};
 
 use super::consts::NOTE;
 use super::message_codec::message_from;

@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 use tokio::time::{Instant, timeout_at};
 
 use super::guard_port::GuardPort;

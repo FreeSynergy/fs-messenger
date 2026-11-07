@@ -8,7 +8,7 @@ use std::sync::{Arc, Weak};
 
 use fs_messenger_core::{Ingest, Messenger};
 use fs_messenger_guard::Gate;
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use crate::error::AiError;
 

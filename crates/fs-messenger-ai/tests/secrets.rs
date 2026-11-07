@@ -8,7 +8,7 @@ use std::path::Path;
 use common::wire::{answer, anthropic, serve, stream};
 use common::{AI, KEY, World};
 use fs_messenger_ai::{ApiKey, Endpoint, ModelConfig, ModelProvider};
-use fs_store::{ActivityFilter, Store};
+use fs_objects::{ActivityFilter, Store};
 
 fn holds(bytes: &[u8], needle: &str) -> bool {
     bytes.windows(needle.len()).any(|w| w == needle.as_bytes())

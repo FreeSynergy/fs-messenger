@@ -9,7 +9,7 @@ use fs_messenger_core::{
     Encryption, Error, FetchBatch, Ingest, Ingested, MessageAction, Messenger, MessengerConfig,
     MessengerRepo, ProviderCursor, RawAttachment, SearchFilter,
 };
-use fs_store::{Blob, Store, TursoStore};
+use fs_objects::{Blob, Store, TursoStore};
 
 async fn limited(limit: usize) -> MessengerRepo {
     let store: Arc<dyn Store> = Arc::new(TursoStore::open_in_memory().await.unwrap());

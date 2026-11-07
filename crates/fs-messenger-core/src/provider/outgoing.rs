@@ -4,7 +4,7 @@
 //! the check of ADR 0018, so no code outside this crate can make a provider send something that did
 //! not pass. A provider can still send on its own account; that limit is in `DESIGN.md`.
 
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use crate::error::Result;
 use crate::gate;

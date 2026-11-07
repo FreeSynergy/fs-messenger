@@ -2,7 +2,7 @@
 
 `fs-messenger` is one program for mail, chat and agents (ADR 0018, 0054). This repo holds the **program core**
 (`crates/fs-messenger-core`: no GUI, no RPC, no real connectors) and the **AI guard** (`crates/fs-messenger-guard`, its own `DESIGN.md`). A message is an AS2 **`Note`** envelope + content + immutable
-original (ADR 0020, 0030), stored through `fs-store`. Frontends never see protocols; connectors plug in as `Provider`s (ADR 0045).
+original (ADR 0020, 0030), stored through `fs-objects`. Frontends never see protocols; connectors plug in as `Provider`s (ADR 0045).
 
 ## State
 
@@ -42,7 +42,7 @@ Flag, read and unread state, pin, folder and delete are this device's own state:
 
 | What | How it shows |
 |---|---|
-| Edit and react | `Unsupported("message.edit" / "message.react")`, nothing changes: `Provider` has no method to carry them, and a local success would be a claim that nothing reached the other side. Answering them needs a provider method first. Taking a reaction back cannot log AS2 `Undo` with `fs-store` as it is: `Undo` is state-changing, and it refuses that as a log entry |
+| Edit and react | `Unsupported("message.edit" / "message.react")`, nothing changes: `Provider` has no method to carry them, and a local success would be a claim that nothing reached the other side. Answering them needs a provider method first. Taking a reaction back cannot log AS2 `Undo` with `fs-objects` as it is: `Undo` is state-changing, and it refuses that as a log entry |
 | `MessageAction::Decide` and `Conversation.stop` without an installed guard | `Unsupported("toolcall.decide")`, `Unsupported("turn.stop")`, which is the safe default. With `fs-messenger-guard` installed they go there |
 | Live text (`Event::Text`, `TextChunk`) | the type exists, nothing emits it; `text.stream` reported unsupported |
 | Rules (Sieve) | `Unsupported("rule.read" / "rule.write")` |
@@ -88,20 +88,20 @@ Public contract: `Messenger`, `Draft`, `Provider`, `Ingest`, `Listener`, small v
 
 Types: `Note`, `Tombstone`, `Document` (attachment), `Collection` (conversation), `freesynergy.net:Draft`, `freesynergy.net:Account`, `freesynergy.net:StoreCheck`. Content type `application/activity+json`; `content` = body text, `mediaType` = its type.
 
-`fs-store` has no tables of ours, so the alias table of `data/messages/technical.md` is three index fields, `alias` (provider-issued), `link` (sender-chosen) and `receipt` (from sending), each `<kind>:<normalised address>|<scheme>|<external id>`. Other index fields: `arrival`, `arrival_desc`, `desc`, `unread`, `flagged`, `open_call`, `attachment`, `blob`, `from`, `text`, `encryption`, `kind`, `job`, `task`, `account`; conversations: `sort`, `unread`, `folder`, `conv_alias`.
+`fs-objects` has no tables of ours, so the alias table of `data/messages/technical.md` is three index fields, `alias` (provider-issued), `link` (sender-chosen) and `receipt` (from sending), each `<kind>:<normalised address>|<scheme>|<external id>`. Other index fields: `arrival`, `arrival_desc`, `desc`, `unread`, `flagged`, `open_call`, `attachment`, `blob`, `from`, `text`, `encryption`, `kind`, `job`, `task`, `account`; conversations: `sort`, `unread`, `folder`, `conv_alias`.
 
 ## Encryption at rest (ADR 0018, 0024, 0029)
 
 `Store` **cannot be asked** whether it is encrypted: `is_encrypted` exists only on the concrete `TursoStore`. So:
 
-* Every object this program writes carries the sensitive category, so `fs-store`'s own refusal holds for each of them (tested for all types).
+* Every object this program writes carries the sensitive category, so `fs-objects`'s own refusal holds for each of them (tested for all types).
 * `MessengerRepo::open_turso(Arc<TursoStore>)` is the **only constructor unless a build asks for `test-support`**. It asks `is_encrypted`, so it refuses every plain store, also one opened with `allow_sensitive_unencrypted`, and an in-memory one.
 * It then tries to write a sensitive check object, the same check any other backend would need. Later opens offer that object a different original, which an encrypted store rejects as `OriginalImmutable` after its encryption check, so the log does not grow with every start.
 * `MessengerRepo::open(dyn Store)` exists only behind the feature `test-support`, for tests over a plain in-memory store. Connector crates may turn it on in their dev-dependencies. The feature is off unless a build asks for it, so it is a guard against mistakes, not against someone who turns it on. `tests/compile_fail.rs` builds a real crate without it and checks that `open` does not exist.
 
-**Limit:** a non-Turso backend cannot use this program until the `Store` trait has `is_encrypted`, which is wanted from `fs-store`.
+**Limit:** a non-Turso backend cannot use this program until the `Store` trait has `is_encrypted`, which is wanted from `fs-objects`.
 
-**One handle per store.** Clone a `MessengerRepo`; do not open a second one on the same store. Two would share no write lock, so a dedupe could interleave, and no arrival counter. A second open of the same `Arc` in one process is refused with `Conflict`, until the last clone of the first is gone. A second `TursoStore` opened on the same file is another object and is **not** detected: `fs-store` gives no identity to ask for, so this part stays a rule, documented here.
+**One handle per store.** Clone a `MessengerRepo`; do not open a second one on the same store. Two would share no write lock, so a dedupe could interleave, and no arrival counter. A second open of the same `Arc` in one process is refused with `Conflict`, until the last clone of the first is gone. A second `TursoStore` opened on the same file is another object and is **not** detected: `fs-objects` gives no identity to ask for, so this part stays a rule, documented here.
 
 ## Reading
 
@@ -124,11 +124,11 @@ Search reads the first 256 KiB of a body and stops there; the message itself sta
 
 ## What a large body costs
 
-Each change of a message logs a before and an after image of it, content and index included, and those stay until compaction. A body over 64 KiB therefore lives in a store object of its own, as the immutable original of a `Document`. `fs-store` leaves originals out of update images, so a flag does not copy it. Measured on a 5 MiB body: four flag changes add 2.0 MiB of log (2,110,236 bytes), where the same body inside `content` adds 42 MiB (44,053,060 bytes).
+Each change of a message logs a before and an after image of it, content and index included, and those stay until compaction. A body over 64 KiB therefore lives in a store object of its own, as the immutable original of a `Document`. `fs-objects` leaves originals out of update images, so a flag does not copy it. Measured on a 5 MiB body: four flag changes add 2.0 MiB of log (2,110,236 bytes), where the same body inside `content` adds 42 MiB (44,053,060 bytes).
 
-**What this does not solve, and what `fs-store` would have to do:**
+**What this does not solve, and what `fs-objects` would have to do:**
 
-1. **Creating still doubles a body, and more.** A Create image carries the original, base64: the 5 MiB body measured 6.9 MiB of log (7,257,991 bytes) on top of its 5 MiB in the object. Scaled up, not measured, a 25 MiB body is then about 60 MiB, somewhat **more** than the 51 MiB reported for inline text. Deleting it adds another image. The same holds for every attachment and every mail original. Needed: `fs-store` keeps large originals in one place and logs a reference, for instance content-addressed.
+1. **Creating still doubles a body, and more.** A Create image carries the original, base64: the 5 MiB body measured 6.9 MiB of log (7,257,991 bytes) on top of its 5 MiB in the object. Scaled up, not measured, a 25 MiB body is then about 60 MiB, somewhat **more** than the 51 MiB reported for inline text. Deleting it adds another image. The same holds for every attachment and every mail original. Needed: `fs-objects` keeps large originals in one place and logs a reference, for instance content-addressed.
 2. **The index is copied by every change.** Update images include index fields, so up to 256 KiB of search text is copied twice per change: that is the 2.0 MiB above. Needed: images without the index, which can be derived. Not worked around here: a search index in another object would need a second query for every filter.
 3. Reasoning and tool results stay in `content`, within the limits. Drafts keep their whole text in `content`, and are only rewritten when saved.
 
@@ -149,7 +149,7 @@ A record that lost its sort keys is neither listed nor reported.
 ## Known limits
 
 * **The ciphertext attachment stays.** When a readable version replaces an undecrypted one, the attachments it brings are added, and what the undecrypted version had stays beside them, because the core cannot tell which of them is the ciphertext.
-* **A stub stays a stub.** A later delivery of the same message that would fit, for example after the limit is raised, does not replace it. Replacing it would take two store steps, or give up the original (ADR 0030); that is a choice, not a limit of `fs-store`. A real mail with a very long `To` (over 64 KiB, about 3000 addresses) therefore loses its content in this program for good; it stays on the server.
+* **A stub stays a stub.** A later delivery of the same message that would fit, for example after the limit is raised, does not replace it. Replacing it would take two store steps, or give up the original (ADR 0030); that is a choice, not a limit of `fs-objects`. A real mail with a very long `To` (over 64 KiB, about 3000 addresses) therefore loses its content in this program for good; it stays on the server.
 * **A stub keeps only the first 8 aliases.** A replay known only by a later one is stored again: a duplicate beats a lost mail.
 * **A provider holding a repo clone keeps the claim on its store** for as long as it is registered, so the store cannot be opened again until then. It fails safe: the open is refused.
 * **A crash can orphan a `Document`.** A body or attachment is stored before the message that names it. After a crash in between, an unreferenced object holds that text. It is encrypted at rest, and nothing removes it yet. The same holds for a crash between the tombstone and the release of a body when deleting.
@@ -194,7 +194,7 @@ Code:
 2. **Echo race.** A copy fetched while a send is under way, before the receipt is stored, is not recognised and is stored as a second message. Needs a provider-side client id.
 3. **Delete takes two store steps;** a crash in between lets a replay revive it. The store's log keeps the old image, content included, until compaction; the program must call `compact()`, which only removes entries acknowledged by the hub. Since messages do not sync through the hub, nothing acknowledges them yet.
 4. **Mark read** writes one transaction per message.
-5. **Performance.** Pages load whole objects, originals included; search is a substring scan (`fs-store` has no tokenised search), and body text is held twice for it, up to its limit. See "What a large body costs".
+5. **Performance.** Pages load whole objects, originals included; search is a substring scan (`fs-objects` has no tokenised search), and body text is held twice for it, up to its limit. See "What a large body costs".
 6. Removing an account keeps its messages, and those conversations can no longer send until the account comes back.
 7. A claimed parent that never arrives stays pending.
 8. The lag catch-up re-reads the log from the last seen id; on a read failure it waits for the next lag.
@@ -204,4 +204,4 @@ Code:
 
 Feature `test-support`: `MessengerRepo::open`, off unless a build asks for it.
 
-`fs-store` (git tag v0.3.0), `fs-interfaces` (git tag v0.27.0): `Capabilities`, `Unsupported`. `serde`, `serde_json`, `chrono`, `thiserror`, `async-trait`, `tokio`; dev: `tempfile`. No network crates in this crate. `scripts/test-servers` belongs to the connector work, not to this crate.
+`fs-objects` (git tag v0.3.0), `fs-interfaces` (git tag v0.27.0): `Capabilities`, `Unsupported`. `serde`, `serde_json`, `chrono`, `thiserror`, `async-trait`, `tokio`; dev: `tempfile`. No network crates in this crate. `scripts/test-servers` belongs to the connector work, not to this crate.

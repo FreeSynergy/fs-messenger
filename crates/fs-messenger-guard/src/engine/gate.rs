@@ -9,7 +9,7 @@ use std::sync::PoisonError;
 
 use async_trait::async_trait;
 use fs_messenger_core::ToolCallOutcome;
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use super::core::{GuardEngine, Retries, View};
 use crate::api::Gate;

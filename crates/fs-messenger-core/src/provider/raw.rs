@@ -4,7 +4,7 @@
 //! say what it knows, and the core never assumes more.
 
 use chrono::{DateTime, Utc};
-use fs_store::Blob;
+use fs_objects::Blob;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{Encryption, ExternalId, Kind, SignatureCheck, ToolCall};

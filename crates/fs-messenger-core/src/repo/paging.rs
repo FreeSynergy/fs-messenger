@@ -3,7 +3,7 @@
 //! Pattern: Iterator (by hand): fetch one more than a page, the extra one says there is a next. The
 //! cursor comes from the stored key, so a record that cannot be read cannot stop anyone going on.
 
-use fs_store::StoredObject;
+use fs_objects::StoredObject;
 
 use crate::error::Result;
 use crate::model::{Cursor, Page};

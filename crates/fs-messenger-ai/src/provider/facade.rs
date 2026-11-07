@@ -12,7 +12,7 @@ use fs_messenger_core::{
     EncryptionPlan, Event, ExternalId, Outgoing, Provider, Result as CoreResult, SendReceipt,
     TurnScope,
 };
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 use tokio::sync::broadcast;
 
 use super::choice::{Choices, RemoteChoice};

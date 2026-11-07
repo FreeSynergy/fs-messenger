@@ -4,7 +4,7 @@
 //! keeps only what it is known as and the place in the arrival order, so a replay does not bring the message back
 //! and `next_unread` can go on from it. The store's log keeps the old image until compaction.
 
-use fs_store::{Envelope, ObjectId, StoredObject};
+use fs_objects::{Envelope, ObjectId, StoredObject};
 
 use super::consts::{
     CONTENT_TYPE, IDX_ALIAS, IDX_ARRIVAL, IDX_ARRIVAL_DESC, IDX_LINK, IDX_RECEIPT, SENSITIVE,

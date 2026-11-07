@@ -13,7 +13,7 @@ use fs_messenger_core::{
     DeliveryState, Encryption, Event, Kind, MessageSummary, SenderKind, SignatureCheck,
     StateChange, TextChunk, TextPart,
 };
-use fs_store::{Envelope, ObjectId};
+use fs_objects::{Envelope, ObjectId};
 use tokio::sync::broadcast;
 
 use super::failure::TurnFailure;

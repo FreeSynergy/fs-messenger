@@ -16,7 +16,7 @@ The AI guard of FreeSynergy.Messenger: invitation, release, brake, emergency sto
 | Emergency stop: latch, persist, settle, providers, log. Read-through fail-shut. `reopen` | done |
 | `StopPermission`: `OwnerOnly`. Per group: `Unsupported` | done for one owner |
 | Activity log without secrets, out of reach of undo | done |
-| `sender_kind`: `SenderLookup` over the guard's invited list | done, **provisional**: `fs-people` pins `fs-store` v0.2.0, this repo v0.3.0, so it cannot be a dependency |
+| `sender_kind`: `SenderLookup` over the guard's invited list | done, **provisional**: `fs-people` pins `fs-objects` v0.2.0, this repo v0.3.0, so it cannot be a dependency |
 | Ratings, trust levels through third parties, MCP, ACP, RPC, GUI, model providers | **not built**; see below |
 
 ### Not built

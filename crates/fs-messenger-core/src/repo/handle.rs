@@ -9,7 +9,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as Mutex2, OnceLock, PoisonError, RwLock};
 
-use fs_store::{ObjectId, Query, Store, StoredObject, TursoStore};
+use fs_objects::{ObjectId, Query, Store, StoredObject, TursoStore};
 use tokio::sync::{Mutex, broadcast};
 
 use super::consts::IDX_ARRIVAL_DESC;

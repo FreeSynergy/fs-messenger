@@ -9,7 +9,7 @@ use fs_messenger_core::{
     DeliveryState, Encryption, Error, Ingest, Ingested, Kind, MessageAction, Messenger,
     MessengerRepo, RawAttachment, RawMessage, ToolCallState,
 };
-use fs_store::{ObjectId, Store, TursoStore};
+use fs_objects::{ObjectId, Store, TursoStore};
 use serde_json::json;
 
 async fn stored(repo: &MessengerRepo, me: ObjectId, m: RawMessage) -> ObjectId {

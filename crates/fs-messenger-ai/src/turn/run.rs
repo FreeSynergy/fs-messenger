@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fs_messenger_core::{DeliveryState, ExternalId, TextPart};
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 use tokio::time::Instant;
 
 use super::assemble::PartText;

@@ -51,7 +51,7 @@ async fn assert_bytes_stop(server: &Scripted) {
     assert_eq!(server.written(), then, "nothing is written any more");
 }
 
-async fn conversation_of(world: &World) -> fs_store::ObjectId {
+async fn conversation_of(world: &World) -> fs_objects::ObjectId {
     world
         .repo
         .conversations(None, false, None)

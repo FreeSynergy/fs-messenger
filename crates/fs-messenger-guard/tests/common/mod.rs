@@ -21,8 +21,8 @@ use fs_messenger_guard::{
     GuardEngine, GuardProof, LocalEnrolment, Method, OwnerOnly, Question, STATE_ID,
     TursoGuardRepository, Verdict, decide_arguments, signed_bytes,
 };
-use fs_store::traits::UnloggedObjects;
-use fs_store::{Cipher, EncryptionKey, ObjectId, OpenOptions, StaticKeyProvider, TursoStore};
+use fs_objects::traits::UnloggedObjects;
+use fs_objects::{Cipher, EncryptionKey, ObjectId, OpenOptions, StaticKeyProvider, TursoStore};
 use serde_json::{Value, json};
 use tempfile::TempDir;
 pub const OWNER: &str = "https://local.invalid/users/owner";

@@ -6,7 +6,7 @@
 //! its name, because the core gives a provider no way to store `failed` (`DESIGN.md`, "Wanted").
 
 use fs_messenger_core::{ExternalId, Ingested, Kind, RawMessage, TextPart, ToolCall, Usage};
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use super::failure::TurnFailure;
 use super::run::{Said, TurnInput};

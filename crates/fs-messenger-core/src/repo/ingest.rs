@@ -1,12 +1,12 @@
 //! The store-backed steps of the ingest flow, and the sync loop.
 //!
 //! Pattern: Template method (the steps; the flow is `IngestSteps::ingest_flow`). The alias is kept
-//! on the object's index because `fs-store` has no table of our own; see `DESIGN.md`.
+//! on the object's index because `fs-objects` has no table of our own; see `DESIGN.md`.
 
 use std::collections::HashSet;
 
 use async_trait::async_trait;
-use fs_store::{Cond, ObjectId, Op, Query};
+use fs_objects::{Cond, ObjectId, Op, Query};
 use tokio::sync::OwnedMutexGuard;
 
 use super::consts::{IDX_ALIAS, IDX_LINK, IDX_RECEIPT, NOTE};

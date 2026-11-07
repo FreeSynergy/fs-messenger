@@ -9,7 +9,7 @@ use fs_messenger_core::{
     AccountSetup, Ingest, Kind, MessageAction, Messenger, MessengerConfig, MessengerRepo,
     RawMessage, ToolCallDecision,
 };
-use fs_store::{ObjectId, TursoStore};
+use fs_objects::{ObjectId, TursoStore};
 use serde_json::json;
 #[tokio::test]
 async fn a_second_guard_cannot_be_installed() {

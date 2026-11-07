@@ -94,7 +94,7 @@ async fn an_ai_can_neither_pull_it_nor_open_it_even_with_a_key_and_as_owner_by_a
 async fn it_works_with_no_messenger_at_all() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(
-        fs_store::TursoStore::open_with(dir.path().join("g.db"), common::encrypted())
+        fs_objects::TursoStore::open_with(dir.path().join("g.db"), common::encrypted())
             .await
             .unwrap(),
     );

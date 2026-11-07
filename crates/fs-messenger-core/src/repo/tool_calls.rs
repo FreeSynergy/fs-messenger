@@ -5,7 +5,7 @@
 //! as `unknown` without options. Nobody here can answer, so an outside question is `working`: it is
 //! shown and not asked. The guard follows, see `DESIGN.md`.
 
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use super::handle::Inner;
 use super::message_codec::message_to;

@@ -8,7 +8,7 @@ use std::sync::{Arc, Weak};
 
 use fs_messenger_core::Encryption;
 use fs_messenger_guard::Gate;
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use super::history::History;
 use super::live::LiveFeed;

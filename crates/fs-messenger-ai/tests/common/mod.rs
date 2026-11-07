@@ -19,7 +19,7 @@ use fs_messenger_core::{
 use fs_messenger_guard::{
     Guard, GuardConfig, GuardEngine, GuardProof, Method, TursoGuardRepository, signed_bytes,
 };
-use fs_store::{Cipher, EncryptionKey, ObjectId, OpenOptions, StaticKeyProvider, TursoStore};
+use fs_objects::{Cipher, EncryptionKey, ObjectId, OpenOptions, StaticKeyProvider, TursoStore};
 use tempfile::TempDir;
 use tokio::sync::broadcast;
 

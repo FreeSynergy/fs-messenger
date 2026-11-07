@@ -7,7 +7,7 @@ use fs_messenger_core::{
     AccountSetup, Encryption, Error, Ingest, Ingested, Kind, MessageAction, Messenger, Provider,
     SendReceipt, SenderKind, ToolCall, ToolCallChoice, ToolCallKind, ToolCallOption, ToolCallRisk,
 };
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 use serde_json::{from_value, json};
 
 #[test]

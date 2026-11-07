@@ -5,7 +5,7 @@
 //! decides anything: the engine's fields are reset here (ADR 0054), and `settled` is final.
 
 use async_trait::async_trait;
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 use tokio::sync::OwnedMutexGuard;
 
 use crate::error::Result;

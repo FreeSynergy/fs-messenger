@@ -7,7 +7,7 @@
 //! the log does not grow with every start. A store that opted out cannot be told apart this way,
 //! which is why `open_turso`, the only constructor of a normal build, also asks `is_encrypted`.
 
-use fs_store::{Blob, Envelope, ObjectId, Store, StoredObject};
+use fs_objects::{Blob, Envelope, ObjectId, Store, StoredObject};
 
 use super::consts::{CONTENT_TYPE, SENSITIVE, STORE_CHECK};
 use crate::error::{Error, Result};
@@ -25,8 +25,8 @@ pub(super) async fn check(store: &dyn Store, actor: &str) -> Result<()> {
         bytes: fresh,
     });
     match store.put(probe, actor).await {
-        Ok(_) | Err(fs_store::Error::OriginalImmutable(_)) => Ok(()),
-        Err(fs_store::Error::EncryptionRequired(_)) => Err(Error::StoreNotEncrypted),
+        Ok(_) | Err(fs_objects::Error::OriginalImmutable(_)) => Ok(()),
+        Err(fs_objects::Error::EncryptionRequired(_)) => Err(Error::StoreNotEncrypted),
         Err(e) => Err(e.into()),
     }
 }

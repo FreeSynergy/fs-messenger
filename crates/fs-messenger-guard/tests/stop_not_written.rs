@@ -14,8 +14,8 @@ use fs_messenger_guard::{
     GuardLogEntry, GuardMode, GuardRepository, Method, OwnerOnly, Refusal, STATE_ID,
     TursoGuardRepository, Verdict,
 };
-use fs_store::traits::UnloggedObjects;
-use fs_store::{ObjectId, TursoStore};
+use fs_objects::traits::UnloggedObjects;
+use fs_objects::{ObjectId, TursoStore};
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 /// The real repository, whose writes can fail and whose reads can stop answering.
@@ -225,7 +225,7 @@ async fn an_allow_once_that_cannot_be_used_up_in_the_state_is_refused() {
     // write of the state fails for real. It reads, and it cannot be written.
     let id: ObjectId = STATE_ID.parse().unwrap();
     let current = w.store.read_unlogged(id).await.unwrap().unwrap();
-    use fs_store::Store;
+    use fs_objects::Store;
     w.store.put(current, "someone").await.unwrap();
     assert_eq!(
         w.check("message.delete", args("/m")).await,
