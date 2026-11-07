@@ -10,8 +10,10 @@ use serde_json::Value;
 /// is a `leave` whose `unsigned.prev_content` says `join` (our own leave proves the join before it; a
 /// homeserver shows an invited-again account that leave, not the join). An invitation, a declined
 /// invitation (`leave` after `invite`), a knock, a kick (sent by someone else) and a join someone
-/// else sent do not count. The `unsigned` part is the account's own homeserver's: the same trust as
-/// the `join` section of its `/sync`.
+/// else sent do not count. The `unsigned` part is NOT signed and is not proved to be the account's
+/// own homeserver's: on Synapse a hostile inviting server may be able to get a `prev_content` of `join`
+/// into the stored leave of a declined foreign invitation (`DESIGN.md`, open point 14); not run, so
+/// not proved either way.
 pub(crate) fn is_own_join(own: &str, json: &str) -> bool {
     let Ok(event) = serde_json::from_str::<Value>(json) else {
         return false;

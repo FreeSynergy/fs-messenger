@@ -9,8 +9,9 @@ use serde::{Deserialize, Serialize};
 use super::cursor::MatrixCursor;
 use super::membership::Known;
 
-/// Rooms we were in once and are not now, at most; the oldest go first and become unknown again,
-/// which can only mean reading more later, never losing.
+/// Rooms we were in once and are not now, at most; the oldest go first and become unknown again.
+/// That is not free: an unknown room is only checked, not read, when it is invited again, so a message
+/// said between a return and a kick in such a room can be lost (`DESIGN.md`, open point 15).
 pub(crate) const MAX_AWAY: usize = 256;
 
 /// A room we have been in, and are not now.
@@ -41,7 +42,7 @@ impl MatrixCursor {
     }
 
     /// Set what this room is. A room is in one list only. The away list is bounded: the oldest go
-    /// first and are unknown again, which can only mean reading more later.
+    /// first and are unknown again (see `MAX_AWAY` for what that costs).
     pub(crate) fn become_(&mut self, room: &str, known: Known) {
         self.rooms.retain(|r| r != room);
         self.away.retain(|a| a.room != room);
