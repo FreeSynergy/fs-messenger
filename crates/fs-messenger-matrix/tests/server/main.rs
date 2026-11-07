@@ -16,12 +16,14 @@ mod acts;
 mod capture;
 mod common;
 mod http;
+mod rooms;
 
 mod banned;
 mod ciphertext;
 mod kicked;
 mod late_key;
 mod membership;
+mod membership_acts;
 mod plain;
 mod rejoin;
 mod replay;

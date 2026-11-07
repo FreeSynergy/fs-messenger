@@ -1,5 +1,9 @@
+//! Pattern: none, a test file: it tests the State of `membership.rs` and has no pattern of its own.
+//!
 //! One test per cell of the decision table (DESIGN.md, "Room states"): state of the room at the
 //! position, part of the answer, own join seen or not, limited, cut.
+
+#![allow(clippy::unnecessary_wraps)] // helpers that build the `Option`s of a `Step`
 
 use super::*;
 

@@ -9,6 +9,7 @@
 mod adapter;
 mod alias;
 mod apply;
+mod away;
 mod cursor;
 mod event;
 mod evidence;

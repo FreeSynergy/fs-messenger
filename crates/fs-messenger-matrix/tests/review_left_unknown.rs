@@ -9,11 +9,11 @@ mod review_common;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use fs_messenger_core::{FetchBatch, Provider, ProviderCursor};
-use fs_messenger_matrix::{MatrixProvider, Password};
+use fs_messenger_core::{Provider, ProviderCursor};
+use fs_messenger_matrix::MatrixProvider;
 use review_common::support::server::{Reply, Server};
 use review_common::{
-    account, answer, error, is_room, login, ordinary, own_event, page, plain, room_id, support,
+    answer, error, ids, is_room, login, ordinary, own_event, page, plain, provider, room_id,
     timeline,
 };
 use serde_json::json;
@@ -92,21 +92,6 @@ impl Lost {
         let result = self.provider.fetch(self.cursor.as_ref()).await;
         assert!(result.is_err(), "this fetch was to fail");
     }
-}
-
-async fn provider(server: &Server) -> MatrixProvider {
-    let store = support::fresh_store().await;
-    MatrixProvider::login(account(server), &Password::new("pw"), store)
-        .await
-        .unwrap()
-}
-
-fn ids(batch: &FetchBatch) -> Vec<String> {
-    batch
-        .messages
-        .iter()
-        .map(|m| m.aliases[0].id.clone())
-        .collect()
 }
 
 /// Fetch until `$a1` has come, at most 6 times. Failing fetches are counted, not unwrapped.
@@ -188,17 +173,15 @@ async fn a_left_room_is_met_from_its_start_only_in_failed_attempts_never_after_a
         let _ = lost.provider.fetch(lost.cursor.as_ref()).await;
     }
     lost.b.store(false, Ordering::SeqCst);
-    // The attempts that failed each began the room again (`from=pa`): the cursor was never moved.
-    // The first fetch that goes through, with its cursor kept, reads it once more and no later one does.
+    // Failed attempts each began the room again (`from=pa`); the first fetch that goes through, with
+    // its cursor kept, reads it once more and no later one does.
     let mut seen = Vec::new();
     let first = lost.provider.fetch(lost.cursor.as_ref()).await.unwrap();
     seen.extend(ids(&first));
     let mut cursor = first.next;
     let reads = |lost: &Lost| {
-        let heard = lost.server.heard().into_iter().map(|(p, _)| p);
-        let asked =
-            |p: &String| p.contains("/messages") && is_room(p, "a") && p.contains("from=pa");
-        heard.filter(asked).count()
+        let asked = review_common::messages_for(&lost.server, "a");
+        asked.iter().filter(|p| p.contains("from=pa")).count()
     };
     let after_first = reads(&lost);
     for _ in 0..3 {
@@ -211,10 +194,6 @@ async fn a_left_room_is_met_from_its_start_only_in_failed_attempts_never_after_a
         after_first,
         "read from the start after a fetch that went through"
     );
-    for want in ["$a1", "$a0"] {
-        assert!(
-            seen.iter().any(|i| i.contains(want)),
-            "{want} lost: {seen:?}"
-        );
-    }
+    let got = |w: &str| seen.iter().any(|i| i.contains(w));
+    assert!(got("$a1") && got("$a0"), "lost: {seen:?}");
 }

@@ -71,11 +71,11 @@ impl MatrixCursor {
             return;
         }
         let is_check = |g: &Gap| g.check.is_some();
-        if self.gaps.iter().filter(|g| is_check(g)).count() >= MAX_CHECKS {
-            if let Some(oldest) = self.gaps.iter().position(is_check) {
-                let dropped = self.gaps.remove(oldest);
-                self.give_up(dropped, Why::Overflow);
-            }
+        if self.gaps.iter().filter(|g| is_check(g)).count() >= MAX_CHECKS
+            && let Some(oldest) = self.gaps.iter().position(is_check)
+        {
+            let dropped = self.gaps.remove(oldest);
+            self.give_up(dropped, Why::Overflow);
         }
         self.gaps.push(gap);
     }

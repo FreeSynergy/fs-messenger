@@ -9,12 +9,12 @@ use std::future::IntoFuture;
 use std::time::Duration;
 
 use matrix_sdk::deserialized_responses::TimelineEvent;
+use matrix_sdk::ruma::OwnedRoomId;
 use matrix_sdk::ruma::api::client::sync::sync_events::v3::{self, Filter, State};
 use matrix_sdk::ruma::events::AnySyncTimelineEvent;
 use matrix_sdk::ruma::events::room::encrypted::OriginalSyncRoomEncryptedEvent;
 use matrix_sdk::ruma::presence::PresenceState;
 use matrix_sdk::ruma::serde::Raw;
-use matrix_sdk::ruma::{OwnedRoomId, RoomId};
 
 use super::MatrixProvider;
 use super::answer::{Answer, RoomAnswer};
@@ -100,7 +100,7 @@ impl MatrixProvider {
         room_id: &OwnedRoomId,
         raws: Vec<Raw<AnySyncTimelineEvent>>,
     ) -> Result<Vec<TimelineEvent>> {
-        let room = self.client.get_room(<&RoomId>::from(room_id.as_ref()));
+        let room = self.client.get_room(room_id);
         let mut events = Vec::with_capacity(raws.len());
         for raw in raws {
             let kind = raw.get_field::<String>("type").ok().flatten();

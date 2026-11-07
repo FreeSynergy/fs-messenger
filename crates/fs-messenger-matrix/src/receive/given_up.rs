@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::cursor::{Gap, MatrixCursor};
 
+#[allow(clippy::trivially_copy_pass_by_ref)] // the signature serde wants
 fn is_earlier(why: &Why) -> bool {
     *why == Why::Earlier
 }
