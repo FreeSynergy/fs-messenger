@@ -17,6 +17,7 @@ mod capture;
 mod common;
 mod http;
 
+mod banned;
 mod ciphertext;
 mod late_key;
 mod plain;

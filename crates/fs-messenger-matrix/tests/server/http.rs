@@ -100,7 +100,7 @@ pub async fn plain_login(user: &str, password: &str) -> String {
     answer["access_token"].as_str().unwrap().to_owned()
 }
 
-fn encode(id: &str) -> String {
+pub fn encode(id: &str) -> String {
     id.replace('!', "%21")
         .replace('$', "%24")
         .replace(':', "%3A")
