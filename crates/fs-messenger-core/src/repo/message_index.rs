@@ -1,6 +1,6 @@
 //! The index fields of a message.
 //!
-//! Pattern: Strategy (pure function): what can be searched and sorted, derived in one place. An
+//! Pattern: none (a pure function; DESIGN.md open point 0): what can be searched and sorted, derived in one place. An
 //! undecrypted message or a stub has no text here: no ciphertext in search.
 
 use fs_store::StoredObject;

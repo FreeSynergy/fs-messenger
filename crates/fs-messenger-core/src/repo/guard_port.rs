@@ -18,7 +18,9 @@ use crate::error::{Error, Result};
 use crate::guard_hook::{EngineGuard, SenderLookup};
 use crate::model::{Event, SenderKind, ToolCall, ToolCallChange, ToolCallOutcome, ToolCallState};
 
-/// How long the core waits for a guard, which it never does while holding its write lock.
+/// How long the core waits for the guard's answer to `open_for_reports`, which it does under its write
+/// lock (`tool_calls.rs`). The guard never calls the core back from that answer, so this cannot
+/// deadlock; no answer in time reads as shut, so the report is cancelled.
 pub(super) const GUARD_WAIT: Duration = Duration::from_secs(1);
 
 pub(super) struct Wiring {
