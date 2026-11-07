@@ -1,7 +1,8 @@
 //! The brake: which risk classes can ever be released (ADR 0054).
 //!
-//! Pattern: none (no pattern of coding.md section 2 fits; reported to the strategy, DESIGN.md open point 0). Free functions as pure rules, in one place. Everything else asks these, and a record in the store
-//! has no say: `unknown`, `destroys` and `actsForPerson` ask every time whatever is stored.
+//! Pattern: Specification: pure predicates over a risk class, one built from the other
+//! (`offers_allow_class` asks `can_be_released`), with no state and no side effect. Everything else asks
+//! these, and a record in the store has no say: `unknown`, `destroys` and `actsForPerson` ask every time whatever is stored.
 
 use fs_messenger_core::ToolCallRisk;
 

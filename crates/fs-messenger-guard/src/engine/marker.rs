@@ -1,6 +1,8 @@
 //! The stop marker: a small file beside the store, written before the store is.
 //!
-//! Pattern: none (no pattern of coding.md section 2 fits; reported to the strategy, DESIGN.md open point 0). Free functions for a file: what a stop was, in a place that does not depend on the store working. It is read
+//! Pattern: Memento: the file is the snapshot of a stop (`StopMark`), written outside the store and read
+//! back at open to restore the latch; these functions are its caretaker and never decide on its content,
+//! except that unreadable content reads as a stop by nobody. It does not depend on the store working. It is read
 //! at open and removed only after a written `reopen`. Its presence alone is a stop: unreadable content
 //! reads as a stop by nobody. The disk can stall too, so all of it runs off the async threads, and the
 //! engine bounds how long it waits. Nothing in it is secret: who, when, and the hash of a used proof.

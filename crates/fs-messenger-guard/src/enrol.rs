@@ -1,6 +1,8 @@
 //! [`LocalEnrolment`]: how a device key gets in.
 //!
-//! Pattern: none (no pattern of coding.md section 2 fits; reported to the strategy, DESIGN.md open point 0). A type that exists only as what `GuardEngine::open` hands back, is not `Clone`, and
+//! Pattern: Facade: one small type that hides the key administration of the engine (verifier, save, log
+//! in a fixed order) behind a few ways in. That only `GuardEngine::open` hands it out has no name in
+//! section 2 (open point 0). A type that exists only as what `GuardEngine::open` hands back, is not `Clone`, and
 //! no method of `Gate`, `Guard`, `Messenger` or `Provider` leads to it. The program keeps it with its
 //! local console. **Provisional: the first key.** Whoever holds this at the first start can put in the
 //! owner's first key: trust on first use, on the local machine. Later keys need a proof by a key the

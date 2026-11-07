@@ -1,9 +1,9 @@
 //! The emergency stop.
 //!
-//! Pattern: Facade with a fixed order of steps, which is the guarantee. 1. Latch, before any read: no
-//! store can hold this up. 2. Judge the proof (`stop_judge.rs`), within a time limit (`judge_wait`);
-//! past it the stop is one by nobody. A proof shown to be bad takes that latch back, and anything
-//! else leaves it. 3. Marker file, store, what is shown, the providers and the log, each as a task of
+//! Pattern: Facade with a fixed order of steps, which is the guarantee. 1. `pending` goes up before any
+//! read (`is_latched` counts it, so `check` refuses at once): no store can hold this up. 2. Judge the
+//! proof (`stop_judge.rs`), within a time limit (`judge_wait`); past it the stop is one by nobody. A
+//! proof shown to be bad takes `pending` back down; anything else sets `stopped`. 3. Marker file, store, what is shown, the providers and the log, each as a task of
 //! its own: they go on if the caller walks away, and one that hangs or panics cannot hold up or take
 //! down another.
 //!
