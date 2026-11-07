@@ -8,7 +8,7 @@ use fs_messenger_core::{Encryption, Provider};
 use fs_messenger_mail::autocrypt::format_header;
 use fs_messenger_mail::mime::{PayloadInput, build_outer, build_payload};
 use fs_messenger_mail::openpgp::{
-    EncryptionTargets, PublicCert, SecretCert, generate_key, sign_and_encrypt, unix_now,
+    EncryptionTargets, Method, PublicCert, SecretCert, generate_key, sign_and_encrypt, unix_now,
     usable_encryption_key,
 };
 
@@ -37,7 +37,7 @@ fn mail(signer: &SecretCert, reader: &PublicCert, inner: &str, outer: &str) -> V
         visible: vec![usable_encryption_key(reader, unix_now()).unwrap()],
         hidden: vec![],
     };
-    let armored = sign_and_encrypt(&payload, signer, &targets).unwrap();
+    let armored = sign_and_encrypt(&payload, signer, &targets, Method::Modern).unwrap();
     build_outer(&input(outer), &armored).unwrap()
 }
 

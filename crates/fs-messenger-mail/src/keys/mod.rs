@@ -5,6 +5,6 @@ mod store;
 mod traits;
 
 pub(crate) use model::decode_cert;
-pub use model::{CandidateKey, KeySource, PeerKey};
+pub use model::{CandidateKey, KeySource, LegacyKey, PeerKey};
 pub use store::FsKeyStore;
 pub use traits::KeyStore;

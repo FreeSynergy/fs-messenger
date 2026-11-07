@@ -19,7 +19,7 @@ fn encrypt_to(signer: &SecretCert, visible: &[&PublicCert], hidden: &[&PublicCer
             .map(|c| usable_encryption_key(c, now).unwrap())
             .collect(),
     };
-    sign_and_encrypt(b"the secret text", signer, &targets).unwrap()
+    sign_and_encrypt(b"the secret text", signer, &targets, Method::Modern).unwrap()
 }
 
 #[test]

@@ -7,7 +7,7 @@ use fs_messenger_core::{Encryption, SignatureCheck};
 use fs_messenger_mail::autocrypt::format_header;
 use fs_messenger_mail::mime::{OUTER_SUBJECT, PayloadInput, build_outer, build_payload};
 use fs_messenger_mail::openpgp::{
-    EncryptionTargets, SecretCert, sign_and_encrypt, unix_now, usable_encryption_key,
+    EncryptionTargets, Method, SecretCert, sign_and_encrypt, unix_now, usable_encryption_key,
 };
 
 async fn own(p: &Offline) -> SecretCert {
@@ -39,7 +39,7 @@ fn mail(from: &str, to: &str, signer: &SecretCert, reader: &SecretCert, header: 
     };
     build_outer(
         &input,
-        &sign_and_encrypt(&payload, signer, &targets).unwrap(),
+        &sign_and_encrypt(&payload, signer, &targets, Method::Modern).unwrap(),
     )
     .unwrap()
 }

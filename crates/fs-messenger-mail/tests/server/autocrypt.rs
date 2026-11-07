@@ -5,7 +5,7 @@ use fs_messenger_mail::autocrypt::format_header;
 use fs_messenger_mail::keys::KeySource;
 use fs_messenger_mail::mime::{PayloadInput, build_outer, build_payload};
 use fs_messenger_mail::openpgp::{
-    EncryptionTargets, generate_key, sign_and_encrypt, unix_now, usable_encryption_key,
+    EncryptionTargets, Method, generate_key, sign_and_encrypt, unix_now, usable_encryption_key,
 };
 
 use crate::common::{
@@ -139,7 +139,7 @@ async fn a_rotation_signed_by_the_known_key_is_taken() {
         visible: vec![usable_encryption_key(&bob_public, now).unwrap()],
         hidden: vec![],
     };
-    let armored = sign_and_encrypt(&payload, &old, &targets).unwrap();
+    let armored = sign_and_encrypt(&payload, &old, &targets, Method::Modern).unwrap();
     smtp_raw(
         Who::Alice,
         Who::Bob,
