@@ -5,7 +5,7 @@ mod common;
 use common::{AI, OWNER, World, args};
 use fs_messenger_core::{MessageAction, Messenger, ToolCallOutcome, ToolCallRisk, ToolCallState};
 use fs_messenger_guard::{AiGrant, Guard, GuardMode, Method, Refusal, Verdict};
-use fs_store::{ActivityFilter, ActivityKind, Store};
+use fs_objects::{ActivityFilter, ActivityKind, Store};
 
 const ENGINE: &str = "urn:freesynergy:messenger:guard";
 

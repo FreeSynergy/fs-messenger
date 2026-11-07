@@ -1,7 +1,7 @@
 //! Whether an object that is read is marked as sensitive (ADR 0054, "Lesen ist nicht harmlos").
 //!
 //! Pattern: Strategy: trait [`SensitivityLookup`]. The engine asks it for the object a read names, and
-//! the source can change: later it is `envelope.sensitive` of `fs-store` (ADR 0029), set by the program
+//! the source can change: later it is `envelope.sensitive` of `fs-objects` (ADR 0029), set by the program
 //! the object belongs to or by the person, never by an AI or a provider. [`ObjectRef`] is a Value
 //! object: small, compared by value, valid on construction.
 //!

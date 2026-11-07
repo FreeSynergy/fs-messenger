@@ -3,7 +3,7 @@
 //! Pattern: Value objects. The contract's `blob` capability is, in the core, the id of a store
 //! object that holds the bytes as its immutable original (provisional, see `DESIGN.md`).
 
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 use serde::{Deserialize, Serialize};
 
 /// A file on a message.

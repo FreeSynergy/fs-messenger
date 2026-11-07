@@ -4,7 +4,7 @@
 //! run over the local arrival order, not over a date a sender chose: an old date cannot be swept
 //! along by a later mark, and a date far ahead cannot sweep up what arrived after it.
 
-use fs_store::{ActivityKind, LogEntry, ObjectId, Op, Query};
+use fs_objects::{ActivityKind, LogEntry, ObjectId, Op, Query};
 
 use super::consts::{IDX_ARRIVAL, IDX_DESC, IDX_UNREAD, NOTE, TOMBSTONE, YES};
 use super::handle::Inner;

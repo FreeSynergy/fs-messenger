@@ -3,7 +3,7 @@
 //! Pattern: Repository. `refresh` recomputes count, newest message and order from the messages, so
 //! a crash between two writes heals with the next change.
 
-use fs_store::{Envelope, ObjectId, Op, Query};
+use fs_objects::{Envelope, ObjectId, Op, Query};
 
 use super::consts::{
     CONVERSATION, IDX_CONV_ALIAS, IDX_DESC, IDX_FOLDER, IDX_SORT, IDX_UNREAD, NOTE, YES,

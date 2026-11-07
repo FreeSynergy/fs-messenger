@@ -5,7 +5,7 @@ mod common;
 use chrono::{TimeZone, Utc};
 use common::{account, conversation_of, raw, raw_at, setup};
 use fs_messenger_core::{Ingest, Ingested, Messenger, MessengerRepo, RawMessage};
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 async fn stored(repo: &MessengerRepo, me: ObjectId, m: RawMessage) -> ObjectId {
     let Ingested::Stored(id) = repo.ingest(me, m).await.unwrap() else {

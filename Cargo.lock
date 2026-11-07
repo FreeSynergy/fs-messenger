@@ -1255,7 +1255,7 @@ dependencies = [
  "chrono",
  "fs-interfaces",
  "fs-messenger-core",
- "fs-store",
+ "fs-objects",
  "serde",
  "serde_json",
  "tempfile",
@@ -1272,7 +1272,7 @@ dependencies = [
  "ed25519-compact",
  "fs-interfaces",
  "fs-messenger-core",
- "fs-store",
+ "fs-objects",
  "getrandom 0.3.4",
  "serde",
  "serde_json",
@@ -1293,7 +1293,7 @@ dependencies = [
  "fs-interfaces",
  "fs-messenger-core",
  "fs-messenger-mail",
- "fs-store",
+ "fs-objects",
  "futures-util",
  "http",
  "lettre",
@@ -1316,9 +1316,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "fs-store"
+name = "fs-objects"
 version = "0.3.0"
-source = "git+https://github.com/FreeSynergy/fs-store?tag=v0.3.0#cf506699d9ca1517277c22ec2761dfa1c33cf2b7"
+source = "git+https://github.com/FreeSynergy/fs-objects?tag=v0.3.0#cf506699d9ca1517277c22ec2761dfa1c33cf2b7"
 dependencies = [
  "async-trait",
  "base64 0.22.1",

@@ -7,7 +7,7 @@ use fs_messenger_core::{
     CONTRACT_VERSION, Encryption, Error, Ingest, Ingested, MessageAction, Messenger, MessengerRepo,
     RawMessage,
 };
-use fs_store::{ObjectId, Query};
+use fs_objects::{ObjectId, Query};
 
 const MIB: usize = 1024 * 1024;
 

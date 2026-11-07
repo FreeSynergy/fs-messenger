@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
-use fs_store::{Blob, Envelope, ObjectId};
+use fs_objects::{Blob, Envelope, ObjectId};
 use serde::{Deserialize, Serialize};
 
 use super::{

@@ -13,7 +13,7 @@ use fs_messenger_core::{
     EngineGuard, Ingest, Ingested, Messenger, MessengerConfig, MessengerRepo, Result, SenderKind,
     SenderLookup, ToolCall, ToolCallDecision, ToolCallKind, ToolCallOutcome, ToolCallState,
 };
-use fs_store::{
+use fs_objects::{
     Activity, ActivityFilter, ActivityId, ActivityKind, CompactionReport, LogEntry, LogStats,
     ObjectId, Query, Retention, Store, StoredObject, Timestamp, TursoStore, UndoState,
 };
@@ -28,12 +28,12 @@ struct Flaky {
 
 #[async_trait]
 impl Store for Flaky {
-    async fn put(&self, object: StoredObject, actor: &str) -> fs_store::Result<Activity> {
+    async fn put(&self, object: StoredObject, actor: &str) -> fs_objects::Result<Activity> {
         if self.pass.load(Ordering::SeqCst) > 0 {
             self.pass.fetch_sub(1, Ordering::SeqCst);
         } else if self.fail.load(Ordering::SeqCst) > 0 {
             self.fail.fetch_sub(1, Ordering::SeqCst);
-            return Err(fs_store::Error::Backend("disk full".into()));
+            return Err(fs_objects::Error::Backend("disk full".into()));
         }
         Store::put(&self.real, object, actor).await
     }
@@ -42,19 +42,19 @@ impl Store for Flaky {
         o: StoredObject,
         a: &str,
         e: Vec<LogEntry>,
-    ) -> fs_store::Result<Vec<Activity>> {
+    ) -> fs_objects::Result<Vec<Activity>> {
         Store::put_and_log(&self.real, o, a, e).await
     }
-    async fn get(&self, id: ObjectId) -> fs_store::Result<Option<StoredObject>> {
+    async fn get(&self, id: ObjectId) -> fs_objects::Result<Option<StoredObject>> {
         Store::get(&self.real, id).await
     }
-    async fn delete(&self, id: ObjectId, actor: &str) -> fs_store::Result<Activity> {
+    async fn delete(&self, id: ObjectId, actor: &str) -> fs_objects::Result<Activity> {
         Store::delete(&self.real, id, actor).await
     }
-    async fn query(&self, q: &Query) -> fs_store::Result<Vec<StoredObject>> {
+    async fn query(&self, q: &Query) -> fs_objects::Result<Vec<StoredObject>> {
         Store::query(&self.real, q).await
     }
-    async fn count(&self, q: &Query) -> fs_store::Result<usize> {
+    async fn count(&self, q: &Query) -> fs_objects::Result<usize> {
         Store::count(&self.real, q).await
     }
     async fn log(
@@ -63,43 +63,43 @@ impl Store for Flaky {
         o: ObjectId,
         a: &str,
         p: serde_json::Value,
-    ) -> fs_store::Result<Activity> {
+    ) -> fs_objects::Result<Activity> {
         Store::log(&self.real, k, o, a, p).await
     }
     fn subscribe(&self) -> broadcast::Receiver<Activity> {
         Store::subscribe(&self.real)
     }
-    async fn activities(&self, f: &ActivityFilter) -> fs_store::Result<Vec<Activity>> {
+    async fn activities(&self, f: &ActivityFilter) -> fs_objects::Result<Vec<Activity>> {
         Store::activities(&self.real, f).await
     }
-    async fn undo(&self, a: &str, n: usize) -> fs_store::Result<Vec<Activity>> {
+    async fn undo(&self, a: &str, n: usize) -> fs_objects::Result<Vec<Activity>> {
         Store::undo(&self.real, a, n).await
     }
-    async fn redo(&self, a: &str, n: usize) -> fs_store::Result<Vec<Activity>> {
+    async fn redo(&self, a: &str, n: usize) -> fs_objects::Result<Vec<Activity>> {
         Store::redo(&self.real, a, n).await
     }
-    async fn undo_state(&self, a: &str) -> fs_store::Result<UndoState> {
+    async fn undo_state(&self, a: &str) -> fs_objects::Result<UndoState> {
         Store::undo_state(&self.real, a).await
     }
-    async fn retention(&self) -> fs_store::Result<Retention> {
+    async fn retention(&self) -> fs_objects::Result<Retention> {
         Store::retention(&self.real).await
     }
-    async fn set_retention(&self, r: Retention) -> fs_store::Result<()> {
+    async fn set_retention(&self, r: Retention) -> fs_objects::Result<()> {
         Store::set_retention(&self.real, r).await
     }
-    async fn compact_at(&self, t: Timestamp) -> fs_store::Result<CompactionReport> {
+    async fn compact_at(&self, t: Timestamp) -> fs_objects::Result<CompactionReport> {
         Store::compact_at(&self.real, t).await
     }
-    async fn compact(&self) -> fs_store::Result<CompactionReport> {
+    async fn compact(&self) -> fs_objects::Result<CompactionReport> {
         Store::compact(&self.real).await
     }
-    async fn clear_history(&self) -> fs_store::Result<CompactionReport> {
+    async fn clear_history(&self) -> fs_objects::Result<CompactionReport> {
         Store::clear_history(&self.real).await
     }
-    async fn mark_synced(&self, up_to: ActivityId) -> fs_store::Result<usize> {
+    async fn mark_synced(&self, up_to: ActivityId) -> fs_objects::Result<usize> {
         Store::mark_synced(&self.real, up_to).await
     }
-    async fn log_stats(&self) -> fs_store::Result<LogStats> {
+    async fn log_stats(&self) -> fs_objects::Result<LogStats> {
         Store::log_stats(&self.real).await
     }
 }

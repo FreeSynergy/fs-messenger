@@ -12,7 +12,7 @@ use fs_messenger_core::{
     EngineGuard, Ingest, Ingested, Result, SenderKind, SenderLookup, ToolCall, ToolCallDecision,
     ToolCallKind, ToolCallOutcome, ToolCallState,
 };
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 /// Shut, and sure of whom it knows by the first letters of the address.
 struct Shut;

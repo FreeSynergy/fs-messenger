@@ -6,7 +6,7 @@ use common::{account, conversation_of, raw, setup};
 use fs_messenger_core::{
     Ingest, Ingested, MessageAction, Messenger, MessengerRepo, RawAttachment, RawMessage,
 };
-use fs_store::{Blob, ObjectId, Query};
+use fs_objects::{Blob, ObjectId, Query};
 
 const REAL: u64 = 99 * 1024 * 1024;
 

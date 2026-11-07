@@ -7,7 +7,7 @@ use fs_messenger_core::{
     Encryption, Error, Ingest, Ingested, MessageAction, Messenger, MessengerRepo, RawAttachment,
     ToolCallDecision,
 };
-use fs_store::{Blob, ObjectId};
+use fs_objects::{Blob, ObjectId};
 
 async fn sent_message(repo: &MessengerRepo) -> (ObjectId, ObjectId) {
     let mut d = repo.compose(None).await.unwrap();

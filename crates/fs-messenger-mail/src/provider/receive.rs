@@ -6,7 +6,7 @@
 //! `encode_id`, because the core refuses `|` and a legal mail must not be lost over it.
 
 use fs_messenger_core::{ExternalId, Kind, RawAttachment, RawMessage, SignatureCheck};
-use fs_store::Blob;
+use fs_objects::Blob;
 
 use super::facade::MailProvider;
 use super::ids::{encode_id, kept};

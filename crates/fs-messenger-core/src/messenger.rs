@@ -7,7 +7,7 @@
 
 use async_trait::async_trait;
 use fs_interfaces::provider::{Capabilities, Unsupported};
-use fs_store::{Blob, ObjectId};
+use fs_objects::{Blob, ObjectId};
 
 use crate::draft::{Draft, DraftInfo};
 use crate::error::Result;

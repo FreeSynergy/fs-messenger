@@ -80,9 +80,9 @@ async fn each_broken_field_reads_as_stopped_and_recovery_goes_on_from_it() {
 
 #[tokio::test]
 async fn an_object_of_another_type_under_the_id_can_be_recovered_from() {
-    use fs_store::traits::UnloggedObjects;
+    use fs_objects::traits::UnloggedObjects;
     let w = World::open().await;
-    let id: fs_store::ObjectId = fs_messenger_guard::STATE_ID.parse().unwrap();
+    let id: fs_objects::ObjectId = fs_messenger_guard::STATE_ID.parse().unwrap();
     let mut object = w.store.read_unlogged(id).await.unwrap().unwrap();
     object.envelope.object_type = "Note".into();
     w.store.put_unlogged(object).await.unwrap();

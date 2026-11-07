@@ -14,7 +14,7 @@ use fs_messenger_mail::jmap::{JmapFetch, JmapSubmit};
 use fs_messenger_mail::keys::{FsKeyStore, KeyStore};
 use fs_messenger_mail::submit::MailSubmit;
 use fs_messenger_mail::{MailError, MailIdentity, MailProvider};
-use fs_store::{Cipher, EncryptionKey, ObjectId, OpenOptions, StaticKeyProvider, TursoStore};
+use fs_objects::{Cipher, EncryptionKey, ObjectId, OpenOptions, StaticKeyProvider, TursoStore};
 
 pub use crate::env::{Who, serial};
 pub use crate::wire::{contains, message_id_of, raw_by_message_id, raw_mails, smtp_raw, token};
