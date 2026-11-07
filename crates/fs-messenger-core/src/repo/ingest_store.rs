@@ -12,9 +12,8 @@ use fs_store::{Envelope, ObjectId};
 use super::consts::NOTE;
 use super::handle::Inner;
 use super::keys::same_address;
-use super::message_codec::message_to;
+use super::report_landing::Landing;
 use super::text::{body_media_type, display_name, preview};
-use super::tool_calls;
 use crate::error::Result;
 use crate::model::{DeliveryState, Message, MessageSummary, SenderKind, StoredForm};
 use crate::provider::RawMessage;
@@ -117,12 +116,16 @@ impl Inner {
             sort_at,
             stored: StoredForm::default(),
         };
-        for t in raw.tool_calls {
-            tool_calls::apply(&mut message, &t.agent_ref, t.call);
-        }
+        let reports = raw
+            .tool_calls
+            .into_iter()
+            .map(|t| (t.agent_ref, t.call))
+            .collect();
         let id = message.id();
         self.externalise_body(&mut message).await?;
-        self.put(message_to(&message)?).await?;
+        // Every way of storing an agent's call asks the guard (`report_landing.rs`).
+        self.land_reports(&mut message, reports, Landing::New)
+            .await?;
         self.adopt_children(&scope, &message).await?;
         self.refresh(conversation_id).await?;
         Ok(id)

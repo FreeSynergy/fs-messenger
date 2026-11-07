@@ -5,18 +5,15 @@
 //! as `unknown` without options. Nobody here can answer, so an outside question is `working`: it is
 //! shown and not asked. The guard follows, see `DESIGN.md`.
 //!
-//! Also Strategy, through the trait `EngineGuard::open_for_reports`: a report from a sender who is not
-//! known to be a person or plain software is kept as `cancelled` while the guard says it is not open
-//! (stopped, or cannot say). The core knows the trait, not the guard; a stop settles what is stored,
-//! and this keeps a late report from showing `working` again.
+//! What happens to a report while the guard is shut is decided in one place, `report_landing.rs`,
+//! which every way of storing an agent's tool call goes through.
 
 use fs_store::ObjectId;
 
-use super::guard_port::GUARD_WAIT;
 use super::handle::Inner;
-use super::message_codec::message_to;
+use super::report_landing::Landing;
 use crate::error::{Error, Result};
-use crate::model::{Message, SenderKind, ToolCall, ToolCallOutcome, ToolCallRisk, ToolCallState};
+use crate::model::{Message, ToolCall, ToolCallRisk, ToolCallState};
 
 /// Take the agent's fields only. `id` and `revision` are assigned by the caller.
 fn from_agent(mut call: ToolCall) -> ToolCall {
@@ -75,35 +72,7 @@ fn holds_engine_call(message: &Message) -> bool {
     message.tool_calls.iter().any(|c| !c.asked_of.is_empty())
 }
 
-/// Settled as `cancelled`: what a report becomes while the guard is shut.
-fn cancelled(mut call: ToolCall) -> ToolCall {
-    call.state = ToolCallState::Settled;
-    call.outcome = ToolCallOutcome::Cancelled;
-    call
-}
-
 impl Inner {
-    /// Only a person or plain software reports freely. `Ai` and `Unknown` need the guard to be open;
-    /// without a guard nothing can be stopped, so the report stays as it is.
-    async fn report_is_shut(&self, message: &Message) -> bool {
-        if matches!(
-            message.summary.sender_kind,
-            SenderKind::Person | SenderKind::Software
-        ) {
-            return false;
-        }
-        let Some(wiring) = self.wiring.get() else {
-            return false;
-        };
-        let sender = message.summary.envelope.attributed_to.as_deref();
-        let open = tokio::time::timeout(
-            GUARD_WAIT,
-            wiring.guard.open_for_reports(sender.unwrap_or_default()),
-        )
-        .await;
-        !open.unwrap_or(false)
-    }
-
     /// A report may not land beside a question of the engine. It gets no right either way.
     async fn report_may_land(&self, id: ObjectId) -> Result<()> {
         let message = self.load_note(id).await?;
@@ -131,31 +100,11 @@ impl Inner {
         if holds_engine_call(&message) {
             return Err(Error::GuardRefused(BESIDE_QUESTION.into()));
         }
-        // Under the write lock; asked again after the write (below), because a stop's settling does
-        // not wait for this lock before it reads the index.
-        let call = if self.report_is_shut(&message).await {
-            cancelled(call)
-        } else {
-            call
-        };
-        let (mut stored, changed) = apply(&mut message, agent_ref, call);
-        let size = message.body_text.len() + serde_json::to_string(&message.tool_calls)?.len();
         let limit = self.config.max_message_bytes;
-        if changed && size > limit {
-            return Err(Error::TooLarge { size, limit });
-        }
-        if changed {
-            self.put(message_to(&message)?).await?;
-            // A stop may have come in between the question above and the write: its settling asks
-            // the index before it takes the write lock, so it may not have seen this message. Asked
-            // again after the write: a stop's latch is up before its settling begins, so either the
-            // settling saw the message, or this look sees the latch.
-            if stored.state != ToolCallState::Settled && self.report_is_shut(&message).await {
-                let (shut, _) = apply(&mut message, agent_ref, cancelled(stored));
-                self.put(message_to(&message)?).await?;
-                stored = shut;
-            }
-        }
-        Ok(stored)
+        let reports = vec![(agent_ref.to_string(), call)];
+        let mut stored = self
+            .land_reports(&mut message, reports, Landing::Existing { limit })
+            .await?;
+        Ok(stored.remove(0))
     }
 }

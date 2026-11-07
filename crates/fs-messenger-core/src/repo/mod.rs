@@ -29,6 +29,7 @@ mod message_index;
 mod messages;
 mod paging;
 mod preserve;
+mod report_landing;
 mod search;
 mod send;
 mod send_receipt;
