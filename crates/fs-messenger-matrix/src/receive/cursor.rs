@@ -97,13 +97,6 @@ impl MatrixCursor {
         self.pending.iter().map(|p| p.raw.len()).sum()
     }
 
-    /// Read this later, unless that is already planned.
-    pub(crate) fn plan_gap(&mut self, gap: Gap) {
-        if !self.gaps.contains(&gap) {
-            self.gaps.push(gap);
-        }
-    }
-
     /// Whether this event is a placeholder in the core that still waits for its key.
     pub(crate) fn is_waiting(&self, alias: &EventAlias) -> bool {
         self.pending.iter().any(|p| p.alias() == *alias)
@@ -140,7 +133,8 @@ mod tests {
             ..MatrixCursor::default()
         };
         c.rooms.push("!r:x".into());
-        c.plan_gap(Gap::new("!r:x".into(), "t2".into(), Some("t1".into())));
+        c.gaps
+            .push(Gap::new("!r:x".into(), "t2".into(), Some("t1".into())));
         c.gaps[0].skip = 7;
         c.wait_for(pending("$a"));
         let written = c.write().unwrap();

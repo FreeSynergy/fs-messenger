@@ -53,6 +53,8 @@ impl MatrixProvider {
             .account
             .bounded(self.client.sync_once(settings))
             .await?;
+        let next_batch = response.next_batch.clone();
+        let had_gaps = !cursor.gaps.is_empty();
         let joined = response
             .rooms
             .joined
@@ -67,16 +69,16 @@ impl MatrixProvider {
         let limit = usize::try_from(self.account.timeline_limit).unwrap_or(usize::MAX);
         let mut cut = false;
         for (room_id, mut timeline) in joined.chain(left) {
-            // `limit` is only a request. What is over it is read again through `/messages`, in pages,
-            // by the replay of the next fetch: the cursor keeps its old `since` for that.
+            // `limit` is only a request. What is over it is read again through `/messages`, as a gap
+            // from the end of this answer down to where we were; the cursor moves on all the same.
+            let known = cursor.rooms.iter().any(|r| r == room_id.as_str());
+            let to = if known { position.clone() } else { None };
             if timeline.events.len() > limit {
                 let over = timeline.events.len() - limit;
                 timeline.events.drain(..over);
                 cut = true;
-            }
-            let known = cursor.rooms.iter().any(|r| r == room_id.as_str());
-            if let (true, Some(from)) = (!known || timeline.limited, timeline.prev_batch) {
-                let to = if known { position.clone() } else { None };
+                cursor.plan_gap(Gap::new(room_id.to_string(), next_batch.clone(), to));
+            } else if let (true, Some(from)) = (!known || timeline.limited, timeline.prev_batch) {
                 cursor.plan_gap(Gap::new(room_id.to_string(), from, to));
             }
             if !known {
@@ -84,8 +86,16 @@ impl MatrixProvider {
             }
             events.push((room_id, timeline.events));
         }
-        let (read, unfinished) = self.read_gaps(&mut cursor).await?;
-        events.extend(read);
+        // A cut with nothing open before says `more` once and reads the gap next time, so that one
+        // fetch stays small. A cut with gaps open already does not: those carry the work, and a
+        // server that cuts every answer must not keep `sync()` going.
+        let defer = cut && !had_gaps;
+        let mut unfinished = defer;
+        if !defer {
+            let (read, more) = self.read_gaps(&mut cursor).await?;
+            events.extend(read);
+            unfinished = more;
+        }
 
         let mut messages = Vec::new();
         for (room_id, list) in events {
@@ -104,12 +114,10 @@ impl MatrixProvider {
         drop(sent);
 
         messages.extend(self.retry_pending(&mut cursor).await?);
-        if !cut {
-            cursor.since = Some(response.next_batch);
-        }
+        cursor.since = Some(next_batch);
         Ok(FetchBatch {
             messages,
-            more: unfinished || cut,
+            more: unfinished,
             next: Some(cursor.write()?),
         })
     }
