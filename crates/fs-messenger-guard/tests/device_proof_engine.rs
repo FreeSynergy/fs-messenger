@@ -73,7 +73,7 @@ async fn a_nonce_works_once_also_after_a_restart_and_a_forged_proof_does_not_bur
 
 #[tokio::test]
 async fn a_nonce_is_single_use_across_methods() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let nonce = w.owner.fresh_nonce();
     let signed = |method: Method, arguments: &[&[u8]]| {
         let bytes = signed_bytes(&w.identity, method, OWNER, arguments, &nonce).unwrap();
@@ -83,10 +83,11 @@ async fn a_nonce_is_single_use_across_methods() {
             proof: w.owner.sign(&bytes),
         }
     };
-    let release = signed(Method::Release, &[AI.as_bytes(), b"readsOnly"]);
+    let release = signed(Method::Release, &[AI.as_bytes(), b"readsOnly", b"message"]);
     let grant = fs_messenger_guard::AiGrant {
         profile: AI.into(),
         risk: fs_messenger_core::ToolCallRisk::ReadsOnly,
+        program: "message".into(),
     };
     w.engine.release(&grant, &release).await.unwrap();
     let stop = signed(Method::Stop, &[]);
@@ -158,7 +159,7 @@ async fn enrolment_takes_a_first_key_once_and_a_later_one_only_with_the_owners_p
 
 #[tokio::test]
 async fn an_invited_ai_gets_no_device_and_a_removed_key_stops_counting() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let ai_device = Device::new(AI, 9);
     let proof = w.owner.proof(
         &w.identity,

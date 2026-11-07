@@ -8,11 +8,11 @@ use fs_messenger_guard::{Guard, GuardError, GuardMode, Method, Refusal, Verdict}
 
 #[tokio::test]
 async fn a_person_without_a_working_key_can_stop_on_the_local_path() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.release(AI, ToolCallRisk::ReadsOnly, "readsOnly").await;
     let q = w.ask("message.delete", args("/m")).await;
     assert!(matches!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Allow(_)
     ));
 
@@ -34,7 +34,7 @@ async fn a_person_without_a_working_key_can_stop_on_the_local_path() {
     assert_eq!(state.mode, GuardMode::Stopped);
     assert!(state.grants.is_empty());
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
     let shown = w.shown(&q).await;

@@ -63,18 +63,11 @@ async fn sender_lookup_needs_no_lock_of_the_engine_so_nothing_deadlocks() {
         .await
         .unwrap();
     r.faulty.hold_load.store(true, Ordering::SeqCst);
-    let (engine, input) = (
-        r.engine.clone(),
-        fs_messenger_guard::Arguments::from_text(r#"{"path":"/"}"#).unwrap(),
-    );
+    let engine = r.engine.clone();
+    // A read that names an unmarked object takes the class path; `check` would ask, and put a
+    // question conversation beside the mail.
     let holding = tokio::spawn(async move {
-        use fs_messenger_guard::Gate;
-        engine
-            .check(
-                &fs_messenger_guard::Caller::new(common::AI),
-                "message.open",
-                &input,
-            )
+        common::program::read_unmarked(&engine, "message.open", &serde_json::json!({"path": "/"}))
             .await
     });
     r.faulty.entered.notified().await;
@@ -108,15 +101,8 @@ async fn the_last_look_before_a_class_allow() {
     // A check has read an open state and waits. The stop comes in.
     r.faulty.hold_load.store(true, Ordering::SeqCst);
     let engine = r.engine.clone();
-    let input = fs_messenger_guard::Arguments::from_text(r#"{"path":"/"}"#).unwrap();
     let checking = tokio::spawn(async move {
-        use fs_messenger_guard::Gate;
-        engine
-            .check(
-                &fs_messenger_guard::Caller::new(common::AI),
-                "message.open",
-                &input,
-            )
+        common::program::read_unmarked(&engine, "message.open", &serde_json::json!({"path": "/"}))
             .await
     });
     r.faulty.entered.notified().await;

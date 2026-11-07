@@ -7,7 +7,7 @@ use fs_messenger_core::{MessageAction, Messenger, ToolCallState};
 use fs_messenger_guard::{Caller, Gate, Refusal, Verdict};
 #[tokio::test]
 async fn retries_of_one_question_have_a_limit_and_the_question_stays_for_the_person() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     // At once: refused, and nothing is written, however tight the loop.
     let before = w.record().await;
@@ -47,7 +47,7 @@ async fn retries_of_one_question_have_a_limit_and_the_question_stays_for_the_per
 
 #[tokio::test]
 async fn the_same_question_is_not_put_twice_and_open_questions_are_limited() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let a = w.ask("message.delete", args("/same")).await;
     let b = w.ask("message.delete", args("/same")).await;
     assert_eq!(a.call.id, b.call.id);
@@ -70,7 +70,7 @@ async fn the_same_question_is_not_put_twice_and_open_questions_are_limited() {
 #[tokio::test]
 async fn finished_needs_the_callers_running_call_and_settled_is_final() {
     use fs_messenger_core::ToolCallOutcome;
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let caller = Caller::new(AI);
     assert_eq!(

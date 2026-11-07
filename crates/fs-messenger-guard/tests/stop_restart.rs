@@ -108,7 +108,7 @@ async fn an_unwritten_stop_survives_a_restart_with_nothing_coming_back() {
 #[tokio::test]
 async fn an_approved_destructive_call_does_not_come_back_after_a_restart() {
     use fs_messenger_core::{MessageAction, Messenger};
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", common::args("/m")).await;
     let d = w
         .owner
@@ -180,7 +180,7 @@ async fn any_write_that_carries_the_stop_clears_it_and_one_that_does_not_cannot(
 
 #[tokio::test]
 async fn reopen_goes_by_the_latch_when_the_record_says_open() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.engine.stop(&w.stop_proof()).await.unwrap();
     w.tamper(|doc| doc["mode"] = serde_json::json!("open"))
         .await;
@@ -191,10 +191,10 @@ async fn reopen_goes_by_the_latch_when_the_record_says_open() {
     );
     w.engine.reopen(&w.reopen_proof()).await.unwrap();
     assert_eq!(w.engine.state().await.mode, GuardMode::Open);
-    assert!(matches!(
-        w.check("message.open", common::args("/")).await,
-        Verdict::Ask(_)
-    ));
+    assert_eq!(
+        w.read("message.open", common::args("/")).await,
+        Verdict::Refuse(Refusal::NotReleased)
+    );
     assert!(matches!(
         w.engine.reopen(&w.reopen_proof()).await,
         Err(GuardError::Refused(Refusal::AlreadyOpen))

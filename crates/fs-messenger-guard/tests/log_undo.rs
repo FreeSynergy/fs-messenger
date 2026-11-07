@@ -34,7 +34,9 @@ async fn the_log_shows_what_happened() {
         .act(q.conversation, q.message, MessageAction::Decide(d))
         .await
         .unwrap();
-    let proof = w.owner.proof(&w.identity, Method::Revoke, &[AI.as_bytes()]);
+    let proof = w
+        .owner
+        .proof(&w.identity, Method::Revoke, &[AI.as_bytes(), b""]);
     w.engine.revoke(AI, &proof).await.unwrap();
     w.engine.stop(&w.stop_proof()).await.unwrap();
     w.engine.reopen(&w.reopen_proof()).await.unwrap();
@@ -70,7 +72,7 @@ async fn the_log_shows_what_happened() {
 
 #[tokio::test]
 async fn the_log_holds_no_secrets() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/secret/path")).await;
     let d = w
         .owner
@@ -112,7 +114,7 @@ async fn the_log_holds_no_secrets() {
 
 #[tokio::test]
 async fn refusals_write_nothing_to_the_log() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let before = w.engine.log().await.unwrap().len();
     let mut bad = w.stop_proof();
     bad.proof[0] ^= 1;
@@ -126,7 +128,7 @@ fn hex(bytes: &[u8]) -> String {
 
 #[tokio::test]
 async fn undo_cannot_reopen_a_stop_also_after_a_restart() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.engine.stop(&w.stop_proof()).await.unwrap();
     let before = w.record().await;
     undo_everything(&w).await;
@@ -140,7 +142,7 @@ async fn undo_cannot_reopen_a_stop_also_after_a_restart() {
     undo_everything(&w).await;
     assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
 }
@@ -152,24 +154,27 @@ async fn undo_cannot_restore_a_release() {
     let grant = AiGrant {
         profile: AI.into(),
         risk: ToolCallRisk::ReadsOnly,
+        program: "message".into(),
     };
     assert_eq!(w.engine.state().await.grants, [grant]);
-    let proof = w.owner.proof(&w.identity, Method::Revoke, &[AI.as_bytes()]);
+    let proof = w
+        .owner
+        .proof(&w.identity, Method::Revoke, &[AI.as_bytes(), b""]);
     w.engine.revoke(AI, &proof).await.unwrap();
     undo_everything(&w).await;
     assert!(w.engine.state().await.grants.is_empty());
     let w = w.restart().await;
     undo_everything(&w).await;
     assert!(w.engine.state().await.grants.is_empty());
-    assert!(matches!(
-        w.check("message.open", args("/")).await,
-        Verdict::Ask(_)
-    ));
+    assert_eq!(
+        w.read("message.open", args("/")).await,
+        Verdict::Refuse(fs_messenger_guard::Refusal::NotReleased)
+    );
 }
 
 #[tokio::test]
 async fn undo_of_what_a_message_shows_does_not_bring_a_settled_call_back() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let click = w
         .owner
@@ -204,7 +209,7 @@ async fn undo_of_what_a_message_shows_does_not_bring_a_settled_call_back() {
 
 #[tokio::test]
 async fn undo_cannot_bring_back_an_allow_once() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let d = w
         .owner
@@ -226,7 +231,7 @@ async fn undo_cannot_bring_back_an_allow_once() {
 
 #[tokio::test]
 async fn compacting_and_clearing_the_log_reopen_nothing() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.engine.stop(&w.stop_proof()).await.unwrap();
     w.store.compact().await.unwrap();
     w.store.clear_history().await.unwrap();

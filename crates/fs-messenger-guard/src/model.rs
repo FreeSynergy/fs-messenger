@@ -39,13 +39,21 @@ pub struct GuardState {
     pub stopped_at: Option<DateTime<Utc>>,
 }
 
-/// `AiGrant` of the contract: one participant, one risk class.
+/// `AiGrant` of the contract (one participant, one risk class), and here also one program.
+/// **Provisional:** the contract has the first two only. A release holds for the participant, the
+/// class and the program together (ADR 0054, "Ohne Befugnis nichts"). Where the text goes is not part
+/// of it (strategy 4d(4), 2026-11-07): the engine finds that out (`DestinationLookup`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AiGrant {
     /// The participant.
     pub profile: String,
     /// The class.
     pub risk: ToolCallRisk,
+    /// The program it holds for: the part of a tool's name before the first dot. Empty, as an older
+    /// record has it, holds for nothing.
+    #[serde(default)]
+    pub program: String,
 }
 
 /// `GuardProof` of the contract.

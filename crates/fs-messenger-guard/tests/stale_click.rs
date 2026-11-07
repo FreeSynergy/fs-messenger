@@ -16,7 +16,7 @@ fn harmless() -> serde_json::Value {
 
 #[tokio::test]
 async fn a_click_signed_for_q1_cannot_approve_q2_that_replaced_it() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     // q1 stands on screen, and the person goes for Allow.
     let q1 = w.ask("shell.run", harmless()).await;
     let click = w
@@ -88,7 +88,7 @@ async fn a_click_signed_for_q1_cannot_approve_q2_that_replaced_it() {
 
 #[tokio::test]
 async fn the_same_call_with_a_new_revision_does_not_take_the_old_click() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("shell.run", harmless()).await;
     let click = w
         .owner
@@ -178,7 +178,7 @@ async fn the_same_call_with_a_new_revision_does_not_take_the_old_click() {
 
 #[tokio::test]
 async fn revise_needs_the_callers_own_open_call() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.invite(common::OTHER_AI).await;
     let q = w.ask("shell.run", harmless()).await;
     let input = Arguments::from_value(&rm_home()).unwrap();
@@ -205,7 +205,7 @@ async fn revise_needs_the_callers_own_open_call() {
 
 #[tokio::test]
 async fn an_approval_lapses_when_the_input_changes_and_a_running_call_cannot_be_changed() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("shell.run", harmless()).await;
     let click = w
         .owner

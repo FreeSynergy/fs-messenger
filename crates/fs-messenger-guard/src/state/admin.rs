@@ -5,7 +5,6 @@
 //! held on to one through a stop does not come back.
 
 use chrono::{DateTime, Utc};
-use fs_messenger_core::ToolCallRisk;
 use serde::{Deserialize, Serialize};
 
 use super::doc::{DeviceKey, GuardDoc, Invitation};
@@ -13,6 +12,7 @@ use super::stage::CallStage;
 use crate::arguments::hides_text;
 use crate::error::Refusal;
 use crate::model::{AiGrant, GuardMode};
+use crate::program::program_of;
 use crate::risk::can_be_released;
 
 const MAX_NAME_BYTES: usize = 2048;
@@ -20,6 +20,16 @@ const MAX_NAME_BYTES: usize = 2048;
 /// A name that goes into what a person reads and signs: nothing in it can hide or reorder text.
 pub(crate) fn usable_name(name: &str) -> bool {
     !name.is_empty() && name.len() <= MAX_NAME_BYTES && !name.contains(hides_text)
+}
+
+/// A program named in an argument: a name, no dot, and not changed by trimming. What a device signed
+/// is what is used, so a program with white space around it is refused and not quietly trimmed.
+pub(crate) fn check_program_argument(program: &str) -> Result<(), Refusal> {
+    if usable_name(program) && !program.contains('.') && program == program.trim() {
+        Ok(())
+    } else {
+        Err(Refusal::BadName)
+    }
 }
 
 /// Who pulled the stop, when, and the proof it used up: whatever is written later, that proof has
@@ -94,23 +104,20 @@ impl GuardDoc {
         if !can_be_released(grant.risk) {
             return Err(Refusal::NotReleasable(grant.risk));
         }
+        if grant.program.is_empty() {
+            return Err(Refusal::Empty("program"));
+        }
+        check_program_argument(&grant.program)?;
         self.require_inviter(&grant.profile, signer, owner)
     }
 
+    /// A new release for the same participant, class and program replaces the old one: the newer words
+    /// for where the text goes are the ones that hold.
     pub(crate) fn apply_grant(&mut self, grant: AiGrant) {
-        if !self.grants.contains(&grant) {
-            self.grants.push(grant);
-        }
-    }
-
-    /// Is this class released for this participant? Only what can be released at all counts, whatever
-    /// a record says.
-    pub(crate) fn is_released(&self, profile: &str, risk: ToolCallRisk) -> bool {
-        can_be_released(risk)
-            && self
-                .grants
-                .iter()
-                .any(|g| g.profile == profile && g.risk == risk)
+        self.grants.retain(|g| {
+            !(g.profile == grant.profile && g.risk == grant.risk && g.program == grant.program)
+        });
+        self.grants.push(grant);
     }
 
     pub(crate) fn check_revoke(
@@ -122,12 +129,15 @@ impl GuardDoc {
         self.require_inviter(profile, signer, owner)
     }
 
-    /// Takes the releases and the open calls of this participant. Answers the calls it settled.
-    pub(crate) fn apply_revoke(&mut self, profile: &str) -> Vec<String> {
-        self.grants.retain(|g| g.profile != profile);
+    /// Takes the releases and the open calls of this participant, in one program or, with an empty
+    /// `program`, in every program. Answers the calls it settled.
+    pub(crate) fn apply_revoke(&mut self, profile: &str, program: &str) -> Vec<String> {
+        let covers = |p: &str| program.is_empty() || p == program;
+        self.grants
+            .retain(|g| g.profile != profile || !covers(&g.program));
         let mut cancelled = vec![];
         for call in self.calls.iter_mut().filter(|c| c.caller == profile) {
-            if !call.stage.is_settled() {
+            if !call.stage.is_settled() && covers(&program_of(&call.capability)) {
                 call.stage = CallStage::Cancelled;
                 call.revision += 1;
                 cancelled.push(call.id.clone());
@@ -138,7 +148,7 @@ impl GuardDoc {
 
     /// Withdraws an invitation, with what hangs on it. Answers the calls it settled.
     pub(crate) fn apply_uninvite(&mut self, profile: &str) -> Vec<String> {
-        let cancelled = self.apply_revoke(profile);
+        let cancelled = self.apply_revoke(profile, "");
         self.invited.remove(profile);
         cancelled
     }

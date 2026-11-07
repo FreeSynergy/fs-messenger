@@ -17,6 +17,7 @@ use tokio::sync::Mutex;
 
 use super::marker;
 use crate::clock::{Clock, SystemClock};
+use crate::destination::DestinationLookup;
 use crate::device::{DeviceVerifier, Ed25519Verifier};
 use crate::enrol::LocalEnrolment;
 use crate::error::GuardError;
@@ -24,6 +25,7 @@ use crate::identity::id_key;
 use crate::log::GuardLogEntry;
 use crate::permission::{OwnerOnly, StopPermission};
 use crate::repo::GuardRepository;
+use crate::sensitivity::SensitivityLookup;
 use crate::state::{Limits, StopMark};
 
 /// How the guard runs. The numbers are provisional, see `DESIGN.md`.
@@ -111,6 +113,8 @@ pub struct GuardEngine {
     pub(super) retries: StdMutex<HashMap<String, Retries>>,
     pub(super) class_logged: StdMutex<HashMap<(String, String), DateTime<Utc>>>,
     pub(super) port: OnceLock<GuardPort>,
+    pub(super) sensitivity: OnceLock<Arc<dyn SensitivityLookup>>,
+    pub(super) destinations: OnceLock<Arc<dyn DestinationLookup>>,
 }
 
 impl GuardEngine {
@@ -157,10 +161,24 @@ impl GuardEngine {
             retries: StdMutex::new(HashMap::new()),
             class_logged: StdMutex::new(HashMap::new()),
             port: OnceLock::new(),
+            sensitivity: OnceLock::new(),
+            destinations: OnceLock::new(),
         });
         engine.ensure_retry();
         let enrolment = LocalEnrolment::new(engine.clone());
         Ok((engine, enrolment))
+    }
+
+    /// Where marks of objects come from. Once; before it is set every object is `Unknown`, which counts
+    /// as marked. Answers `false` if a source was set already.
+    pub fn set_sensitivity(&self, source: Arc<dyn SensitivityLookup>) -> bool {
+        self.sensitivity.set(source).is_ok()
+    }
+
+    /// Where the destinations of questions come from. Once; before it is set every destination is
+    /// unknown. Answers `false` if a source was set already.
+    pub fn set_destinations(&self, source: Arc<dyn DestinationLookup>) -> bool {
+        self.destinations.set(source).is_ok()
     }
 
     /// The log, oldest first.

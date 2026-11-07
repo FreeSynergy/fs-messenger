@@ -44,7 +44,7 @@ fn is_cancelled(call: &ToolCall) -> bool {
 
 #[tokio::test]
 async fn before_a_stop_a_report_from_an_invited_ai_stays_working() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let note = message_from(&w, "m1", AI).await;
     let stored = w
         .repo
@@ -56,7 +56,7 @@ async fn before_a_stop_a_report_from_an_invited_ai_stays_working() {
 
 #[tokio::test]
 async fn after_a_stop_a_report_from_an_invited_ai_is_cancelled_new_or_not() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let note = message_from(&w, "m1", AI).await;
     w.repo
         .record_tool_call(note, "old", report(ToolCallState::Working))
@@ -81,7 +81,7 @@ async fn after_a_stop_a_report_from_an_invited_ai_is_cancelled_new_or_not() {
 
 #[tokio::test]
 async fn after_a_stop_nobody_unknown_or_uninvited_gets_a_working_report_either() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let uninvited = message_from(&w, "m1", OTHER_AI).await;
     let unknown = message_from(&w, "m2", "x@y").await;
     w.engine.stop(&w.stop_proof()).await.unwrap();
@@ -98,7 +98,7 @@ async fn after_a_stop_nobody_unknown_or_uninvited_gets_a_working_report_either()
 
 #[tokio::test]
 async fn once_the_program_is_open_again_reports_are_working_again() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let note = message_from(&w, "m1", AI).await;
     w.engine.stop(&w.stop_proof()).await.unwrap();
     w.engine.reopen(&w.reopen_proof()).await.unwrap();

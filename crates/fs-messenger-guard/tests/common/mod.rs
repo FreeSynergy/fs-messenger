@@ -1,8 +1,10 @@
 //! Shared test helpers: real encrypted `TursoStore`s in temp files, a real messenger, real signatures.
 #![allow(dead_code, unused_imports)] // each test file uses a different subset
 
+pub mod destination;
 pub mod device;
 pub mod events;
+pub mod program;
 pub mod rigs;
 
 pub use device::{Device, TestClock};
@@ -175,7 +177,7 @@ impl World {
         self.owner.proof(
             &self.identity,
             Method::Release,
-            &[profile.as_bytes(), risk.as_bytes()],
+            &[profile.as_bytes(), risk.as_bytes(), PROGRAM.as_bytes()],
         )
     }
 
@@ -183,6 +185,7 @@ impl World {
         let grant = AiGrant {
             profile: profile.to_string(),
             risk,
+            program: PROGRAM.into(),
         };
         self.engine
             .release(&grant, &self.release_proof(profile, name))
@@ -201,7 +204,13 @@ impl World {
     /// `check` that has to come back as a question. Moves the clock past the retry pause first.
     pub async fn ask(&self, capability: &str, args: Value) -> Question {
         self.clock.advance(Duration::seconds(3));
-        match self.check(capability, args).await {
+        let mut verdict = self.check(capability, args.clone()).await;
+        if verdict == Verdict::Refuse(fs_messenger_guard::Refusal::NotReleased) {
+            // A question needs a release in the tool's own program (ADR 0054); give the least one.
+            self.unlock_program_of(capability).await;
+            verdict = self.check(capability, args).await;
+        }
+        match verdict {
             Verdict::Ask(q) => *q,
             other => panic!("expected a question, got {other:?}"),
         }
@@ -273,6 +282,9 @@ impl World {
         record["mode"].as_str().unwrap()
     }
 }
+
+/// The program a plain `release` of the helpers names.
+pub const PROGRAM: &str = "message";
 
 pub fn args(path: &str) -> Value {
     json!({ "path": path })

@@ -1,6 +1,10 @@
 //! What goes into the activity log, and how it reads back.
 //!
-//! Pattern: none – verstößt gegen die none-Regel, an Strategie gemeldet, DESIGN.md Open point 0 (a data type for one small event, but with behaviour: `kind` maps event names onto AS2 kinds, `about` fills a field and returns the entry, `subject` parses the fixed id; not plain data, not one pure function, and not a Value object, which must be valid on construction). It is written as a log-only activity by `repo/turso.rs`. Log-only activities cannot be undone (the
+//! Pattern: Value object, stretched: a data type for one small event with small constructors (`new`,
+//! `about`), compared by value; but its fields are public and the engine sets some after
+//! construction (`entry.program = ...`), so it is not immutable and not valid on construction. `kind`
+//! maps event names onto AS2 kinds; `subject` parses the fixed id. It is written as a log-only activity
+//! by `repo/turso.rs`. Log-only activities cannot be undone (the
 //! store's rule), and they sit on an id of their own, which holds no object. No secrets: no proof, no
 //! nonce, no key, no arguments, no digest. Refused attempts are not logged: a refusal changes nothing,
 //! and a caller could otherwise fill the log. Use of a class release is logged at most once a minute
@@ -33,12 +37,14 @@ pub struct GuardLogEntry {
     pub call: String,
     /// The tool's name.
     pub capability: String,
-    /// `refuse`, `allowOnce`, `allowClass`.
+    /// `refuse`, `allowOnce`.
     pub choice: String,
     /// How a call ended: `done`, `failed`.
     pub outcome: String,
     /// How many calls it cancelled.
     pub cancelled: usize,
+    /// The program a release or its revoke is about; empty for every program.
+    pub program: String,
 }
 
 impl GuardLogEntry {

@@ -6,18 +6,16 @@ mod common;
 use std::sync::atomic::Ordering;
 
 use common::rigs::{Rig, eventually};
-use common::{AI, World, args};
+use common::{World, args};
 use fs_messenger_core::{MessageAction, Messenger};
 use fs_messenger_guard::{
-    Arguments, Caller, Gate, Guard, GuardEngine, GuardError, GuardMode, GuardRepository, Method,
-    Refusal, STATE_ID, Verdict,
+    Guard, GuardEngine, GuardError, GuardMode, GuardRepository, Method, Refusal, STATE_ID, Verdict,
 };
 use fs_store::ObjectId;
 use fs_store::traits::UnloggedObjects;
 use serde_json::json;
 async fn verdict(engine: &GuardEngine) -> Verdict {
-    let input = Arguments::from_value(&args("/")).unwrap();
-    engine.check(&Caller::new(AI), "message.open", &input).await
+    common::program::read_unmarked(engine, "message.open", &args("/")).await
 }
 
 #[tokio::test]
@@ -116,7 +114,7 @@ async fn when_the_store_stops_answering_everything_is_refused_and_comes_back_onl
 #[tokio::test]
 async fn an_allow_once_that_cannot_be_used_up_in_the_state_is_refused() {
     // Over a real messenger: the question and the decision go the normal way.
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let d = w
         .owner

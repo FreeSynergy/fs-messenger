@@ -1,21 +1,22 @@
 //! `check` as a pure function: what the state says about one call.
 //!
 //! Pattern: State (the rules are pure transitions on `CallStage`): the order of the rules is the guarantee. Stopped first, then what is
-//! never for an AI, then the invitation. Then the exact arguments a person approved, then a release,
-//! and only then a question. The risk comes from the table, and no input makes it `unknown`.
+//! never for an AI, then the invitation (`head`). Then the exact arguments a person approved, then a release,
+//! and only then a question. Between the release and the question comes "nothing without a release"
+//! (`standing`): what a release could cover is refused, not asked, until it is given, and what always
+//! asks is asked only once something is released in the program (ADR 0054). `revise` goes through the
+//! same two rules. The risk comes from the table, and no input makes it `unknown`.
 
 use chrono::{DateTime, Duration, Utc};
 use fs_messenger_core::ToolCallRisk;
 use fs_store::ObjectId;
 
-use super::admin::usable_name;
 use super::doc::{CallRecord, GuardDoc};
-use super::stage::{CallStage, derived_risk};
+use super::stage::CallStage;
+use super::standing::{Standing, counts_as_marked};
 use crate::arguments::Arguments;
 use crate::digest::{arguments_digest, hex};
 use crate::error::Refusal;
-use crate::model::GuardMode;
-use crate::table::{CapabilityRule, capability_rule};
 
 /// The bounds of questions. Provisional; `DESIGN.md` states the numbers.
 #[derive(Clone, Copy, Debug)]
@@ -31,7 +32,7 @@ pub(crate) struct Limits {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Evaluation {
     Refuse(Refusal),
-    AllowClass(ToolCallRisk),
+    AllowByRelease(ToolCallRisk),
     /// This call was approved for exactly these arguments: use it up.
     UseApproval(usize),
     /// A question for exactly these arguments stands.
@@ -47,6 +48,17 @@ pub(crate) struct QuestionInput {
     pub(crate) has_input: bool,
     pub(crate) asked_of: String,
     pub(crate) turn: Option<ObjectId>,
+    pub(crate) sensitive: bool,
+}
+
+/// One call to judge. `sensitive` is what the engine's source said of the object that is read (marked
+/// or not known); nothing in `arguments` can set or clear it.
+pub(crate) struct Judged<'a> {
+    pub(crate) caller: &'a str,
+    pub(crate) turn: Option<ObjectId>,
+    pub(crate) capability: &'a str,
+    pub(crate) arguments: &'a Arguments,
+    pub(crate) sensitive: bool,
 }
 
 /// More new input than this for one question is no longer a person's question. Persisted with the
@@ -67,35 +79,40 @@ impl GuardDoc {
     /// What the state says. Changes nothing.
     pub(crate) fn evaluate(
         &self,
-        caller: &str,
-        turn: Option<ObjectId>,
-        capability: &str,
-        arguments: &Arguments,
+        call: &Judged<'_>,
         now: DateTime<Utc>,
         limits: &Limits,
     ) -> Evaluation {
-        if self.mode != GuardMode::Open {
-            return Evaluation::Refuse(Refusal::Stopped);
-        }
-        if !usable_name(capability) {
-            return Evaluation::Refuse(Refusal::BadName);
-        }
-        if capability_rule(capability) == CapabilityRule::NeverForAi {
-            return Evaluation::Refuse(Refusal::NeverForAi);
-        }
-        let Some(invitation) = self.invited.get(caller) else {
-            return Evaluation::Refuse(Refusal::NotInvited);
+        let Judged {
+            caller,
+            turn,
+            capability,
+            arguments,
+            sensitive,
+        } = *call;
+        let invitation = match self.head(caller, capability) {
+            Ok(invitation) => invitation,
+            Err(refusal) => return Evaluation::Refuse(refusal),
         };
         let digest = hex(&arguments_digest(caller, turn, capability, arguments));
         let held = self.matching(caller, &digest, now);
+        // Only a read can be marked. A marked read is never covered by a release of its class.
+        let marked = counts_as_marked(capability, sensitive);
         if let Some(at) = held {
             if self.calls[at].stage == CallStage::Approved {
-                return Evaluation::UseApproval(at);
+                // An approval is used only while the participant still has a release in the program,
+                // as seen now: one a version before releases per program left behind does not count.
+                return match self.approval_standing(&self.calls[at]) {
+                    Ok(()) => Evaluation::UseApproval(at),
+                    Err(refusal) => Evaluation::Refuse(refusal),
+                };
             }
         }
-        let risk = derived_risk(capability, arguments.has_input());
-        if self.is_released(caller, risk) {
-            return Evaluation::AllowClass(risk);
+        let sensitive = marked;
+        match self.standing(caller, capability, arguments.has_input(), sensitive) {
+            Standing::Refused(refusal) => return Evaluation::Refuse(refusal),
+            Standing::Released(risk) => return Evaluation::AllowByRelease(risk),
+            Standing::AsksEachTime => {}
         }
         if let Some(at) = held {
             return Evaluation::AskAgain(at);
@@ -122,6 +139,7 @@ impl GuardDoc {
             has_input: arguments.has_input(),
             asked_of: invitation.by.clone(),
             turn,
+            sensitive,
         })
     }
 
@@ -161,13 +179,27 @@ impl GuardDoc {
         at: usize,
         arguments: &Arguments,
     ) -> Result<bool, Refusal> {
-        let call = self.calls.get_mut(at).ok_or(Refusal::UnknownCall)?;
+        let call = self.calls.get(at).ok_or(Refusal::UnknownCall)?;
         if call.stage.is_settled() {
             return Err(Refusal::SettledCall);
         }
         if call.stage == CallStage::Running {
             return Err(Refusal::RunningCall);
         }
+        // The same rules as `check`, with the call as it stands: a revise can refuse where `check`
+        // would, and it never allows. It names no object, so a read counts as marked.
+        let marked = counts_as_marked(&call.capability, true);
+        self.head(&call.caller, &call.capability)?;
+        let standing = self.standing(
+            &call.caller,
+            &call.capability,
+            arguments.has_input(),
+            marked,
+        );
+        if let Standing::Refused(refusal) = standing {
+            return Err(refusal);
+        }
+        let call = &mut self.calls[at];
         let digest = hex(&arguments_digest(
             &call.caller,
             call.turn,
@@ -182,6 +214,7 @@ impl GuardDoc {
         }
         call.digest = digest;
         call.has_input = arguments.has_input();
+        call.sensitive |= marked;
         call.stage = CallStage::Question;
         call.revision += 1;
         Ok(true)

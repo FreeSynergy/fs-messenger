@@ -7,6 +7,8 @@
 
 use fs_messenger_core::{MessageAction, ToolCallRisk as R};
 
+use crate::secret_name::is_secret_name;
+
 /// What the table says about a capability.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CapabilityRule {
@@ -76,17 +78,18 @@ const TABLE: &[(&str, CapabilityRule)] = &[
 ];
 
 /// The rule for a capability id. Exact match; what is not in the table is `unknown`. Anything naming
-/// the guard is refused whatever its spelling, so a variant cannot be asked about and allowed.
+/// the guard, and anything `is_secret_name` catches, is refused whatever its spelling, so a variant
+/// cannot be asked about and allowed.
 pub fn capability_rule(capability: &str) -> CapabilityRule {
+    // The rule comes first: no entry of the table can make a secret's name plain.
+    if is_secret_name(capability) {
+        return NeverForAi;
+    }
     if let Some((_, rule)) = TABLE.iter().find(|(id, _)| *id == capability) {
         return *rule;
     }
     let plain = capability.trim().to_ascii_lowercase();
-    if plain.starts_with("guard.")
-        || plain == "toolcall.decide"
-        || plain == "messenger.guard"
-        || plain == "account.secret"
-    {
+    if plain.starts_with("guard.") || plain == "toolcall.decide" || plain == "messenger.guard" {
         return NeverForAi;
     }
     Risk(R::Unknown)

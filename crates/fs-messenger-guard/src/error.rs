@@ -12,6 +12,11 @@ pub enum Refusal {
     /// The program is stopped, or its state cannot be read, which reads the same.
     #[error("the guard is stopped")]
     Stopped,
+    /// Nothing is released for this call: no release of its class in its program (or, for what always
+    /// asks, none of any class in that program). It is not asked, so an AI cannot flood a person with
+    /// questions: the person gives the release of their own accord.
+    #[error("nothing is released for this")]
+    NotReleased,
     /// No person invited this participant.
     #[error("this participant was not invited")]
     NotInvited,

@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use fs_messenger_core::{ToolCallOutcome, ToolCallRisk};
 
 use super::core::GuardEngine;
+use super::lookup_once::OnceLookup;
 use super::store_access::View;
 use crate::api::Gate;
 use crate::arguments::Arguments;
@@ -17,7 +18,9 @@ use crate::error::Refusal;
 use crate::identity::id_key;
 use crate::log::GuardLogEntry;
 use crate::model::{Allowance, Caller, GuardMode, Verdict};
-use crate::state::{CallRecord, CallStage, Evaluation, GuardDoc};
+use crate::sensitivity::ObjectRef;
+use crate::state::{CallRecord, CallStage, Evaluation, GuardDoc, Judged};
+use crate::table::{CapabilityRule, capability_rule};
 
 impl GuardEngine {
     /// The state, if it allows anything at all.
@@ -32,11 +35,31 @@ impl GuardEngine {
     }
 
     /// Show what the state now says. What is shown decides nothing, so a failure only misleads.
-    pub(super) async fn show(&self, call: &CallRecord, detail: &str) -> Result<(), String> {
+    pub(super) async fn show(
+        &self,
+        look: &OnceLookup,
+        call: &CallRecord,
+        detail: &str,
+    ) -> Result<(), String> {
+        if self.port.get().is_none() {
+            return Ok(());
+        }
+        let words = self.destination_for(look, call).await;
+        self.show_with(call, detail, &words).await
+    }
+
+    /// As `show`, with the destination already found: several calls of one participant and program
+    /// are shown together without asking the source for each.
+    pub(super) async fn show_with(
+        &self,
+        call: &CallRecord,
+        detail: &str,
+        words: &str,
+    ) -> Result<(), String> {
         let Some(port) = self.port.get() else {
             return Ok(());
         };
-        let update = port.update_call(call.message, call.shown(detail));
+        let update = port.update_call(call.message, call.shown(detail, words));
         tokio::time::timeout(self.config.store_wait, update)
             .await
             .map_err(|_| "the messenger did not answer in time".to_string())?
@@ -49,7 +72,7 @@ impl GuardEngine {
             .map_err(|_| "the store did not answer in time".to_string())?
     }
 
-    async fn use_approval(&self, mut doc: GuardDoc, at: usize) -> Verdict {
+    async fn use_approval(&self, look: &OnceLookup, mut doc: GuardDoc, at: usize) -> Verdict {
         let call = &mut doc.calls[at];
         call.stage = CallStage::Running;
         call.revision += 1;
@@ -61,7 +84,7 @@ impl GuardEngine {
         if self.save(&doc).await.is_err() {
             return Verdict::Refuse(Refusal::NotRecorded);
         }
-        let _ = self.show(&call, "").await;
+        let _ = self.show(look, &call, "").await;
         let mut entry = GuardLogEntry::new("approvalUsed", &call.caller).about(&call.caller);
         entry.call.clone_from(&call.id);
         entry.capability.clone_from(&call.capability);
@@ -98,13 +121,29 @@ impl GuardEngine {
     }
 }
 
-#[async_trait]
-impl Gate for GuardEngine {
-    async fn check(&self, caller: &Caller, capability: &str, arguments: &Arguments) -> Verdict {
+impl GuardEngine {
+    /// `check`, with the object a read names, if it names one.
+    async fn check_inner(
+        &self,
+        caller: &Caller,
+        capability: &str,
+        arguments: &Arguments,
+        object: Option<&ObjectRef>,
+    ) -> Verdict {
         if self.is_latched() {
             self.ensure_retry();
             return Verdict::Refuse(Refusal::Stopped);
         }
+        // A read that names its object is looked up, and before the lock: the source may be slow. One
+        // that names none counts as marked (strategy 4d(2)); only `check_object` can say otherwise.
+        // The table decides what is a read, not whether the call has input, so that a call without
+        // input is looked up too.
+        let reads = capability_rule(capability) == CapabilityRule::Risk(ToolCallRisk::ReadsOnly);
+        let sensitive = match object {
+            Some(object) if reads => self.read_asks(object).await,
+            Some(_) => false,
+            None => true,
+        };
         let Ok(_ops) = self.lock_ops().await else {
             return Verdict::Refuse(Refusal::Stopped);
         };
@@ -112,13 +151,21 @@ impl Gate for GuardEngine {
             Ok(doc) => doc,
             Err(refusal) => return Verdict::Refuse(refusal),
         };
+        let look = self.look();
         let profile = id_key(&caller.profile);
         let now = self.clock.now();
         let limits = self.limits();
         let turn = caller.conversation;
-        match doc.evaluate(&profile, turn, capability, arguments, now, &limits) {
+        let judged = Judged {
+            caller: &profile,
+            turn,
+            capability,
+            arguments,
+            sensitive,
+        };
+        match doc.evaluate(&judged, now, &limits) {
             Evaluation::Refuse(refusal) => Verdict::Refuse(refusal),
-            Evaluation::AllowClass(risk) => {
+            Evaluation::AllowByRelease(risk) => {
                 // The log is slow, so the last look comes after it, right before `Allow`.
                 self.log_class_use(&profile, capability, risk).await;
                 if self.is_latched() {
@@ -126,16 +173,37 @@ impl Gate for GuardEngine {
                 }
                 Verdict::Allow(Allowance::Class(risk))
             }
-            Evaluation::UseApproval(at) => self.use_approval(doc, at).await,
+            Evaluation::UseApproval(at) => self.use_approval(&look, doc, at).await,
             Evaluation::AskAgain(at) => match self.count_retry(&doc.calls[at].id) {
-                Ok(()) => self.question(&doc.calls[at], &arguments.detail()),
+                Ok(()) => {
+                    self.question(&look, &doc.calls[at], &arguments.detail())
+                        .await
+                }
                 Err(refusal) => Verdict::Refuse(refusal),
             },
             Evaluation::AskNew(input) => {
-                self.ask_new(doc, &profile, capability, arguments, input)
+                self.ask_new(&look, doc, &profile, capability, arguments, input)
                     .await
             }
         }
+    }
+}
+
+#[async_trait]
+impl Gate for GuardEngine {
+    async fn check(&self, caller: &Caller, capability: &str, arguments: &Arguments) -> Verdict {
+        self.check_inner(caller, capability, arguments, None).await
+    }
+
+    async fn check_object(
+        &self,
+        caller: &Caller,
+        capability: &str,
+        arguments: &Arguments,
+        object: &ObjectRef,
+    ) -> Verdict {
+        self.check_inner(caller, capability, arguments, Some(object))
+            .await
     }
 
     async fn revise(&self, caller: &Caller, call: &str, arguments: &Arguments) -> Verdict {
@@ -149,7 +217,8 @@ impl Gate for GuardEngine {
             Ok(doc) => doc,
             Err(refusal) => return Verdict::Refuse(refusal),
         };
-        self.revise_call(doc, caller, call, arguments).await
+        let look = self.look();
+        self.revise_call(&look, doc, caller, call, arguments).await
     }
 
     async fn finished(
@@ -180,7 +249,7 @@ impl Gate for GuardEngine {
         record.revision += 1;
         let record = record.clone();
         self.save(&doc).await.map_err(|_| Refusal::NotRecorded)?;
-        let _ = self.show(&record, "").await;
+        let _ = self.show(&self.look(), &record, "").await;
         let mut entry = GuardLogEntry::new("finished", &profile).about(&profile);
         entry.call.clone_from(&record.id);
         entry.capability.clone_from(&record.capability);

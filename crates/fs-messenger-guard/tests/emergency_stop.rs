@@ -10,7 +10,7 @@ use fs_messenger_guard::{AiGrant, Gate, Guard, GuardError, GuardMode, Refusal, V
 use serde_json::json;
 #[tokio::test]
 async fn stop_refuses_every_ai_takes_all_releases_and_settles_all_calls() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.release(AI, ToolCallRisk::ReadsOnly, "readsOnly").await;
     let open = w.ask("message.delete", args("/q")).await;
     let approved = w.ask("message.delete", args("/a")).await;
@@ -43,7 +43,7 @@ async fn stop_refuses_every_ai_takes_all_releases_and_settles_all_calls() {
     );
 
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
     assert_eq!(
@@ -60,7 +60,7 @@ async fn stop_refuses_every_ai_takes_all_releases_and_settles_all_calls() {
 
 #[tokio::test]
 async fn a_late_decision_after_the_stop_gets_a_problem() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/q")).await;
     let d = w
         .owner
@@ -83,21 +83,21 @@ async fn a_late_decision_after_the_stop_gets_a_problem() {
 
 #[tokio::test]
 async fn a_restart_stays_stopped_with_the_releases_gone() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.release(AI, ToolCallRisk::ReadsOnly, "readsOnly").await;
     w.engine.stop(&w.stop_proof()).await.unwrap();
     let w = w.restart().await;
     assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);
     assert!(w.engine.state().await.grants.is_empty());
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
 }
 
 #[tokio::test]
 async fn reopen_needs_a_proof_and_the_releases_stay_taken_also_a_tampered_one() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.release(AI, ToolCallRisk::ReadsOnly, "readsOnly").await;
     w.engine.stop(&w.stop_proof()).await.unwrap();
     let mut bad = w.reopen_proof();
@@ -105,8 +105,10 @@ async fn reopen_needs_a_proof_and_the_releases_stay_taken_also_a_tampered_one() 
     assert!(w.engine.reopen(&bad).await.is_err());
     assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);
 
-    w.tamper(|doc| doc["grants"] = json!([{ "profile": AI, "risk": "readsOnly" }]))
-        .await;
+    w.tamper(|doc| {
+        doc["grants"] = json!([{ "profile": AI, "risk": "readsOnly", "program": "message" }])
+    })
+    .await;
     w.engine.reopen(&w.reopen_proof()).await.unwrap();
     let state = w.engine.state().await;
     assert_eq!(state.mode, GuardMode::Open);
@@ -114,10 +116,10 @@ async fn reopen_needs_a_proof_and_the_releases_stay_taken_also_a_tampered_one() 
         state.grants.is_empty(),
         "a release does not come back through a reopen"
     );
-    assert!(matches!(
-        w.check("message.open", args("/")).await,
-        Verdict::Ask(_)
-    ));
+    assert_eq!(
+        w.read("message.open", args("/")).await,
+        Verdict::Refuse(Refusal::NotReleased)
+    );
     assert!(matches!(
         w.engine.reopen(&w.reopen_proof()).await,
         Err(GuardError::Refused(Refusal::AlreadyOpen))
@@ -126,7 +128,7 @@ async fn reopen_needs_a_proof_and_the_releases_stay_taken_also_a_tampered_one() 
 
 #[tokio::test]
 async fn a_stop_cannot_lose_a_race_with_decisions_or_a_check() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.release(AI, ToolCallRisk::ReadsOnly, "readsOnly").await;
     let engine = w.engine.clone();
     let input = fs_messenger_guard::Arguments::from_value(&args("/")).unwrap();
@@ -140,17 +142,18 @@ async fn a_stop_cannot_lose_a_race_with_decisions_or_a_check() {
     tokio::task::yield_now().await;
     w.engine.stop(&w.stop_proof()).await.unwrap();
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
     runner.await.unwrap();
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
     let grant = AiGrant {
         profile: AI.into(),
         risk: ToolCallRisk::ReadsOnly,
+        program: "message".into(),
     };
     assert!(
         w.engine
@@ -162,7 +165,7 @@ async fn a_stop_cannot_lose_a_race_with_decisions_or_a_check() {
 
 #[tokio::test]
 async fn after_a_stop_this_process_stays_stopped_even_if_a_record_says_open() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let click = w
         .owner
@@ -176,7 +179,7 @@ async fn after_a_stop_this_process_stays_stopped_even_if_a_record_says_open() {
     })
     .await;
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
     assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);

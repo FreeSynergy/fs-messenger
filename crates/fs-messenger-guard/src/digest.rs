@@ -1,7 +1,6 @@
 //! The arguments digest: what exactly a decision is about.
 //!
-//! Pattern: none – verstößt gegen die none-Regel, an Strategie gemeldet, DESIGN.md Open point 0 (several pure functions, more than the single one that section 2 allows for `none`; no
-//! pattern fits). Free functions: SHA-256 over a fixed context, the caller, the
+//! Pattern: none, allowed by section 2 (a small set of pure functions for one concept). Free functions: SHA-256 over a fixed context, the caller, the
 //! conversation of its turn, the tool name and the canonical arguments, each with its length in front,
 //! so nothing can move from one field to another. No input is hashed as its own explicit value, so `{}` and "no input" differ and later input changes
 //! the digest. Keys are not secret, and nothing here is: the digest is shown to the person's device.

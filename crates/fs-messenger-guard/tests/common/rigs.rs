@@ -187,10 +187,15 @@ impl Rig {
             .unwrap();
         let invite = owner.proof(&identity, Method::Invite, &[AI.as_bytes()]);
         engine.invite(AI, &invite).await.unwrap();
-        let release = owner.proof(&identity, Method::Release, &[AI.as_bytes(), b"readsOnly"]);
+        let release = owner.proof(
+            &identity,
+            Method::Release,
+            &[AI.as_bytes(), b"readsOnly", b"message"],
+        );
         let grant = AiGrant {
             profile: AI.into(),
             risk: ToolCallRisk::ReadsOnly,
+            program: "message".into(),
         };
         engine.release(&grant, &release).await.unwrap();
         Self {
@@ -211,9 +216,7 @@ impl Rig {
     }
 
     pub async fn read_check(&self) -> Verdict {
-        let input = Arguments::from_text(r#"{"path":"/"}"#).unwrap();
-        self.engine
-            .check(&Caller::new(AI), "message.open", &input)
-            .await
+        let input = serde_json::json!({"path": "/"});
+        super::program::read_unmarked(&self.engine, "message.open", &input).await
     }
 }

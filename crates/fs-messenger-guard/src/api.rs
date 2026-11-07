@@ -10,6 +10,7 @@ use fs_interfaces::provider::Unsupported;
 use crate::arguments::Arguments;
 use crate::error::{GuardError, Refusal};
 use crate::model::{AiGrant, Caller, GuardProof, GuardState, StopReport, Verdict};
+use crate::sensitivity::ObjectRef;
 use fs_messenger_core::ToolCallOutcome;
 
 /// Entry for anyone who wants to act. There is no way to hand it a risk.
@@ -17,6 +18,17 @@ use fs_messenger_core::ToolCallOutcome;
 pub trait Gate: Send + Sync {
     /// May this caller use this capability with these arguments?
     async fn check(&self, caller: &Caller, capability: &str, arguments: &Arguments) -> Verdict;
+
+    /// As `check`, for a read that names the object it reads. The engine looks the object up in its
+    /// `SensitivityLookup`; what is marked asks every time and cannot be released. What the arguments
+    /// say about the object is never read.
+    async fn check_object(
+        &self,
+        caller: &Caller,
+        capability: &str,
+        arguments: &Arguments,
+        object: &ObjectRef,
+    ) -> Verdict;
 
     /// New arguments for an open call the engine issued to this caller: its digest changes, its
     /// revision rises, and an `allowOnce` that was not used lapses. Same arguments change nothing.
@@ -44,8 +56,15 @@ pub trait Guard: Send + Sync {
     async fn invite(&self, profile: &str, proof: &GuardProof) -> Result<(), GuardError>;
     /// What it may do. Refuses `unknown`, `destroys` and `actsForPerson`.
     async fn release(&self, grant: &AiGrant, proof: &GuardProof) -> Result<(), GuardError>;
-    /// Takes all releases of this participant, and its open calls.
+    /// Takes all releases of this participant, in every program, and its open calls.
     async fn revoke(&self, profile: &str, proof: &GuardProof) -> Result<(), GuardError>;
+    /// Takes the releases of this participant in one program, and its open calls of that program.
+    async fn revoke_program(
+        &self,
+        profile: &str,
+        program: &str,
+        proof: &GuardProof,
+    ) -> Result<(), GuardError>;
     /// Withdraws the invitation: its releases and open calls go, and it may ask no more. By who invited
     /// it, or the owner.
     async fn uninvite(&self, profile: &str, proof: &GuardProof) -> Result<(), GuardError>;

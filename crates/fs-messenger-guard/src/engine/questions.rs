@@ -9,16 +9,28 @@ use std::sync::PoisonError;
 use fs_store::ObjectId;
 
 use super::core::{GuardEngine, Retries};
+use super::lookup_once::OnceLookup;
 use crate::arguments::Arguments;
 use crate::error::Refusal;
 use crate::identity::id_key;
 use crate::model::{Caller, Question, Verdict};
 use crate::state::{CallRecord, CallStage, GuardDoc, QuestionInput};
+use crate::words::DESTINATION_UNKNOWN;
 
 impl GuardEngine {
-    pub(super) fn question(&self, call: &CallRecord, detail: &str) -> Verdict {
+    pub(super) async fn question(
+        &self,
+        look: &OnceLookup,
+        call: &CallRecord,
+        detail: &str,
+    ) -> Verdict {
+        let shown = self.shown_call(look, call, detail).await;
+        // The last look, as before `Allow`: the lookup above can take a wait, and a stop may have come.
+        if self.is_latched() {
+            return Verdict::Refuse(Refusal::Stopped);
+        }
         Verdict::Ask(Box::new(Question {
-            call: call.shown(detail),
+            call: shown,
             conversation: call.conversation,
             message: call.message,
             retry_after: self.config.retry_after,
@@ -50,14 +62,16 @@ impl GuardEngine {
     async fn sweep(&self, doc: &mut GuardDoc) {
         for id in doc.sweep_expired(self.clock.now()) {
             if let Some(call) = doc.calls.iter().find(|c| c.id == id) {
-                // Shown as open until this works; a click on it is refused either way.
-                let _ = self.show(call, "").await;
+                // Cleared away without asking for the destination: only a question that is shown
+                // as open needs it. A click on this card is refused either way.
+                let _ = self.show_with(call, "", DESTINATION_UNKNOWN).await;
             }
         }
     }
 
     pub(super) async fn ask_new(
         &self,
+        look: &OnceLookup,
         mut doc: GuardDoc,
         profile: &str,
         capability: &str,
@@ -82,9 +96,11 @@ impl GuardEngine {
             conversation: ObjectId::new(),
             message: ObjectId::new(),
             expires_at: now + self.limits().question_ttl,
+            sensitive: input.sensitive,
         };
         let detail = arguments.detail();
-        let placing = port.place_question(input.turn, profile, call.shown(&detail));
+        let shown = self.shown_call(look, &call, &detail).await;
+        let placing = port.place_question(input.turn, profile, shown);
         let placed = tokio::time::timeout(self.config.store_wait, placing).await;
         let Ok(Ok(placed)) = placed else {
             return Verdict::Refuse(Refusal::NoWayToAsk);
@@ -98,7 +114,7 @@ impl GuardEngine {
             // A question without a record can be clicked, and the click is refused. Still, say so.
             call.stage = CallStage::Cancelled;
             call.revision += 1;
-            let _ = self.show(&call, &detail).await;
+            let _ = self.show(look, &call, &detail).await;
             return Verdict::Refuse(Refusal::NotRecorded);
         }
         for message in pruned {
@@ -112,12 +128,13 @@ impl GuardEngine {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(call.id.clone(), count);
-        self.question(&call, &detail)
+        self.question(look, &call, &detail).await
     }
 
     /// New input has the same limit as a retry, and does not make the card live longer.
     pub(super) async fn revise_call(
         &self,
+        look: &OnceLookup,
         mut doc: GuardDoc,
         caller: &Caller,
         call: &str,
@@ -136,14 +153,17 @@ impl GuardEngine {
         }
         match doc.apply_revise(at, arguments) {
             Err(refusal) => Verdict::Refuse(refusal),
-            Ok(false) => self.question(&doc.calls[at], &arguments.detail()),
+            Ok(false) => {
+                self.question(look, &doc.calls[at], &arguments.detail())
+                    .await
+            }
             Ok(true) => {
                 if self.save(&doc).await.is_err() {
                     return Verdict::Refuse(Refusal::NotRecorded);
                 }
                 let detail = arguments.detail();
-                let _ = self.show(&doc.calls[at], &detail).await;
-                self.question(&doc.calls[at], &detail)
+                let _ = self.show(look, &doc.calls[at], &detail).await;
+                self.question(look, &doc.calls[at], &detail).await
             }
         }
     }

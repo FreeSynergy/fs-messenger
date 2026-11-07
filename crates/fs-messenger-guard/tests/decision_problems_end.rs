@@ -32,7 +32,7 @@ fn the_uris_are_the_contracts() {
 }
 #[tokio::test]
 async fn after_the_stop_a_click_answers_settled_with_cancelled() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let click = w
         .owner
@@ -49,7 +49,7 @@ async fn after_the_stop_a_click_answers_settled_with_cancelled() {
 
 #[tokio::test]
 async fn the_event_tells_the_engines_truth_not_what_an_undo_put_back_on_screen() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let click = w
         .owner
@@ -72,7 +72,7 @@ async fn the_event_tells_the_engines_truth_not_what_an_undo_put_back_on_screen()
 
 #[tokio::test]
 async fn a_signer_who_was_not_asked_answers_not_asked_and_no_event_follows() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let friend = Device::new(FRIEND, 2);
     let key: String = friend.public().iter().map(|b| format!("{b:02x}")).collect();
@@ -94,7 +94,7 @@ async fn a_signer_who_was_not_asked_answers_not_asked_and_no_event_follows() {
 
 #[tokio::test]
 async fn empty_unknown_bad_replayed_and_expired_answer_invalid_and_no_event_follows() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let (_s, mut rx) = listen(&w, EventFilter::default()).await;
     drain(&mut rx).await;
@@ -149,7 +149,7 @@ async fn empty_unknown_bad_replayed_and_expired_answer_invalid_and_no_event_foll
 
 #[tokio::test]
 async fn a_listener_filtered_to_another_conversation_hears_nothing() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let other = w.ask("message.forward", args("/n")).await;
     assert_eq!(
@@ -175,7 +175,7 @@ async fn a_listener_filtered_to_another_conversation_hears_nothing() {
 
 #[tokio::test]
 async fn an_ai_as_the_person_asked_cannot_decide_even_with_a_key() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let ai = Device::new(AI, 9);
     let key: String = ai.public().iter().map(|b| format!("{b:02x}")).collect();
@@ -197,7 +197,7 @@ async fn an_ai_as_the_person_asked_cannot_decide_even_with_a_key() {
 
 #[tokio::test]
 async fn stopped_refuses_a_good_decision_on_a_call_a_record_shows_as_open() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let good = w
         .owner
