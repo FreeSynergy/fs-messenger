@@ -133,9 +133,12 @@ impl MatrixProvider {
                 continue;
             }
             let id = room.room_id().to_string();
-            let to = cursor.since.clone();
+            // A room the cursor does not know has not been read from its start: the fetch that
+            // met it may have failed after the SDK took the answer. Its gap goes to the start.
+            let known = cursor.rooms.contains(&id);
+            let to = cursor.since.clone().filter(|_| known);
             cursor.plan_gap(Gap::new(id.clone(), position.to_owned(), to));
-            if !cursor.rooms.contains(&id) {
+            if !known {
                 cursor.rooms.push(id);
             }
         }

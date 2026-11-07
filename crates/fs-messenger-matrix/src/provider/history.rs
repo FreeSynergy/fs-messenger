@@ -19,6 +19,10 @@ use crate::receive::MatrixCursor;
 const EVENTS_PER_FETCH: usize = 500;
 const PAGES_PER_FETCH: usize = 20;
 const PAGE: u32 = 100;
+/// Empty pages that carry an `end`, per fetch. The specification says an empty chunk does not end
+/// the room (only a missing `end` does), so they are followed; a server that sends them for ever is
+/// stopped here, and the gap stays in the cursor for the next fetch.
+const EMPTY_PAGES_PER_FETCH: usize = 8;
 
 type Read = Vec<(OwnedRoomId, Vec<TimelineEvent>)>;
 
@@ -28,12 +32,12 @@ impl MatrixProvider {
     /// read from the same token next time (`Gap::skip`).
     pub(super) async fn read_gaps(&self, cursor: &mut MatrixCursor) -> Result<(Read, bool)> {
         let mut events = Vec::new();
-        let (mut budget, mut pages) = (EVENTS_PER_FETCH, 0);
+        let (mut budget, mut pages, mut empty) = (EVENTS_PER_FETCH, 0, 0);
         while let Some(gap) = cursor.gaps.last().cloned() {
             if budget == 0 {
                 return Ok((events, true));
             }
-            if pages == PAGES_PER_FETCH {
+            if pages == PAGES_PER_FETCH || empty == EMPTY_PAGES_PER_FETCH {
                 break;
             }
             let room_id = <&RoomId>::try_from(gap.room.as_str())
@@ -48,6 +52,7 @@ impl MatrixProvider {
             options.limit = UInt::from(PAGE);
             let page = self.account.bounded(room.messages(options)).await?;
             let seen = page.chunk.len();
+            empty += usize::from(seen == 0);
             let skipped = gap.skip.min(seen);
             let mut chunk = page.chunk;
             chunk.drain(..skipped);
@@ -58,7 +63,7 @@ impl MatrixProvider {
             if let Some(open) = cursor.gaps.last_mut() {
                 if cut {
                     open.skip = skipped + take;
-                } else if let Some(end) = page.end.filter(|_| seen > 0) {
+                } else if let Some(end) = page.end {
                     open.from = end;
                     open.skip = 0;
                 } else {
