@@ -35,11 +35,25 @@ impl GuardEngine {
 
     /// Show what the state now says. What is shown decides nothing, so a failure only misleads.
     pub(super) async fn show(&self, call: &CallRecord, detail: &str) -> Result<(), String> {
+        if self.port.get().is_none() {
+            return Ok(());
+        }
+        let words = self.destination_for(call).await;
+        self.show_with(call, detail, &words).await
+    }
+
+    /// As `show`, with the destination already found: several calls of one participant and program
+    /// are shown together without asking the source for each.
+    pub(super) async fn show_with(
+        &self,
+        call: &CallRecord,
+        detail: &str,
+        words: &str,
+    ) -> Result<(), String> {
         let Some(port) = self.port.get() else {
             return Ok(());
         };
-        let shown = self.shown_call(call, detail).await;
-        let update = port.update_call(call.message, shown);
+        let update = port.update_call(call.message, call.shown(detail, words));
         tokio::time::timeout(self.config.store_wait, update)
             .await
             .map_err(|_| "the messenger did not answer in time".to_string())?

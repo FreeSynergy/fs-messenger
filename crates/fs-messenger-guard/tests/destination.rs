@@ -4,10 +4,10 @@
 
 mod common;
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
 
-use async_trait::async_trait;
+use common::destination::{Hangs, Panics, Says, known};
 use common::{AI, World, args};
 use fs_messenger_core::ToolCallRisk as R;
 use fs_messenger_guard::{
@@ -15,55 +15,6 @@ use fs_messenger_guard::{
 };
 
 const UNKNOWN: &str = "unbekannt";
-
-/// Says what it is told to, and keeps what it was asked.
-struct Says {
-    answer: Mutex<Destination>,
-    asked: Mutex<Vec<(String, String)>>,
-}
-
-impl Says {
-    fn new(answer: Destination) -> Arc<Self> {
-        Arc::new(Self {
-            answer: Mutex::new(answer),
-            asked: Mutex::new(vec![]),
-        })
-    }
-    fn now_says(&self, answer: Destination) {
-        *self.answer.lock().unwrap() = answer;
-    }
-}
-
-#[async_trait]
-impl DestinationLookup for Says {
-    async fn destination(&self, participant: &str, program: &str) -> Destination {
-        self.asked
-            .lock()
-            .unwrap()
-            .push((participant.into(), program.into()));
-        self.answer.lock().unwrap().clone()
-    }
-}
-
-struct Hangs;
-#[async_trait]
-impl DestinationLookup for Hangs {
-    async fn destination(&self, _: &str, _: &str) -> Destination {
-        std::future::pending().await
-    }
-}
-
-struct Panics;
-#[async_trait]
-impl DestinationLookup for Panics {
-    async fn destination(&self, _: &str, _: &str) -> Destination {
-        panic!("the source broke");
-    }
-}
-
-fn known(words: &str) -> Destination {
-    Destination::Known(words.into())
-}
 
 async fn asked(w: &World, input: serde_json::Value) -> Question {
     w.ask("message.delete", input).await
@@ -218,4 +169,25 @@ async fn the_question_of_a_marked_read_names_where_the_text_goes() {
     };
     assert_eq!(q.call.summary, "to Anthropic");
     assert_eq!(w.shown(&q).await.summary, "to Anthropic");
+}
+
+/// Calls of one participant and program shown together (here: settled by a revoke) ask the source once.
+#[tokio::test]
+async fn calls_shown_together_ask_the_source_once() {
+    let w = World::working().await;
+    let says = Says::new(known("only this device"));
+    assert!(w.engine.set_destinations(says.clone()));
+    for path in ["/a", "/b", "/c"] {
+        asked(&w, args(path)).await;
+    }
+    says.asked.lock().unwrap().clear();
+    let proof = w.owner.proof(
+        &w.identity,
+        fs_messenger_guard::Method::Revoke,
+        &[AI.as_bytes(), b""],
+    );
+    fs_messenger_guard::Guard::revoke(&*w.engine, AI, &proof)
+        .await
+        .unwrap();
+    assert_eq!(says.asked.lock().unwrap().len(), 1);
 }

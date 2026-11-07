@@ -43,11 +43,15 @@ impl GuardEngine {
         }
     }
 
+    /// The destination of a call: its participant and the program of its tool, both from the record.
+    pub(super) async fn destination_for(&self, call: &CallRecord) -> String {
+        self.destination_words(&call.caller, &program_of(&call.capability))
+            .await
+    }
+
     /// A call as shown, with the destination found now.
     pub(super) async fn shown_call(&self, call: &CallRecord, detail: &str) -> ToolCall {
-        let words = self
-            .destination_words(&call.caller, &program_of(&call.capability))
-            .await;
+        let words = self.destination_for(call).await;
         call.shown(detail, &words)
     }
 }

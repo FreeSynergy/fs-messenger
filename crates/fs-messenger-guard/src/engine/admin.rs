@@ -15,6 +15,7 @@ use crate::error::{GuardError, Refusal};
 use crate::identity::id_key;
 use crate::log::GuardLogEntry;
 use crate::model::{AiGrant, GuardMode, GuardProof, GuardState, StopReport};
+use crate::program::program_of;
 use crate::signed::Method;
 use crate::state::{GuardDoc, ProofRequest, check_program_argument};
 
@@ -70,11 +71,26 @@ impl GuardEngine {
 
     pub(crate) async fn show_all(&self, doc: &GuardDoc, ids: &[String]) -> Result<(), GuardError> {
         let mut problems = vec![];
+        // The source is asked once for each participant and program, however many calls are shown.
+        let mut found: Vec<((String, String), String)> = vec![];
         for id in ids {
-            if let Some(call) = doc.calls.iter().find(|c| &c.id == id) {
-                if let Err(why) = self.show(call, "").await {
-                    problems.push(why);
-                }
+            let Some(call) = doc.calls.iter().find(|c| &c.id == id) else {
+                continue;
+            };
+            let key = (call.caller.clone(), program_of(&call.capability));
+            let held = found
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, w)| w.clone());
+            let words = if let Some(words) = held {
+                words
+            } else {
+                let words = self.destination_words(&key.0, &key.1).await;
+                found.push((key, words.clone()));
+                words
+            };
+            if let Err(why) = self.show_with(call, "", &words).await {
+                problems.push(why);
             }
         }
         if problems.is_empty() {

@@ -1,6 +1,7 @@
 //! Shared test helpers: real encrypted `TursoStore`s in temp files, a real messenger, real signatures.
 #![allow(dead_code, unused_imports)] // each test file uses a different subset
 
+pub mod destination;
 pub mod device;
 pub mod events;
 pub mod program;
