@@ -3,7 +3,7 @@
 //! Pattern: none (plain error enum via `thiserror`): one `Error` for every public operation. The
 //! refusal to send is a named variant, so no caller can mistake it for a transport problem.
 
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use crate::model::Encryption;
 
@@ -15,7 +15,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     /// The object store failed.
     #[error("object store: {0}")]
-    Store(#[from] fs_store::Error),
+    Store(#[from] fs_objects::Error),
     /// JSON could not be read or written.
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),

@@ -4,8 +4,8 @@ mod common;
 
 use common::{account, at, raw, setup, with_provider};
 use fs_messenger_core::{Encryption, Error, Ingest, Messenger, RawAttachment, SearchFilter};
-use fs_store::Query;
-use fs_store::Store;
+use fs_objects::Query;
+use fs_objects::Store;
 
 #[tokio::test]
 async fn search_finds_subject_and_text_and_filters_narrow_it() {
@@ -80,7 +80,7 @@ async fn search_finds_subject_and_text_and_filters_narrow_it() {
 #[tokio::test]
 async fn search_pages_with_a_cursor() {
     let store: std::sync::Arc<dyn Store> =
-        std::sync::Arc::new(fs_store::TursoStore::open_in_memory().await.unwrap());
+        std::sync::Arc::new(fs_objects::TursoStore::open_in_memory().await.unwrap());
     let repo = common::repo_over(store, 2).await;
     let me = account(&repo, "me@example.org").await;
     for n in 0..3 {

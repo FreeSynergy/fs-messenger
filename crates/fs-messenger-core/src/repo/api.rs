@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use fs_interfaces::provider::Capabilities;
-use fs_store::{Blob, ObjectId, Query};
+use fs_objects::{Blob, ObjectId, Query};
 
 use super::capabilities::report;
 use super::consts::ACCOUNT;

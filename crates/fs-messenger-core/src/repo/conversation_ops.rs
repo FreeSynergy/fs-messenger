@@ -2,7 +2,7 @@
 //!
 //! Pattern: Command: small edits of one stored record. They are local: no provider is told.
 
-use fs_store::{ActivityKind, LogEntry, ObjectId, StoredObject};
+use fs_objects::{ActivityKind, LogEntry, ObjectId, StoredObject};
 
 use super::handle::Inner;
 use crate::error::Result;

@@ -29,7 +29,7 @@ pub enum MailError {
     Keys(String),
     /// The object store failed.
     #[error("store: {0}")]
-    Store(#[from] fs_store::Error),
+    Store(#[from] fs_objects::Error),
     /// JSON could not be read or written.
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),

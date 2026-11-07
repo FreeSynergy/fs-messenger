@@ -1,6 +1,6 @@
 //! `fs-messenger-core`: program core of FreeSynergy.Messenger (no GUI, no RPC, no real connectors).
 //!
-//! One message model over `fs-store` for mail, chat and agents (ADR 0018, 0054). Start with the
+//! One message model over `fs-objects` for mail, chat and agents (ADR 0018, 0054). Start with the
 //! [`Messenger`] trait; [`MessengerRepo`] is its store-backed implementation. Connectors plug in as
 //! [`Provider`]s. Encrypted only is enforced here, not in the providers. See `DESIGN.md`.
 //!

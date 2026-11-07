@@ -6,7 +6,7 @@ use common::{TestProvider, account, alias, conversation_of, raw, repo_over, setu
 use fs_messenger_core::{
     Encryption, Error, FetchBatch, Ingest, Ingested, Messenger, ProviderCursor,
 };
-use fs_store::{Query, Store, TursoStore};
+use fs_objects::{Query, Store, TursoStore};
 use std::sync::Arc;
 
 #[tokio::test]

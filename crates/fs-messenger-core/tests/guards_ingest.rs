@@ -7,7 +7,7 @@ use fs_messenger_core::{
     Encryption, Error, FetchBatch, Ingest, Ingested, Messenger, ProviderCursor, RawMessage,
     SearchFilter, SenderKind, ToolCall, ToolCallState,
 };
-use fs_store::{ObjectId, Query};
+use fs_objects::{ObjectId, Query};
 
 async fn stored(repo: &fs_messenger_core::MessengerRepo, me: ObjectId, m: RawMessage) -> ObjectId {
     let Ingested::Stored(id) = repo.ingest(me, m).await.unwrap() else {
@@ -96,7 +96,7 @@ async fn nul_is_taken_out_of_text_and_the_original_keeps_every_byte() {
     let (repo, _) = setup().await;
     let me = account(&repo, "me@example.org").await;
     let mut m = raw("m1", "t", "before\0after");
-    m.original = Some(fs_store::Blob {
+    m.original = Some(fs_objects::Blob {
         media_type: "message/rfc822".into(),
         bytes: b"a\0b".to_vec(),
     });

@@ -4,7 +4,7 @@ mod common;
 
 use common::{account, alias, conversation_of, raw, raw_at, setup};
 use fs_messenger_core::{Error, Ingest, Ingested, MessageAction, Messenger};
-use fs_store::{Blob, Query};
+use fs_objects::{Blob, Query};
 
 #[tokio::test]
 async fn a_replay_is_not_stored_twice_and_read_state_survives() {
