@@ -58,12 +58,18 @@ Names are those of section 2 of `conventions/coding.md`, and only where the code
 | `secret.rs` | Newtype | `Password`, `SecretText`: a secret cannot be printed |
 | `receive/alias.rs` | Value object | `EventAlias`: small, private fields, compared by value, written to and read from one text without loss |
 | `receive/cursor.rs` | Memento | `MatrixCursor`: a snapshot of where the provider stands; the core keeps it as opaque text and hands it back |
-| `provider/replay.rs` | Specification | `worth_replaying` and `reads_to_start`: pure predicates over a room's SDK state and whether the cursor knows it; `fetch.rs` (Adapter, part of `MatrixProvider`) does the reading |
+| `provider/replay.rs` | Specification | `worth_replaying` and `reads_to_start`: pure predicates over a room's SDK state and whether the cursor knows it; `fetch.rs` (Adapter, part of `MatrixProvider`) does the reading. **To be removed** (the replay asks `/sync` itself, see the design of the next commits) |
 | `provider/plan.rs` | Specification | `Verdict::passes` (the gate "encrypted only") and `within_member_limit`: pure predicates. `weakest` picks the weaker of two `Encryption` values and is no predicate; nothing combines predicates ("combinable" of the table does not apply). The SDK queries around them are methods of `MatrixProvider` (Adapter, part of it) |
 | `provider/account.rs` | Specification | `check_homeserver`: a pure predicate over the URL; all its refusals have to hold. (`MatrixAccount` itself is plain data with public fields: no Value object) |
 | `lib.rs`, `provider/mod.rs`, `receive/mod.rs`, `store/mod.rs`, `store/{crypto,state}/mod.rs` | none | only declare modules and re-export (section 3): no logic |
 | `receive/ids.rs` | none, allowed (small group of pure functions) | the one encoding of a server id inside a core id: `escape`, `unescape`, `conversation_of`, `room_of` |
-| `receive/{adapter,event,gaps}.rs` | none, allowed (small group of pure functions) | a Matrix event to a `RawMessage`; reading an event's JSON; planning and merging gaps |
+| `receive/{adapter,event}.rs` | none, allowed (small group of pure functions) | a Matrix event to a `RawMessage`; reading an event's JSON |
+| `receive/gaps.rs` | Memento, part of `MatrixCursor` | `plan_gap(&mut self)` changes the cursor, so it is not a pure function (changed: it was listed as a group of pure functions) |
+| `receive/membership.rs` | State | planned: `Known` (Unknown, Member, Away) and `Section` are the states, `step` and `after_check` the transition functions (enum states + transition fns, the table's wording); pure, but it is the state machine of a room, not a bare group of functions |
+| `receive/evidence.rs` | Specification | planned: `is_own_join` is a pure predicate over an event's JSON; `any_own_join` combines it by "any". Combining several different predicates is not used |
+| `receive/{pending,given_up,apply}.rs`, `receive/cursor.rs` | Memento, part of `MatrixCursor` | planned: the waiting list, the named give-ups and the application of the transitions are methods and parts of the one cursor value |
+| `provider/answer.rs` | none, allowed (small group of pure functions) | planned: the one answer type and the conversion `from_sdk` for one concept; no foreign type is wrapped and no trait implemented, so no Adapter |
+| `provider/raw_sync.rs`, `provider/check.rs` | Adapter, part of `MatrixProvider` | planned: our own `/sync` and the filtered `/messages`, over the SDK's `Client::send` and `Room::messages` |
 | `store/{crypto,state}/persist.rs`, `store/{keys,hex,read_back}.rs` | none, allowed (small group of pure functions) | a change as journal entries; journal keys; hex; reading records back |
 | `store/{crypto,state}/restore.rs` | Decorator, part of `FsCryptoStore` / `FsStateStore` | opening the decorator rebuilds the wrapped memory store from the journal |
 | `error.rs`, `*/kind.rs` | none | an error enum, constants |

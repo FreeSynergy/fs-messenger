@@ -1,6 +1,7 @@
 //! Planning gaps without letting them pile up.
 //!
-//! Pattern: none, allowed by section 2 (small group of pure functions for one concept: planning and merging the open gaps of a cursor). A
+//! Pattern: Memento, part of `MatrixCursor` (the type is spread over `cursor.rs`, `gaps.rs`, `pending.rs`, `given_up.rs` and `apply.rs`): `plan_gap(&mut self)` changes the cursor, the snapshot of where
+//! the provider stands, so this is not a group of pure functions. A
 //! gap of a room that touches an open one is joined to it, and a room never keeps more than
 //! [`MAX_GAPS_PER_ROOM`]: the oldest two are then made one, which covers both and everything between
 //! them. Nothing is dropped; a hostile server only makes the one gap read again, never the cursor grow.
