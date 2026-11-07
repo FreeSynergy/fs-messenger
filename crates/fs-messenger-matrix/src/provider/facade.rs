@@ -103,10 +103,13 @@ impl Provider for MatrixProvider {
     }
 
     async fn send(&self, message: &Outgoing) -> CoreResult<SendReceipt> {
-        self.send_message(message).await
+        self.account
+            .whole(Box::pin(self.send_message(message)))
+            .await
     }
 
     async fn encryption_plan(&self, recipients: &[String]) -> CoreResult<EncryptionPlan> {
-        Ok(self.plan_for(recipients).await?)
+        let plan = async { Ok(self.plan_for(recipients).await?) };
+        self.account.whole(Box::pin(plan)).await
     }
 }

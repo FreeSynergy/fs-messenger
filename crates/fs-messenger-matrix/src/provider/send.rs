@@ -64,7 +64,8 @@ impl MatrixProvider {
         let mut sent = self.sent.lock().await;
         let delivery = room.send(content).into_future();
         let result = self.account.bounded(delivery).await.map_err(sdk)?;
-        sent.remember(result.response.event_id.to_string());
+        let alias = EventAlias::new(room.room_id().as_str(), result.response.event_id.as_str());
+        sent.remember(alias.clone());
         drop(sent);
 
         let encryption = match result.encryption_info.as_ref().map(|i| &i.algorithm_info) {
@@ -73,10 +74,7 @@ impl MatrixProvider {
             None => Encryption::None,
         };
         Ok(SendReceipt {
-            aliases: vec![
-                EventAlias::new(room.room_id().as_str(), result.response.event_id.as_str())
-                    .external(),
-            ],
+            aliases: vec![alias.external()],
             conversation: Some(ExternalId::new(SCHEME_ROOM, room.room_id().as_str())),
             encryption,
         })

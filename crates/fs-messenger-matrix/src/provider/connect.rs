@@ -1,10 +1,14 @@
 //! Logging in, and coming back after a restart.
 //!
-//! Pattern: Factory: builds the SDK client over the stores of `fs-store`. The session lives in the
-//! same encrypted store as the keys. A stored session always wins over a password: a new login would
-//! be a new device, with new keys, and the old messages would stay unreadable.
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). It
+//! builds the SDK client over the stores of `fs-store`, a concrete type and no trait object, so not a
+//! Factory. The session lives in the same encrypted store as the keys. A stored session always wins
+//! over a password: a new login would be a new device, with new keys, and the old messages would stay
+//! unreadable.
 //!
-//! The token only ever goes to the configured origin: a homeserver cannot move it, neither with the
+//! The session is stored with the origin of the homeserver that issued it, and a restore against
+//! another origin (or a session stored without one) fails before the first request: the token goes
+//! only to the server that made it. It also only ever goes to the configured origin: a homeserver cannot move it, neither with the
 //! `well_known` of a login answer, which the SDK follows by default, nor with a redirect, which
 //! `reqwest` follows by default. Requests have a time limit and a retry limit: the SDK's default is to
 //! retry a failing server for ever. `MatrixAccount::bounded` is the hard end on top of that.
@@ -26,6 +30,8 @@ use crate::secret::Password;
 use crate::store::{FsCryptoStore, FsJournal, FsStateStore, Journal, Op};
 
 const SESSION_KEY: &str = "session";
+/// The origin of the homeserver that issued the session, stored with it.
+const ORIGIN_KEY: &str = "homeserver";
 
 /// reqwest is built without a crypto provider, so it needs a process-wide one. Installing twice is
 /// not an error: whoever came first stays.
@@ -47,6 +53,11 @@ fn http_client(timeout: Duration) -> Result<reqwest::Client> {
     client.map_err(|e| MatrixError::Sdk(e.to_string()))
 }
 
+const OTHER_SERVER: &str = "the stored session was issued by another homeserver; its token is not \
+sent here. Configure that server, or use a new store and log in again";
+const NO_ORIGIN: &str = "the stored session has no homeserver on record (an older draft); use a new \
+store and log in again";
+
 struct Opened {
     client: Client,
     sessions: FsJournal,
@@ -60,8 +71,17 @@ async fn open(account: &MatrixAccount, store: Arc<TursoStore>) -> Result<Opened>
     let crypto = FsJournal::open(store.clone(), name("crypto")).await?;
     let state = FsJournal::open(store.clone(), name("state")).await?;
     let sessions = FsJournal::open(store, name("session")).await?;
-    let saved = match sessions.load().await?.get(SESSION_KEY) {
-        Some(text) => Some(serde_json::from_str(text.expose()).map_err(crate::StoreFail::from)?),
+    let stored = sessions.load().await?;
+    let saved = match stored.get(SESSION_KEY) {
+        Some(text) => {
+            let origin = account.origin()?;
+            match stored.get(ORIGIN_KEY) {
+                Some(issuer) if issuer.matches(&origin) => {}
+                Some(_) => return Err(MatrixError::Config(OTHER_SERVER.into())),
+                None => return Err(MatrixError::Config(NO_ORIGIN.into())),
+            }
+            Some(serde_json::from_str(text.expose()).map_err(crate::StoreFail::from)?)
+        }
         None => None,
     };
     let config = StoreConfig::new(CrossProcessLockConfig::SingleProcess)
@@ -124,8 +144,12 @@ impl MatrixProvider {
             .session()
             .ok_or_else(|| MatrixError::Sdk("logged in, and no session".into()))?;
         let text = serde_json::to_string(&session).map_err(crate::StoreFail::from)?;
-        let op = Op::Put(SESSION_KEY.to_owned(), text.into());
-        opened.sessions.append(vec![op]).await?;
+        let origin = account.origin()?;
+        let ops = vec![
+            Op::Put(SESSION_KEY.to_owned(), text.into()),
+            Op::Put(ORIGIN_KEY.to_owned(), origin.into()),
+        ];
+        opened.sessions.append(ops).await?;
         Self::started(account, client).await
     }
 

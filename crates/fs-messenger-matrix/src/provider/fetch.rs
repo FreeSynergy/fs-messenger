@@ -19,7 +19,7 @@ use matrix_sdk::store::{StateStoreDataKey, StateStoreDataValue};
 
 use super::MatrixProvider;
 use crate::error::{MatrixError, Result};
-use crate::receive::{Gap, MatrixCursor, RoomContext};
+use crate::receive::{EventAlias, Gap, MatrixCursor, RoomContext};
 
 impl MatrixProvider {
     fn sync_settings(&self, since: Option<String>) -> SyncSettings {
@@ -64,28 +64,37 @@ impl MatrixProvider {
             .into_iter()
             .map(|(r, u)| (r, u.timeline));
         let mut events = Vec::new();
-        for (room_id, timeline) in joined.chain(left) {
+        let limit = usize::try_from(self.account.timeline_limit).unwrap_or(usize::MAX);
+        let mut cut = false;
+        for (room_id, mut timeline) in joined.chain(left) {
+            // `limit` is only a request. What is over it is read again through `/messages`, in pages,
+            // by the replay of the next fetch: the cursor keeps its old `since` for that.
+            if timeline.events.len() > limit {
+                let over = timeline.events.len() - limit;
+                timeline.events.drain(..over);
+                cut = true;
+            }
             let known = cursor.rooms.iter().any(|r| r == room_id.as_str());
             if let (true, Some(from)) = (!known || timeline.limited, timeline.prev_batch) {
-                cursor.plan_gap(Gap {
-                    room: room_id.to_string(),
-                    from,
-                    to: if known { position.clone() } else { None },
-                });
+                let to = if known { position.clone() } else { None };
+                cursor.plan_gap(Gap::new(room_id.to_string(), from, to));
             }
             if !known {
                 cursor.rooms.push(room_id.to_string());
             }
             events.push((room_id, timeline.events));
         }
-        events.extend(self.read_gaps(&mut cursor).await?);
+        let (read, unfinished) = self.read_gaps(&mut cursor).await?;
+        events.extend(read);
 
         let mut messages = Vec::new();
         for (room_id, list) in events {
             let context = self.room_context(&room_id);
             for event in list {
-                let id = event.event_id().map(ToString::to_string);
-                if id.is_some_and(|id| sent.contains(&id)) {
+                let alias = event
+                    .event_id()
+                    .map(|id| EventAlias::new(room_id.as_str(), id));
+                if alias.is_some_and(|alias| sent.contains(&alias)) {
                     continue;
                 }
                 let raw = self.convert(&room_id, &context, event, &mut cursor).await?;
@@ -95,10 +104,12 @@ impl MatrixProvider {
         drop(sent);
 
         messages.extend(self.retry_pending(&mut cursor).await?);
-        cursor.since = Some(response.next_batch);
+        if !cut {
+            cursor.since = Some(response.next_batch);
+        }
         Ok(FetchBatch {
             messages,
-            more: !cursor.gaps.is_empty(),
+            more: unfinished || cut,
             next: Some(cursor.write()?),
         })
     }
@@ -114,11 +125,8 @@ impl MatrixProvider {
                 continue;
             }
             let id = room.room_id().to_string();
-            cursor.plan_gap(Gap {
-                room: id.clone(),
-                from: position.to_owned(),
-                to: cursor.since.clone(),
-            });
+            let to = cursor.since.clone();
+            cursor.plan_gap(Gap::new(id.clone(), position.to_owned(), to));
             if !cursor.rooms.contains(&id) {
                 cursor.rooms.push(id);
             }

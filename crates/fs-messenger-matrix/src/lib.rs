@@ -4,7 +4,8 @@
 //! encrypted rooms and marks an incoming message `megolm` only if decryption really happened. The SDK's
 //! stores live in an encrypted `fs-store`, in pure Rust, not in SQLite. See `DESIGN.md` of this crate.
 //!
-//! Pattern: Facade: this file only declares modules and re-exports the public API.
+//! Pattern: none (this file only declares modules and re-exports the public API; no logic, section 3
+//! of the coding rules).
 
 #![deny(missing_docs)]
 #![warn(clippy::pedantic)]

@@ -9,19 +9,21 @@
 
 use std::collections::{HashSet, VecDeque};
 
+use crate::receive::EventAlias;
+
 const REMEMBERED: usize = 4096;
 
 /// The events sent by this process, newest last.
 #[derive(Debug, Default)]
 pub(super) struct SentEvents {
-    order: VecDeque<String>,
-    known: HashSet<String>,
+    order: VecDeque<EventAlias>,
+    known: HashSet<EventAlias>,
 }
 
 impl SentEvents {
-    pub(super) fn remember(&mut self, event: String) {
-        if self.known.insert(event.clone()) {
-            self.order.push_back(event);
+    pub(super) fn remember(&mut self, alias: EventAlias) {
+        if self.known.insert(alias.clone()) {
+            self.order.push_back(alias);
         }
         if self.order.len() > REMEMBERED
             && let Some(old) = self.order.pop_front()
@@ -30,8 +32,8 @@ impl SentEvents {
         }
     }
 
-    pub(super) fn contains(&self, event: &str) -> bool {
-        self.known.contains(event)
+    pub(super) fn contains(&self, alias: &EventAlias) -> bool {
+        self.known.contains(alias)
     }
 }
 
@@ -41,13 +43,21 @@ mod tests {
 
     #[test]
     fn it_remembers_and_stays_bounded() {
+        let first = EventAlias::new("!r:x", "$first");
         let mut sent = SentEvents::default();
-        sent.remember("$first".into());
-        assert!(sent.contains("$first"));
+        sent.remember(first.clone());
+        assert!(sent.contains(&first));
         for i in 0..REMEMBERED {
-            sent.remember(format!("$e{i}"));
+            sent.remember(EventAlias::new("!r:x", format!("$e{i}")));
         }
-        assert!(!sent.contains("$first"));
+        assert!(!sent.contains(&first));
         assert_eq!(sent.order.len(), REMEMBERED);
+    }
+
+    #[test]
+    fn the_same_event_id_in_another_room_is_not_our_echo() {
+        let mut sent = SentEvents::default();
+        sent.remember(EventAlias::new("!ours:x", "$e"));
+        assert!(!sent.contains(&EventAlias::new("!theirs:x", "$e")));
     }
 }

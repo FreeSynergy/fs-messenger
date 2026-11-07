@@ -1,10 +1,12 @@
 //! [`MatrixProvider`]: one Matrix account behind the core's `Provider` trait.
 //!
-//! Pattern: Facade: this file only declares modules and re-exports.
+//! Pattern: none (this file only declares modules and re-exports; no logic, section 3 of the coding
+//! rules).
 
 mod account;
 mod connect;
 mod convert;
+mod deadline;
 mod echo;
 mod facade;
 mod fetch;

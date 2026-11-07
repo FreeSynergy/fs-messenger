@@ -1,12 +1,13 @@
 //! [`MatrixCursor`]: what the core keeps for this provider.
 //!
 //! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). A
-//! plain value: The `/sync` token, and the events still waiting for a key. Being one value, the
+//! plain value: the `/sync` token, and the events still waiting for a key. Being one value, the
 //! waiting list moves with the batch: the core stores both, or neither, and a crash replays.
 
 use fs_messenger_core::ProviderCursor;
 use serde::{Deserialize, Serialize};
 
+use super::alias::EventAlias;
 use crate::error::{MatrixError, where_json_failed};
 
 /// Events waiting for a key, at most, and their bytes together: the cursor is stored with every batch.
@@ -24,6 +25,13 @@ pub(crate) struct Pending {
     pub(crate) raw: String,
 }
 
+impl Pending {
+    /// The alias the core knows this event under.
+    pub(crate) fn alias(&self) -> EventAlias {
+        EventAlias::new(&self.room, &self.event)
+    }
+}
+
 /// Events still to be read through `/messages`, newest first.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Gap {
@@ -32,6 +40,26 @@ pub(crate) struct Gap {
     pub(crate) from: String,
     /// Where it ends; `None` is the start of the room.
     pub(crate) to: Option<String>,
+    /// Events of the page at `from` already delivered, newest first. A server may answer more events
+    /// than were asked for; the rest of that page is then read from the same token in the next fetch.
+    #[serde(default, skip_serializing_if = "skip_is_zero")]
+    pub(crate) skip: usize,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // the signature serde wants
+fn skip_is_zero(n: &usize) -> bool {
+    *n == 0
+}
+
+impl Gap {
+    pub(crate) fn new(room: String, from: String, to: Option<String>) -> Self {
+        Self {
+            room,
+            from,
+            to,
+            skip: 0,
+        }
+    }
 }
 
 /// Where this provider stands.
@@ -76,11 +104,14 @@ impl MatrixCursor {
         }
     }
 
+    /// Whether this event is a placeholder in the core that still waits for its key.
+    pub(crate) fn is_waiting(&self, alias: &EventAlias) -> bool {
+        self.pending.iter().any(|p| p.alias() == *alias)
+    }
+
     /// Wait for this event's key too. A replay does not add it twice.
     pub(crate) fn wait_for(&mut self, pending: Pending) {
-        if pending.raw.len() > MAX_EVENT_BYTES
-            || self.pending.iter().any(|p| p.event == pending.event)
-        {
+        if pending.raw.len() > MAX_EVENT_BYTES || self.is_waiting(&pending.alias()) {
             return;
         }
         self.pending.push(pending);
@@ -109,11 +140,8 @@ mod tests {
             ..MatrixCursor::default()
         };
         c.rooms.push("!r:x".into());
-        c.plan_gap(Gap {
-            room: "!r:x".into(),
-            from: "t2".into(),
-            to: Some("t1".into()),
-        });
+        c.plan_gap(Gap::new("!r:x".into(), "t2".into(), Some("t1".into())));
+        c.gaps[0].skip = 7;
         c.wait_for(pending("$a"));
         let written = c.write().unwrap();
         assert_eq!(MatrixCursor::read(Some(&written)).unwrap(), c);
@@ -140,6 +168,16 @@ mod tests {
         }
         assert!(c.pending_bytes() <= MAX_PENDING_BYTES);
         assert_eq!(c.pending.last().unwrap().event, "$e39", "the newest stays");
+    }
+
+    #[test]
+    fn the_same_event_id_in_another_room_is_another_event() {
+        let mut c = MatrixCursor::default();
+        let mut other = pending("$a");
+        other.room = "!other:x".into();
+        c.wait_for(pending("$a"));
+        c.wait_for(other);
+        assert_eq!(c.pending.len(), 2, "room and event id make the alias");
     }
 
     #[test]

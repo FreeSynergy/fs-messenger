@@ -1,9 +1,11 @@
 //! [`EventAlias`]: the id under which the core knows a Matrix event.
 //!
-//! Pattern: Newtype. An event id alone is not enough: the core replaces a placeholder by alias without
-//! comparing conversation or sender, and a hostile homeserver can send into room B an event carrying
-//! the id of a placeholder from room A. So the alias holds the room as well, and every place that
-//! builds, reads or looks up an alias goes through this type.
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). A
+//! plain value with two public fields and no invariant to keep, so no Newtype. An event id alone is
+//! not enough: the core replaces a placeholder by alias without comparing conversation or sender,
+//! and a hostile homeserver can send into room B an event carrying the id of a placeholder from room
+//! A. So the alias holds the room as well, and every place that builds, reads or looks up an alias
+//! goes through this type.
 
 use std::fmt::Write;
 
@@ -17,7 +19,7 @@ const SEPARATOR: char = '/';
 /// A room id and an event id, as one alias: `<room>/<event>`. In each part `%`, `/`, `|` and control
 /// characters are written `%XX`, so the single unescaped `/` is the separator whatever a server puts
 /// in an id, and the core, which refuses `|` and control characters in an id, keeps the alias.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EventAlias {
     /// The room the event was sent into.
     pub room: String,

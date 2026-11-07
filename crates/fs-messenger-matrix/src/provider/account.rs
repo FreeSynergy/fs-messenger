@@ -2,9 +2,10 @@
 //!
 //! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). A
 //! token over plain HTTP is readable on the way, so `http://` passes only for loopback: the local
-//! test server, or a tunnel.
+//! test server, or a tunnel. The URL may hold a password (user info), so it is named in no error and
+//! `Debug` shows only its origin.
 
-use std::future::Future;
+use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
@@ -15,11 +16,9 @@ use crate::error::MatrixError;
 /// Timeline events per room in one `/sync`. More are fetched separately if a room has more.
 const DEFAULT_TIMELINE_LIMIT: u32 = 100;
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-/// One call into the SDK may make several requests: sending shares keys first.
-const REQUESTS_PER_CALL: u32 = 8;
 
 /// Who logs in, and where.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct MatrixAccount {
     /// The homeserver's client URL.
     pub homeserver: String,
@@ -31,6 +30,21 @@ pub struct MatrixAccount {
     pub timeline_limit: u32,
     /// How long one request may take, and one read of its answer may stall.
     pub request_timeout: Duration,
+}
+
+impl fmt::Debug for MatrixAccount {
+    // Never the URL itself: a refused one may hold user info with a password.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let origin = Url::parse(&self.homeserver).ok();
+        let origin = origin.map(|u| u.origin().ascii_serialization());
+        f.debug_struct("MatrixAccount")
+            .field("homeserver", &origin.as_deref().unwrap_or("<not a URL>"))
+            .field("user_id", &self.user_id)
+            .field("device_name", &self.device_name)
+            .field("timeline_limit", &self.timeline_limit)
+            .field("request_timeout", &self.request_timeout)
+            .finish()
+    }
 }
 
 impl MatrixAccount {
@@ -45,18 +59,11 @@ impl MatrixAccount {
         }
     }
 
-    /// One call into the SDK, with a hard end. The SDK's own limits do not make one: it waits as long
-    /// as a server's `retry_after` says, whatever the retry limit. Dropping the call cancels it, so a
-    /// message may have left all the same; it then counts as failed, like any lost answer.
-    pub(crate) async fn bounded<T, E: Into<MatrixError>>(
-        &self,
-        work: impl Future<Output = Result<T, E>>,
-    ) -> Result<T, MatrixError> {
-        let limit = self.request_timeout * REQUESTS_PER_CALL;
-        match tokio::time::timeout(limit, work).await {
-            Ok(answer) => answer.map_err(Into::into),
-            Err(_) => Err(MatrixError::Sdk(format!("no answer within {limit:?}"))),
-        }
+    /// The homeserver's origin (scheme, host, port) in one spelling, as a token is bound to it.
+    pub(crate) fn origin(&self) -> Result<String, MatrixError> {
+        self.check_homeserver()?;
+        let url = Url::parse(&self.homeserver).map_err(|_| MatrixError::Config("no URL".into()))?;
+        Ok(url.origin().ascii_serialization())
     }
 
     /// Refuse a homeserver that a token must not be sent to: not http(s), with user info (the part
@@ -64,7 +71,8 @@ impl MatrixAccount {
     /// `127.0.0.1` or `[::1]`. The URL is taken apart by the `url` crate, as the SDK does.
     pub(crate) fn check_homeserver(&self) -> Result<(), MatrixError> {
         let text = self.homeserver.as_str();
-        let refuse = |why: &str| Err(MatrixError::Config(format!("{why}: {text}")));
+        // Not the URL: it may hold a password.
+        let refuse = |why: &str| Err(MatrixError::Config(why.to_owned()));
         if text.contains('\\') {
             return refuse("a backslash in the homeserver URL");
         }
@@ -72,7 +80,7 @@ impl MatrixAccount {
             return refuse("not a valid http(s) URL");
         };
         if !url.username().is_empty() || url.password().is_some() {
-            return refuse("user info in the homeserver URL");
+            return refuse("the homeserver URL holds user info");
         }
         let Some(host) = url.host() else {
             return refuse("no host in the homeserver URL");

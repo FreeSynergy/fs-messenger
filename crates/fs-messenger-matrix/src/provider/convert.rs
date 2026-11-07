@@ -15,7 +15,7 @@ use matrix_sdk::ruma::{OwnedEventId, RoomId};
 
 use super::MatrixProvider;
 use crate::error::{MatrixError, Result};
-use crate::receive::{MatrixCursor, Pending, RoomContext, message, parse, placeholder};
+use crate::receive::{EventAlias, MatrixCursor, Pending, RoomContext, message, parse, placeholder};
 
 const ROOM_MESSAGE: &str = "m.room.message";
 const ROOM_ENCRYPTED: &str = "m.room.encrypted";
@@ -64,7 +64,15 @@ impl MatrixProvider {
                     return Ok(None);
                 };
                 match parsed.event_type.as_str() {
-                    ROOM_MESSAGE => Ok(message(context, &parsed, Encryption::None, Some(json))),
+                    ROOM_MESSAGE => {
+                        let alias = EventAlias::new(room_id.as_str(), &parsed.event_id);
+                        if cursor.is_waiting(&alias) {
+                            // The core would replace the placeholder by this text; see DESIGN.md.
+                            tracing::warn!(room = %room_id, event = %parsed.event_id, "plain event under the id of an undecrypted one: dropped");
+                            return Ok(None);
+                        }
+                        Ok(message(context, &parsed, Encryption::None, Some(json)))
+                    }
                     // Encrypted, and the SDK did not even try: treated like one it could not open.
                     ROOM_ENCRYPTED => Ok(Some(wait_for_key(context, json, cursor))),
                     _ => Ok(None),
