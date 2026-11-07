@@ -1,10 +1,13 @@
 //! [`MatrixAccount`]: where an account lives, and what may be refused before anything connects.
 //!
-//! Pattern: Specification + Value object. A token over plain HTTP is readable on the way, so `http://`
+//! No pattern from the coding rules fits (a validation function); see DESIGN.md, open points. A token over plain HTTP is readable on the way, so `http://`
 //! passes only for loopback: the local test server, or a tunnel.
 
 use std::future::Future;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
+
+use url::{Host, Url};
 
 use crate::error::MatrixError;
 
@@ -55,25 +58,38 @@ impl MatrixAccount {
         }
     }
 
-    /// Refuse a homeserver that a token must not be sent to.
+    /// Refuse a homeserver that a token must not be sent to: not http(s), with user info (the part
+    /// before `@` is not the host), or plain `http://` to anything but exactly `localhost`,
+    /// `127.0.0.1` or `[::1]`. The URL is taken apart by the `url` crate, as the SDK does.
     pub(crate) fn check_homeserver(&self) -> Result<(), MatrixError> {
-        let url = self.homeserver.as_str();
-        if url.starts_with("https://") {
-            return Ok(());
+        let text = self.homeserver.as_str();
+        let refuse = |why: &str| Err(MatrixError::Config(format!("{why}: {text}")));
+        if text.contains('\\') {
+            return refuse("a backslash in the homeserver URL");
         }
-        let host = url
-            .strip_prefix("http://")
-            .ok_or_else(|| MatrixError::Config(format!("not an http(s) URL: {url}")))?
-            .split('/')
-            .next()
-            .unwrap_or_default();
-        let name = host.rsplit_once(':').map_or(host, |(name, _)| name);
-        if matches!(name, "127.0.0.1" | "localhost" | "[::1]") {
-            return Ok(());
+        let Ok(url) = Url::parse(text) else {
+            return refuse("not a valid http(s) URL");
+        };
+        if !url.username().is_empty() || url.password().is_some() {
+            return refuse("user info in the homeserver URL");
         }
-        Err(MatrixError::Config(format!(
-            "plain http only to loopback, not {host}"
-        )))
+        let Some(host) = url.host() else {
+            return refuse("no host in the homeserver URL");
+        };
+        match url.scheme() {
+            "https" => Ok(()),
+            "http" if is_loopback(&host) => Ok(()),
+            "http" => refuse("plain http only to loopback"),
+            _ => refuse("not an http(s) URL"),
+        }
+    }
+}
+
+fn is_loopback(host: &Host<&str>) -> bool {
+    match host {
+        Host::Domain(name) => *name == "localhost",
+        Host::Ipv4(ip) => *ip == Ipv4Addr::LOCALHOST,
+        Host::Ipv6(ip) => *ip == Ipv6Addr::LOCALHOST,
     }
 }
 
@@ -95,5 +111,49 @@ mod tests {
         assert!(!check("http://127.0.0.1.example.org:8008"));
         assert!(!check("http://localhost.evil.org"));
         assert!(!check("ftp://127.0.0.1"));
+    }
+
+    #[test]
+    fn the_real_host_decides_not_the_text_before_a_colon() {
+        for url in [
+            "http://localhost:80@evil.org",
+            "http://localhost@evil.org",
+            "http://127.0.0.1:8008@evil.org/",
+            "http://localhost%40evil.org",
+            "http://localhost:80%40evil.org",
+            "http://localhost\\@evil.org",
+            "http://evil.org\\@localhost",
+            "http://evil.org#@localhost",
+            "http://evil.org?@localhost",
+            "http://user:pw@localhost:8008",
+            "http://localhost.evil.org:8008",
+            "http://127.0.0.1.evil.org",
+            "http://[::1].evil.org",
+            "http://localhost:notaport",
+            "http://localhost:99999",
+            "http://",
+            "https://user@matrix.example.org",
+            "https://user:pw@matrix.example.org",
+            "https://matrix.example.org\\@evil.org",
+            "https://",
+        ] {
+            assert!(!check(url), "must be refused: {url}");
+        }
+    }
+
+    #[test]
+    fn loopback_in_any_case_and_with_any_port() {
+        for url in [
+            "http://LOCALHOST:8008",
+            "http://LocalHost",
+            "http://localhost:1",
+            "http://127.0.0.1",
+            "http://127.0.0.1:65535/_matrix",
+            "http://[::1]",
+            "http://[::1]:8008/x",
+            "https://Matrix.Example.org:8448/path",
+        ] {
+            assert!(check(url), "must pass: {url}");
+        }
     }
 }
