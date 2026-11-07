@@ -22,9 +22,6 @@ impl EngineGuard for Nobody {
     async fn stop_conversation(&self, _: ObjectId) -> Result<()> {
         Ok(())
     }
-    async fn admit_agent_message(&self, _: &str) -> Result<()> {
-        Ok(())
-    }
 }
 
 #[async_trait]

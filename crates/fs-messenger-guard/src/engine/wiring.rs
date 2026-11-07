@@ -44,15 +44,6 @@ impl EngineGuard for Route {
     async fn stop_conversation(&self, conversation: ObjectId) -> CoreResult<()> {
         Ok(self.0.stop_conversation_now(conversation).await?)
     }
-
-    async fn admit_agent_message(&self, sender: &str) -> CoreResult<()> {
-        let wait = self.0.config.sender_wait;
-        self.0
-            .admission(sender, wait)
-            .await
-            .map_err(GuardError::from)?;
-        Ok(())
-    }
 }
 
 #[async_trait]
@@ -66,7 +57,7 @@ impl SenderLookup for Route {
 }
 
 impl GuardEngine {
-    /// May this participant's message come in? No lock: the way in must not wait for the guard's own
+    /// May this participant act as an invited AI? No lock: the way in must not wait for the guard's own
     /// writes. What cannot be said now is `Unavailable`: a sync stops there and loses nothing.
     pub(super) async fn admission(&self, sender: &str, wait: Duration) -> Result<(), Refusal> {
         if self.is_latched() {

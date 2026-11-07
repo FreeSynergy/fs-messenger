@@ -15,21 +15,14 @@ use crate::error::{Error, Result};
 use crate::model::{Account, AccountSetup};
 use crate::provider::ProviderCursor;
 
-/// The kinds of account there are. A closed set, so that no spelling can get around the rule for
-/// `agent`. A new transport adds its name here.
-const KINDS: [&str; 4] = ["mail", "matrix", "mimi", AGENT_ACCOUNT];
-/// An account that carries AI participants only.
-pub(super) const AGENT_ACCOUNT: &str = "agent";
+/// The kinds of account there are: transports only, a closed set. An account belongs to a person; an
+/// AI is a participant, not a kind of account. A new transport adds its name here.
+const KINDS: [&str; 3] = ["mail", "matrix", "mimi"];
 
 /// The one spelling of a kind: without surrounding space, and in lower case.
 fn known_kind(kind: &str) -> Option<&'static str> {
     let plain = kind.trim().to_lowercase();
     KINDS.into_iter().find(|k| *k == plain)
-}
-
-/// Whether this stored kind is `agent`, however an older record spelt it.
-pub(super) fn is_agent(kind: &str) -> bool {
-    kind.trim().eq_ignore_ascii_case(AGENT_ACCOUNT)
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]

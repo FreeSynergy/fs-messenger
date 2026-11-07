@@ -8,10 +8,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use common::{AI, OWNER, World, args, encrypted, engine_on};
 use fs_messenger_core::{
-    AccountSetup, Encryption, Error, ExternalId, Ingest, Ingested, Kind, Messenger,
-    MessengerConfig, MessengerRepo, Provider, RawMessage, ToolCall, ToolCallKind, ToolCallState,
+    AccountSetup, Error, Ingest, Ingested, Messenger, MessengerConfig, MessengerRepo, Provider,
+    ToolCall, ToolCallKind, ToolCallState,
 };
-use fs_messenger_guard::{Guard, GuardError, TursoGuardRepository};
+use fs_messenger_guard::{GuardError, TursoGuardRepository};
 use fs_store::TursoStore;
 fn report(state: ToolCallState) -> ToolCall {
     ToolCall {
@@ -22,20 +22,8 @@ fn report(state: ToolCallState) -> ToolCall {
     }
 }
 
-fn from_ai(id: &str) -> RawMessage {
-    let mut raw = RawMessage::new(
-        ExternalId::new("uid", id),
-        ExternalId::new("thread", "t"),
-        Kind::Chat,
-        AI,
-        "hello",
-    );
-    raw.encryption = Encryption::Mls;
-    raw
-}
-
 #[tokio::test]
-async fn a_report_cannot_land_beside_a_persons_question_or_after_a_stop() {
+async fn a_report_cannot_land_beside_a_persons_question() {
     let w = World::with_ai().await;
     let q = w.ask("message.delete", args("/m")).await;
     let refused = w
@@ -56,80 +44,20 @@ async fn a_report_cannot_land_beside_a_persons_question_or_after_a_stop() {
         1
     );
 
-    let agent = w.account("agents@local", "agent").await;
-    let Ingested::Stored(note) = w.deliver(agent.id, "m1", AI).await.unwrap() else {
+    let account = w.account("ai@local", "matrix").await;
+    let Ingested::Stored(note) = w.deliver(account.id, "m1", AI).await.unwrap() else {
         panic!()
     };
     w.repo
         .record_tool_call(note, "r2", report(ToolCallState::Working))
         .await
         .unwrap();
-    w.engine.stop(&w.stop_proof()).await.unwrap();
-    let refused = w
-        .repo
-        .record_tool_call(note, "r3", report(ToolCallState::Working))
-        .await;
-    assert!(
-        matches!(refused, Err(Error::GuardRefused(_))),
-        "{refused:?}"
-    );
 }
 
 #[tokio::test]
-async fn a_repeat_cannot_get_in_what_a_first_delivery_could_not() {
-    let w = World::with_ai().await;
-    let agent = w.account("agents@local", "agent").await;
-    let mut first = from_ai("m1");
-    first.undecrypted = true;
-    let Ingested::Stored(id) = w.repo.ingest(agent.id, first).await.unwrap() else {
-        panic!()
-    };
-    let conv = w.repo.conversations(None, false, None).await.unwrap().items[0].id;
-    w.engine.stop(&w.stop_proof()).await.unwrap();
-    // The same id again, now readable, with another alias: neither may be taken while stopped.
-    let mut repeat = from_ai("m1");
-    repeat.aliases.push(ExternalId::new("uid", "m1-b"));
-    let refused = w.repo.ingest(agent.id, repeat).await;
-    assert!(
-        matches!(refused, Err(Error::GuardRefused(_))),
-        "{refused:?}"
-    );
-    let held = w.repo.message(conv, id).await.unwrap();
-    assert!(held.summary.undecrypted);
-    assert_eq!(held.aliases.len(), 1);
-}
-
-#[tokio::test]
-async fn no_spelling_of_a_kind_gets_around_the_rule_and_unknown_kinds_are_invalid() {
+async fn only_transports_are_kinds_of_account_and_unknown_kinds_are_invalid() {
     let w = World::open().await;
-    for spelt in ["Agent", " agent", "AGENT ", "agent"] {
-        let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(
-            TursoStore::open_with(dir.path().join("m.db"), encrypted())
-                .await
-                .unwrap(),
-        );
-        let repo = MessengerRepo::open_turso(store, MessengerConfig::new(OWNER))
-            .await
-            .unwrap();
-        let account = repo
-            .add_account(AccountSetup {
-                address: "a@x".into(),
-                kind: spelt.into(),
-                secret: String::new(),
-            })
-            .await
-            .unwrap();
-        assert_eq!(account.kind, "agent", "{spelt:?}");
-        assert!(
-            matches!(
-                repo.ingest(account.id, from_ai("1")).await,
-                Err(Error::GuardRefused(_))
-            ),
-            "{spelt:?}"
-        );
-    }
-    for unknown in ["ai", "llm", "ag ent", "agents", ""] {
+    for unknown in ["ai", "llm", "ag ent", "agents", "agent", ""] {
         let result = w
             .repo
             .add_account(AccountSetup {
@@ -152,6 +80,22 @@ async fn no_spelling_of_a_kind_gets_around_the_rule_and_unknown_kinds_are_invali
         } else {
             assert!(matches!(w.repo.add_account(setup).await, Ok(a) if a.kind == "mail"));
         }
+    }
+}
+
+#[tokio::test]
+async fn an_account_of_type_agent_is_refused_in_every_spelling() {
+    let w = World::open().await;
+    for spelt in ["agent", "Agent", " agent", "AGENT "] {
+        let result = w
+            .repo
+            .add_account(AccountSetup {
+                address: "agents@local".into(),
+                kind: spelt.into(),
+                secret: String::new(),
+            })
+            .await;
+        assert!(matches!(result, Err(Error::Invalid(_))), "{spelt:?}");
     }
 }
 

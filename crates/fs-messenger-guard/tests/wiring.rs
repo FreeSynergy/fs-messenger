@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use common::{AI, OWNER, World, args, encrypted, engine_on};
 use fs_messenger_core::{
-    AccountSetup, Ingest, Kind, MessageAction, Messenger, MessengerConfig, MessengerRepo,
-    RawMessage, ToolCallDecision,
+    AccountSetup, Ingest, Ingested, Kind, MessageAction, Messenger, MessengerConfig, MessengerRepo,
+    RawMessage, SenderKind, ToolCallDecision,
 };
 use fs_store::{ObjectId, TursoStore};
 use serde_json::json;
@@ -76,7 +76,7 @@ async fn without_a_guard_decide_and_stop_answer_unsupported() {
 }
 
 #[tokio::test]
-async fn without_a_guard_an_agent_account_stores_nothing() {
+async fn without_a_guard_nobody_reads_as_an_ai() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(
         TursoStore::open_with(dir.path().join("m.db"), encrypted())
@@ -88,8 +88,8 @@ async fn without_a_guard_an_agent_account_stores_nothing() {
         .unwrap();
     let account = repo
         .add_account(AccountSetup {
-            address: "agents@local".into(),
-            kind: "agent".into(),
+            address: "me@local".into(),
+            kind: "matrix".into(),
             secret: String::new(),
         })
         .await
@@ -101,9 +101,14 @@ async fn without_a_guard_an_agent_account_stores_nothing() {
         AI,
         "hello",
     );
-    assert!(matches!(
-        repo.ingest(account.id, raw).await,
-        Err(fs_messenger_core::Error::GuardRefused(_))
-    ));
+    let Ingested::Stored(id) = repo.ingest(account.id, raw).await.unwrap() else {
+        panic!()
+    };
+    let conv = repo.conversations(None, false, None).await.unwrap().items[0].id;
+    assert_eq!(
+        repo.message(conv, id).await.unwrap().summary.sender_kind,
+        SenderKind::Unknown,
+        "no guard, no invited list: nobody reads as an AI, and never as a person"
+    );
     let _ = json!({});
 }

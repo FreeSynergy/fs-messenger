@@ -106,47 +106,6 @@ async fn invite_and_release_are_refused_while_stopped() {
 }
 
 #[tokio::test]
-async fn the_rule_for_messages_of_an_agent_account() {
-    let w = World::open().await;
-    let agent = w.account("agents@local", "agent").await;
-    // Uninvited: refused, nothing stored.
-    let refused = w.deliver(agent.id, "m0", AI).await;
-    assert!(matches!(
-        refused,
-        Err(fs_messenger_core::Error::GuardRefused(_))
-    ));
-    assert_eq!(
-        w.repo
-            .conversations(None, false, None)
-            .await
-            .unwrap()
-            .items
-            .len(),
-        0
-    );
-
-    w.invite(AI).await;
-    let Ingested::Stored(id) = w.deliver(agent.id, "m1", AI).await.unwrap() else {
-        panic!()
-    };
-    let conv = w.repo.conversations(None, false, None).await.unwrap().items[0].id;
-    assert_eq!(
-        w.repo.message(conv, id).await.unwrap().summary.sender_kind,
-        SenderKind::Ai,
-        "chatting needs no release, and the invited read as AI"
-    );
-
-    w.engine.stop(&w.stop_proof()).await.unwrap();
-    assert!(
-        matches!(
-            w.deliver(agent.id, "m2", AI).await,
-            Err(fs_messenger_core::Error::GuardRefused(_))
-        ),
-        "stopped: every AI participant is refused"
-    );
-}
-
-#[tokio::test]
 async fn over_another_transport_the_uninvited_is_stored_and_marked_as_not_known() {
     let w = World::open().await;
     let mail = w.account("me@example.org", "mail").await;

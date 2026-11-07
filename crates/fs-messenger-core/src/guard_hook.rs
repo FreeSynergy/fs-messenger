@@ -49,9 +49,6 @@ pub trait EngineGuard: Send + Sync {
 
     /// `Conversation.stop`: ends its turns and settles its open calls as cancelled.
     async fn stop_conversation(&self, conversation: ObjectId) -> Result<()>;
-
-    /// May a message from an account of kind `agent` be stored? An error refuses it.
-    async fn admit_agent_message(&self, sender: &str) -> Result<()>;
 }
 
 /// The kind on a sender's card (ADR 0054). Answers `Unknown` for whom it does not know; never a guess

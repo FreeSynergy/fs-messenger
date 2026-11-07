@@ -8,8 +8,7 @@ use std::time::Duration;
 
 use common::rigs::{Rig, eventually};
 use common::{AI, World};
-use fs_messenger_core::{AccountSetup, Ingest, Ingested, Messenger as _};
-use fs_messenger_guard::{Guard, GuardError, GuardRepository as _, Method, Refusal, Verdict};
+use fs_messenger_guard::{Gate, Guard, GuardError, GuardRepository as _, Method, Refusal, Verdict};
 
 async fn stopped_rig() -> Rig {
     let r = Rig::open().await;
@@ -67,15 +66,6 @@ async fn a_stop_behind_a_slow_reopen_is_not_lost_when_the_wait_for_the_lock_ends
 #[tokio::test]
 async fn nothing_gets_in_between_the_end_of_a_reopen_and_the_stop_that_came_during_it() {
     let r = stopped_rig().await;
-    let agent = r
-        .repo
-        .add_account(AccountSetup {
-            address: "agents@local".into(),
-            kind: "agent".into(),
-            secret: String::new(),
-        })
-        .await
-        .unwrap();
     r.faulty.hold_save.store(true, Ordering::SeqCst);
     let (engine, reopen) = (r.engine.clone(), r.proof(Method::Reopen));
     let reopening = tokio::spawn(async move { engine.reopen(&reopen).await });
@@ -87,20 +77,13 @@ async fn nothing_gets_in_between_the_end_of_a_reopen_and_the_stop_that_came_duri
     r.faulty.hold_append.store(true, Ordering::SeqCst);
     r.faulty.go.notify_one();
     r.faulty.entered.notified().await;
-    let mut raw = fs_messenger_core::RawMessage::new(
-        fs_messenger_core::ExternalId::new("uid", "1"),
-        fs_messenger_core::ExternalId::new("thread", "1"),
-        fs_messenger_core::Kind::Chat,
-        AI,
-        "hello",
-    );
-    raw.encryption = fs_messenger_core::Encryption::Mls;
-    let way_in = r.repo.ingest(agent.id, raw).await;
+    let way_in = r.engine.admit_message(AI).await;
     r.faulty.go.notify_one();
     let _ = reopening.await.unwrap();
     stopping.await.unwrap().unwrap();
-    assert!(
-        !matches!(way_in, Ok(Ingested::Stored(_))),
-        "an agent message got in after a stop: {way_in:?}"
+    assert_eq!(
+        way_in,
+        Err(Refusal::Stopped),
+        "a participant's way in is shut once a stop has arrived"
     );
 }

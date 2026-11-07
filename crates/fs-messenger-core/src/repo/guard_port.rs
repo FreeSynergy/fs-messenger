@@ -10,7 +10,6 @@ use std::time::Duration;
 use fs_store::{ObjectId, Query};
 use tokio::time::timeout;
 
-use super::accounts::is_agent;
 use super::consts::{IDX_OPEN_CALL, NOTE, YES};
 use super::guard_note::ENGINE_ACTOR;
 use super::handle::{Inner, MessengerRepo};
@@ -78,37 +77,16 @@ impl Inner {
         self.wiring.get().map(|w| &w.guard)
     }
 
-    /// What this sender is, and whether its message may be stored. The rule is in the guard's
-    /// `DESIGN.md`: an account of kind `agent` carries AI participants only, so without a guard, or
-    /// without the guard's word, nothing of it is stored. Called without any lock held, and a guard
-    /// that does not answer cannot stall a messenger write: for a sender that reads as not known, and
-    /// for an agent's message as "try again".
-    pub(super) async fn admitted_sender(
-        &self,
-        account_kind: &str,
-        sender: &str,
-    ) -> Result<SenderKind> {
+    /// What this sender is: `Ai` only for whom the person invited, else `Unknown`; never `person`.
+    /// Called without any lock held, and a guard that does not answer cannot stall a messenger write:
+    /// no answer in time reads as `Unknown`, which carries no right. Without a guard: `Unknown`.
+    pub(super) async fn sender_kind_of(&self, sender: &str) -> SenderKind {
         let Some(wiring) = self.wiring.get() else {
-            if is_agent(account_kind) {
-                return Err(Error::GuardRefused(
-                    "no guard is installed, so no AI participant exists".into(),
-                ));
-            }
-            return Ok(SenderKind::Unknown);
+            return SenderKind::Unknown;
         };
-        if is_agent(account_kind) {
-            match timeout(GUARD_WAIT, wiring.guard.admit_agent_message(sender)).await {
-                Ok(answer) => answer?,
-                Err(_) => {
-                    return Err(Error::GuardUnavailable(
-                        "the guard did not answer in time".into(),
-                    ));
-                }
-            }
-        }
-        Ok(timeout(GUARD_WAIT, wiring.senders.sender_kind(sender))
+        timeout(GUARD_WAIT, wiring.senders.sender_kind(sender))
             .await
-            .unwrap_or(SenderKind::Unknown))
+            .unwrap_or(SenderKind::Unknown)
     }
 }
 

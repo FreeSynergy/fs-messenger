@@ -70,18 +70,12 @@ fn holds_engine_call(message: &Message) -> bool {
 }
 
 impl Inner {
-    /// A report is an act of its sender: an AI that may not send a message may not report either.
+    /// A report may not land beside a question of the engine. It gets no right either way.
     async fn report_may_land(&self, id: ObjectId) -> Result<()> {
         let message = self.load_note(id).await?;
         if holds_engine_call(&message) {
             return Err(Error::GuardRefused(BESIDE_QUESTION.into()));
         }
-        let Some(account) = message.account else {
-            return Ok(());
-        };
-        let (_, content) = self.load_account(account).await?;
-        let sender = message.summary.envelope.attributed_to.unwrap_or_default();
-        self.admitted_sender(&content.kind, &sender).await?;
         Ok(())
     }
 

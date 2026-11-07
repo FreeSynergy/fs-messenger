@@ -30,8 +30,8 @@ pub trait Gate: Send + Sync {
         outcome: ToolCallOutcome,
     ) -> Result<(), Refusal>;
 
-    /// May a message of this participant arrive? Chatting needs no release, only the invitation, and
-    /// an open program.
+    /// May this participant act as an invited AI? Needs the invitation and an open program. Not used
+    /// by the messenger's way in: a message is stored for any sender (`SenderLookup` only marks it).
     async fn admit_message(&self, sender: &str) -> Result<(), Refusal>;
 }
 

@@ -26,8 +26,8 @@ impl IngestSteps for Inner {
     }
 
     async fn admit(&self, account: ObjectId, raw: &RawMessage) -> Result<SenderKind> {
-        let (_, content) = self.load_account(account).await?;
-        self.admitted_sender(&content.kind, &raw.sender).await
+        self.load_account(account).await?;
+        Ok(self.sender_kind_of(&raw.sender).await)
     }
 
     async fn exclusive(&self) -> OwnedMutexGuard<()> {

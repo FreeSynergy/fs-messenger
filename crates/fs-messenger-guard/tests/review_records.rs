@@ -9,8 +9,8 @@ use async_trait::async_trait;
 use common::rigs::Rig;
 use common::{AI, World, args};
 use fs_messenger_core::{
-    AccountSetup, Encryption, Error, ExternalId, FetchBatch, Ingest, Kind, MessageAction,
-    Messenger, Provider, ProviderCursor, RawMessage, ToolCallOutcome, ToolCallRisk,
+    AccountSetup, Encryption, ExternalId, FetchBatch, Ingest, Kind, MessageAction, Messenger,
+    Provider, ProviderCursor, RawMessage, SenderKind, ToolCallOutcome, ToolCallRisk,
 };
 use fs_messenger_guard::{
     Allowance, Arguments, Caller, CapabilityRule, Gate, Guard, Verdict, capability_rule,
@@ -160,36 +160,28 @@ impl Provider for OneMessage {
 }
 
 #[tokio::test]
-async fn a_read_error_of_the_guard_store_does_not_cost_an_agents_message() {
+async fn a_guard_store_that_does_not_answer_reads_as_unknown_and_stalls_nothing() {
     let r = Rig::open().await;
     let account = r
         .repo
         .add_account(AccountSetup {
-            address: "agents@local".into(),
-            kind: "agent".into(),
+            address: "ai@local".into(),
+            kind: "matrix".into(),
             secret: String::new(),
         })
         .await
         .unwrap();
     r.repo.register_provider(account.id, Arc::new(OneMessage));
     r.faulty.hang_loads.store(true, Ordering::SeqCst);
-    let result = r.repo.sync(account.id).await;
-    assert!(
-        matches!(result, Err(Error::GuardUnavailable(_))),
-        "{result:?}"
+    let report = r.repo.sync(account.id).await.unwrap();
+    assert_eq!(report.stored, 1, "the message is not lost");
+    let conv = r.repo.conversations(None, false, None).await.unwrap().items[0].id;
+    let shown = r.repo.messages(conv, None).await.unwrap().items;
+    assert_eq!(
+        shown[0].sender_kind,
+        SenderKind::Unknown,
+        "no answer in time reads as unknown, never as a person"
     );
-    assert!(
-        r.repo
-            .conversations(None, false, None)
-            .await
-            .unwrap()
-            .items
-            .is_empty()
-    );
-    // It comes back, and the message with it: the cursor stayed.
-    r.faulty.hang_loads.store(false, Ordering::SeqCst);
-    let again = r.repo.sync(account.id).await.unwrap();
-    assert_eq!(again.stored, 1);
 }
 
 #[tokio::test]
