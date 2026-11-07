@@ -19,7 +19,7 @@ use matrix_sdk::ruma::{OwnedEventId, RoomId, UserId};
 
 use super::MatrixProvider;
 use crate::error::MatrixError;
-use crate::receive::{EventAlias, SCHEME_ROOM};
+use crate::receive::{EventAlias, conversation_of, room_of};
 
 fn invalid(why: impl Into<String>) -> CoreError {
     CoreError::Invalid(why.into())
@@ -75,7 +75,7 @@ impl MatrixProvider {
         };
         Ok(SendReceipt {
             aliases: vec![alias.external()],
-            conversation: Some(ExternalId::new(SCHEME_ROOM, room.room_id().as_str())),
+            conversation: Some(conversation_of(room.room_id().as_str())),
             encryption,
         })
     }
@@ -83,12 +83,9 @@ impl MatrixProvider {
     /// The conversation's room; or the one recipient room; or the direct room with the one person,
     /// opened if there is none; or a new room for several people. Opened rooms are always encrypted.
     async fn target_room(&self, message: &Outgoing) -> CoreResult<Room> {
-        let known = message
-            .conversation()
-            .iter()
-            .find(|a| a.scheme == SCHEME_ROOM);
-        if let Some(alias) = known {
-            return self.known_room(&alias.id);
+        let known = message.conversation().iter().find_map(room_of);
+        if let Some(room) = known {
+            return self.known_room(&room);
         }
         let everyone = [message.to(), message.cc()].concat();
         if let [only] = everyone.as_slice()

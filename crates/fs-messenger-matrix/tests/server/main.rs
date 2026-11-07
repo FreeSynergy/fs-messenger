@@ -20,6 +20,7 @@ mod http;
 mod ciphertext;
 mod late_key;
 mod plain;
+mod rejoin;
 mod replay;
 mod restart;
 mod roundtrip;

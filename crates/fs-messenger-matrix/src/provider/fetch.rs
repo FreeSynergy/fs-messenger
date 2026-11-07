@@ -86,6 +86,7 @@ impl MatrixProvider {
             }
             events.push((room_id, timeline.events));
         }
+        self.forget_rooms_not_joined(&mut cursor);
         // A cut with nothing open before says `more` once and reads the gap next time, so that one
         // fetch stays small. A cut with gaps open already does not: those carry the work, and a
         // server that cuts every answer must not keep `sync()` going.
@@ -142,6 +143,18 @@ impl MatrixProvider {
                 cursor.rooms.push(id);
             }
         }
+    }
+
+    /// A room the account is no longer in (left, rejected, forgotten, banned) is not "read": when it
+    /// comes back, what was said meanwhile has to be read as for a new room, not only down to the old
+    /// position. Its open gaps stay: `read_gaps` reads what the server still gives.
+    fn forget_rooms_not_joined(&self, cursor: &mut MatrixCursor) {
+        cursor.rooms.retain(|id| {
+            <&RoomId>::try_from(id.as_str())
+                .ok()
+                .and_then(|id| self.client.get_room(id))
+                .is_some_and(|room| room.state() == RoomState::Joined)
+        });
     }
 
     pub(super) fn room_context(&self, room_id: &RoomId) -> RoomContext {

@@ -7,14 +7,12 @@
 //! A. So the alias holds the room as well, and every place that builds, reads or looks up an alias
 //! goes through this type.
 
-use std::fmt::Write;
-
 use fs_messenger_core::ExternalId;
+
+use super::ids::{SEPARATOR, escape, unescape};
 
 /// Scheme of a Matrix event alias: what the provider issued, so what recognises a replay.
 pub const SCHEME_EVENT: &str = "matrix";
-
-const SEPARATOR: char = '/';
 
 /// A room id and an event id, as one alias: `<room>/<event>`. In each part `%`, `/`, `|` and control
 /// characters are written `%XX`, so the single unescaped `/` is the separator whatever a server puts
@@ -23,39 +21,6 @@ const SEPARATOR: char = '/';
 pub struct EventAlias {
     room: String,
     event: String,
-}
-
-fn escape(part: &str) -> String {
-    let mut out = String::with_capacity(part.len());
-    for c in part.chars() {
-        if matches!(c, '%' | SEPARATOR | '|') || c.is_control() {
-            let mut buf = [0; 4];
-            for byte in c.encode_utf8(&mut buf).bytes() {
-                let _ = write!(out, "%{byte:02X}");
-            }
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
-fn unescape(part: &str) -> Option<String> {
-    let mut bytes = Vec::with_capacity(part.len());
-    let mut rest = part.as_bytes();
-    while let Some((&byte, tail)) = rest.split_first() {
-        if byte == b'%' {
-            let hex = std::str::from_utf8(tail.get(..2)?).ok()?;
-            bytes.push(u8::from_str_radix(hex, 16).ok()?);
-            rest = &tail[2..];
-        } else {
-            bytes.push(byte);
-            rest = tail;
-        }
-    }
-    let text = String::from_utf8(bytes).ok()?;
-    // Only what `escape` writes: another spelling of the same pair would be a second alias for it.
-    (escape(&text) == part).then_some(text)
 }
 
 impl EventAlias {

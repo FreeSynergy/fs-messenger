@@ -10,6 +10,7 @@ use fs_store::Blob;
 
 use super::alias::EventAlias;
 use super::event::ParsedEvent;
+use super::ids::conversation_of;
 
 /// Scheme of a room id: the conversation.
 pub const SCHEME_ROOM: &str = "matrix-room";
@@ -39,7 +40,7 @@ fn build(
     encryption: Encryption,
     original: Option<&str>,
 ) -> RawMessage {
-    let conversation = ExternalId::new(SCHEME_ROOM, &room.room_id);
+    let conversation = conversation_of(&room.room_id);
     let mut raw = RawMessage::new(alias, conversation, Kind::Chat, &event.sender, body);
     raw.conversation_name.clone_from(&room.name);
     raw.encryption = encryption;
@@ -111,7 +112,7 @@ mod tests {
     fn the_room_and_event_id_are_the_alias_and_the_room_the_conversation() {
         let raw = message(&room(), &event("@a:x"), Encryption::None, Some("{}")).unwrap();
         assert_eq!(raw.aliases, [EventAlias::new("!r:x", "$e").external()]);
-        assert_eq!(raw.conversation, ExternalId::new(SCHEME_ROOM, "!r:x"));
+        assert_eq!(raw.conversation, conversation_of("!r:x"));
         assert_eq!(
             raw.in_reply_to,
             Some(EventAlias::new("!r:x", "$p").external())

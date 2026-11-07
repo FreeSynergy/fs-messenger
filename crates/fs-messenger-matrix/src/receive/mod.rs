@@ -10,9 +10,11 @@ mod alias;
 mod cursor;
 mod event;
 mod gaps;
+mod ids;
 
 pub(crate) use adapter::{RoomContext, message, placeholder};
 pub use adapter::{SCHEME_ROOM, UNDECRYPTED_MARK};
 pub use alias::{EventAlias, SCHEME_EVENT};
 pub(crate) use cursor::{Gap, MatrixCursor, Pending};
 pub(crate) use event::parse;
+pub(crate) use ids::{conversation_of, room_of};

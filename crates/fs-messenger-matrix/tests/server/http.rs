@@ -154,3 +154,9 @@ pub async fn devices(token: &str) -> Vec<String> {
         .map(|d| d["device_id"].as_str().unwrap().to_owned())
         .collect()
 }
+
+/// A room-level action by a plain HTTP client (`leave`, `forget`, `invite`, `join` ...), body as given.
+pub async fn room_action(token: &str, room: &str, action: &str, body: Value) -> Value {
+    let path = format!("/rooms/{}/{action}", encode(room));
+    post(&path, Some(token), body).await
+}
