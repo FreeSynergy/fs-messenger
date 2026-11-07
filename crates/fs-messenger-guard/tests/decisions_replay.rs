@@ -44,7 +44,7 @@ async fn refused(w: &World, q: &Question, d: ToolCallDecision, why: &str) {
 
 #[tokio::test]
 async fn an_expired_question_is_refused() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     w.clock.advance(chrono::Duration::minutes(11));
     refused(&w, &q, good(&w, &q), "expired").await;
@@ -52,7 +52,7 @@ async fn an_expired_question_is_refused() {
 
 #[tokio::test]
 async fn an_unused_allow_once_expires_too() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     send(&w, &q, good(&w, &q)).await.unwrap();
     w.clock.advance(chrono::Duration::minutes(3));
@@ -67,7 +67,7 @@ async fn an_unused_allow_once_expires_too() {
 
 #[tokio::test]
 async fn a_replayed_proof_is_refused_by_the_used_list_even_if_the_record_is_turned_back() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let d = good(&w, &q);
     send(&w, &q, d.clone()).await.unwrap();
@@ -91,7 +91,7 @@ async fn a_replayed_proof_is_refused_by_the_used_list_even_if_the_record_is_turn
 #[tokio::test]
 async fn another_signature_for_the_same_bytes_is_the_same_proof() {
     use ed25519_compact::Noise;
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let d = good(&w, &q);
     send(&w, &q, d.clone()).await.unwrap();
@@ -131,7 +131,7 @@ async fn another_signature_for_the_same_bytes_is_the_same_proof() {
 #[tokio::test]
 async fn an_id_chosen_by_an_agent_identifies_nothing() {
     use fs_messenger_core::{Ingest, ToolCall, ToolCallKind};
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     // An agent reports a call on the question's message, naming the question's id.
     let report = ToolCall {
@@ -175,7 +175,7 @@ fn the_choices_stay_as_the_contract_has_them() {
 
 #[tokio::test]
 async fn an_answered_or_running_call_takes_no_second_answer_even_at_its_current_revision() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     send(&w, &q, good(&w, &q)).await.unwrap();
     // Approved: well signed, for the revision on screen. No question stands.

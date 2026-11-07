@@ -87,7 +87,12 @@ pub(crate) fn options_for(risk: ToolCallRisk, has_input: bool) -> Vec<ToolCallOp
 }
 
 impl CallRecord {
+    /// A marked read is `readsSensitive` here, which the contract does not have yet: it shows as
+    /// `unknown`, which asks every time and offers no release.
     pub(crate) fn risk(&self) -> ToolCallRisk {
+        if self.sensitive {
+            return ToolCallRisk::Unknown;
+        }
         derived_risk(&self.capability, self.has_input)
     }
 
@@ -99,7 +104,7 @@ impl CallRecord {
             name: self.capability.clone(),
             kind: ToolCallKind::Unknown,
             state: self.stage.state(),
-            summary: String::new(),
+            summary: self.goes_to.clone(),
             risk: self.risk(),
             outcome: self.stage.outcome(),
             detail: detail.to_string(),

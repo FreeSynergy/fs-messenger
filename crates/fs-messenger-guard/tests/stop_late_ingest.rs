@@ -61,7 +61,7 @@ fn is_cancelled(call: &ToolCall) -> bool {
 
 #[tokio::test]
 async fn ingest_before_a_stop_keeps_the_call_working() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let account = w.account("a@local", "matrix").await;
     let note = arrive(&w.repo, account.id, "m1", AI).await;
     let held = calls(&w.repo, note).await;
@@ -71,7 +71,7 @@ async fn ingest_before_a_stop_keeps_the_call_working() {
 
 #[tokio::test]
 async fn ingest_after_a_stop_is_cancelled_for_an_ai_and_for_strangers() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let account = w.account("a@local", "matrix").await;
     w.engine.stop(&w.stop_proof()).await.unwrap();
     for (n, sender) in [AI, OTHER_AI, "x@y"].into_iter().enumerate() {
@@ -84,7 +84,7 @@ async fn ingest_after_a_stop_is_cancelled_for_an_ai_and_for_strangers() {
 
 #[tokio::test]
 async fn ingest_after_a_reopen_is_working_again() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let account = w.account("a@local", "matrix").await;
     w.engine.stop(&w.stop_proof()).await.unwrap();
     w.engine.reopen(&w.reopen_proof()).await.unwrap();

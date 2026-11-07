@@ -58,6 +58,14 @@ impl World {
         fs_messenger_guard::Guard::release(&*self.engine, &grant, &proof).await
     }
 
+    /// Something is released in the program of this tool, so that what always asks can ask.
+    pub async fn unlock_program_of(&self, capability: &str) {
+        let program = program_of(capability);
+        self.release_in(AI, ToolCallRisk::ReadsOnly, &program, GOES_TO)
+            .await
+            .unwrap();
+    }
+
     /// The default release of the helpers: `message`, this device only.
     pub async fn release_default(&self, risk: ToolCallRisk) {
         self.release_in(AI, risk, PROGRAM, GOES_TO).await.unwrap();

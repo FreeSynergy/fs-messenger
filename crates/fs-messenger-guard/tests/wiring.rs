@@ -27,7 +27,7 @@ async fn a_second_guard_cannot_be_installed() {
 
 #[tokio::test]
 async fn the_decide_route_goes_to_the_guard_and_needs_a_proof() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let mut d = w
         .owner

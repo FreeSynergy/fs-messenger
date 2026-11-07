@@ -13,6 +13,7 @@ const DENIED: Verdict = Verdict::Refuse(Refusal::NotReleased);
 async fn no_release_means_no_for_every_class_and_no_question() {
     let w = World::with_ai().await;
     let before = w.record().await;
+    let logged = w.engine.log().await.unwrap().len();
     for tool in [
         "message.open",   // readsOnly
         "message.flag",   // changes
@@ -26,8 +27,8 @@ async fn no_release_means_no_for_every_class_and_no_question() {
     assert_eq!(w.record().await, before, "a refusal writes nothing");
     assert_eq!(
         w.engine.log().await.unwrap().len(),
-        1,
-        "only the invitation"
+        logged,
+        "nor a log entry"
     );
 }
 

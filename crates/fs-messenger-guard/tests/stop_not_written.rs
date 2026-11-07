@@ -116,7 +116,7 @@ async fn when_the_store_stops_answering_everything_is_refused_and_comes_back_onl
 #[tokio::test]
 async fn an_allow_once_that_cannot_be_used_up_in_the_state_is_refused() {
     // Over a real messenger: the question and the decision go the normal way.
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let d = w
         .owner

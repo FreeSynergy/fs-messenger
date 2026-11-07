@@ -2,11 +2,11 @@
 
 mod common;
 
-use common::{AI, Device, FRIEND, OWNER, World, args};
+use common::{Device, FRIEND, OWNER, World, args};
 use fs_messenger_core::{
     Error, MessageAction, Messenger, ToolCallDecision, ToolCallOutcome, ToolCallRisk, ToolCallState,
 };
-use fs_messenger_guard::{AiGrant, Allowance, Guard, Method, Question, Verdict};
+use fs_messenger_guard::{Allowance, Guard, Method, Question, Verdict};
 use serde_json::json;
 async fn send(w: &World, q: &Question, d: ToolCallDecision) -> fs_messenger_core::Result<()> {
     w.repo
@@ -44,7 +44,7 @@ async fn refused(w: &World, q: &Question, d: ToolCallDecision, why: &str) {
 
 #[tokio::test]
 async fn allow_once_allows_exactly_these_arguments_once() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     assert_eq!(q.call.state, ToolCallState::Question);
     assert_eq!(q.call.asked_of, OWNER);
@@ -64,7 +64,7 @@ async fn allow_once_allows_exactly_these_arguments_once() {
 
 #[tokio::test]
 async fn allow_once_does_not_cover_other_arguments() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     send(&w, &q, good(&w, &q)).await.unwrap();
     assert!(matches!(
@@ -77,44 +77,46 @@ async fn allow_once_does_not_cover_other_arguments() {
     ));
 }
 
+/// Since "nothing without a release" a call of a class that can be released is refused, never asked
+/// (`tests/release_denies.rs`), so a question never offers `allow-class`; a person releases through
+/// `Guard::release`. An answer that names it anyway is not on offer and changes nothing.
 #[tokio::test]
-async fn allow_class_releases_this_participant_and_this_class() {
-    let w = World::with_ai().await;
-    let q = w.ask("message.flag", args("/m")).await;
+async fn allow_class_is_not_on_offer_and_releases_nothing() {
+    let w = World::working().await;
+    assert_eq!(
+        w.check("message.unread", args("/n")).await,
+        Verdict::Allow(Allowance::Class(ToolCallRisk::Changes)),
+        "released by the person, not by a question"
+    );
+    let q = w.ask("message.delete", args("/m")).await;
+    assert!(q.call.options.iter().all(|o| o.id != "allow-class"));
+    let grants = w.engine.state().await.grants;
     let d = w
         .owner
         .decide(&w.identity, q.message, &q.call, "allow-class");
-    send(&w, &q, d).await.unwrap();
-    assert_eq!(
-        w.engine.state().await.grants,
-        [AiGrant {
-            profile: AI.into(),
-            risk: ToolCallRisk::Changes,
-            program: "message".into(),
-            goes_to: "this device only".into(),
-        }]
-    );
-    assert_eq!(
-        w.check("message.unread", args("/n")).await,
-        Verdict::Allow(Allowance::Class(ToolCallRisk::Changes))
-    );
+    refused(&w, &q, d, "option").await;
+    assert_eq!(w.engine.state().await.grants, grants);
 }
 
 #[tokio::test]
 async fn refuse_settles_the_call() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let d = w.owner.decide(&w.identity, q.message, &q.call, "refuse");
     send(&w, &q, d).await.unwrap();
     let shown = w.shown(&q).await;
     assert_eq!(shown.state, ToolCallState::Settled);
     assert_eq!(shown.outcome, ToolCallOutcome::Refused);
-    assert!(w.engine.state().await.grants.is_empty());
+    assert_eq!(
+        w.engine.state().await.grants.len(),
+        1,
+        "only the person's release"
+    );
 }
 
 #[tokio::test]
 async fn empty_fields_are_refused() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let mut d = good(&w, &q);
     d.arguments_digest.clear();
@@ -133,7 +135,7 @@ async fn empty_fields_are_refused() {
 
 #[tokio::test]
 async fn an_empty_asked_of_is_refused_as_it_can_never_match() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     w.tamper(|doc| doc["calls"][0]["askedOf"] = json!("")).await;
     refused(&w, &q, good(&w, &q), "empty: askedOf").await;
@@ -141,7 +143,7 @@ async fn an_empty_asked_of_is_refused_as_it_can_never_match() {
 
 #[tokio::test]
 async fn an_unknown_option_and_one_not_on_offer_are_refused() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let d = w
         .owner
@@ -156,7 +158,7 @@ async fn an_unknown_option_and_one_not_on_offer_are_refused() {
 
 #[tokio::test]
 async fn a_signer_other_than_the_person_asked_is_refused() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     // A real person with a real key, who was not asked.
     let friend = Device::new(FRIEND, 2);
@@ -179,7 +181,7 @@ fn hex_of(bytes: &[u8]) -> String {
 
 #[tokio::test]
 async fn a_settled_call_is_refused_even_with_a_good_signature() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let first = w.owner.decide(&w.identity, q.message, &q.call, "refuse");
     send(&w, &q, first).await.unwrap();
@@ -193,7 +195,7 @@ async fn a_settled_call_is_refused_even_with_a_good_signature() {
 
 #[tokio::test]
 async fn a_digest_that_is_not_the_calls_is_refused() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let mut other = q.call.clone();
     other.arguments_digest = vec![9; 32];
@@ -203,7 +205,7 @@ async fn a_digest_that_is_not_the_calls_is_refused() {
 
 #[tokio::test]
 async fn a_revision_that_is_not_the_calls_is_refused_and_zero_never_matches() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let mut other = q.call.clone();
     other.revision = 7;
@@ -218,21 +220,20 @@ async fn a_revision_that_is_not_the_calls_is_refused_and_zero_never_matches() {
 
 #[tokio::test]
 async fn a_signature_over_something_else_is_refused() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let mut d = good(&w, &q);
     d.proof[0] ^= 1;
     refused(&w, &q, d, "proof does not hold").await;
-    // Signed for allow-once, sent as allow-class on a call that offers both.
-    let q2 = w.ask("message.flag", args("/m")).await;
-    let mut d = w.owner.decide(&w.identity, q2.message, &q2.call, "refuse");
-    d.option = "allow-class".into();
-    refused(&w, &q2, d, "proof does not hold").await;
+    // Signed for refuse, sent as allow-once on a call that offers both.
+    let mut d = w.owner.decide(&w.identity, q.message, &q.call, "refuse");
+    d.option = "allow-once".into();
+    refused(&w, &q, d, "proof does not hold").await;
 }
 
 #[tokio::test]
 async fn a_good_proof_for_another_message_is_refused() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let q2 = w.ask("message.delete", args("/n")).await;
     // The right call, at another message: the record knows where it stands.

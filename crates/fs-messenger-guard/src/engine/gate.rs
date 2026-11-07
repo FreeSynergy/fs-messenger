@@ -18,7 +18,8 @@ use crate::identity::id_key;
 use crate::log::GuardLogEntry;
 use crate::model::{Allowance, Caller, GuardMode, Verdict};
 use crate::sensitivity::ObjectRef;
-use crate::state::{CallRecord, CallStage, Evaluation, GuardDoc};
+use crate::state::derived_risk;
+use crate::state::{CallRecord, CallStage, Evaluation, GuardDoc, Judged};
 
 impl GuardEngine {
     /// The state, if it allows anything at all.
@@ -99,13 +100,25 @@ impl GuardEngine {
     }
 }
 
-#[async_trait]
-impl Gate for GuardEngine {
-    async fn check(&self, caller: &Caller, capability: &str, arguments: &Arguments) -> Verdict {
+impl GuardEngine {
+    /// `check`, with the object a read names, if it names one.
+    async fn check_inner(
+        &self,
+        caller: &Caller,
+        capability: &str,
+        arguments: &Arguments,
+        object: Option<&ObjectRef>,
+    ) -> Verdict {
         if self.is_latched() {
             self.ensure_retry();
             return Verdict::Refuse(Refusal::Stopped);
         }
+        // Only a read of a named object is looked up, and before the lock: the source may be slow.
+        let reads = derived_risk(capability, arguments.has_input()) == ToolCallRisk::ReadsOnly;
+        let sensitive = match object {
+            Some(object) if reads => self.read_asks(object).await,
+            _ => false,
+        };
         let Ok(_ops) = self.lock_ops().await else {
             return Verdict::Refuse(Refusal::Stopped);
         };
@@ -117,7 +130,14 @@ impl Gate for GuardEngine {
         let now = self.clock.now();
         let limits = self.limits();
         let turn = caller.conversation;
-        match doc.evaluate(&profile, turn, capability, arguments, now, &limits) {
+        let judged = Judged {
+            caller: &profile,
+            turn,
+            capability,
+            arguments,
+            sensitive,
+        };
+        match doc.evaluate(&judged, now, &limits) {
             Evaluation::Refuse(refusal) => Verdict::Refuse(refusal),
             Evaluation::AllowClass(risk) => {
                 // The log is slow, so the last look comes after it, right before `Allow`.
@@ -138,16 +158,23 @@ impl Gate for GuardEngine {
             }
         }
     }
+}
+
+#[async_trait]
+impl Gate for GuardEngine {
+    async fn check(&self, caller: &Caller, capability: &str, arguments: &Arguments) -> Verdict {
+        self.check_inner(caller, capability, arguments, None).await
+    }
 
     async fn check_object(
         &self,
         caller: &Caller,
         capability: &str,
         arguments: &Arguments,
-        _object: &ObjectRef,
+        object: &ObjectRef,
     ) -> Verdict {
-        // Shell: the object is not looked up yet.
-        self.check(caller, capability, arguments).await
+        self.check_inner(caller, capability, arguments, Some(object))
+            .await
     }
 
     async fn revise(&self, caller: &Caller, call: &str, arguments: &Arguments) -> Verdict {

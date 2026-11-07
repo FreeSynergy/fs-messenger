@@ -8,7 +8,7 @@ use fs_messenger_guard::{Allowance, Arguments, ArgumentsError, Caller, Gate, Ref
 use serde_json::json;
 #[tokio::test]
 async fn an_allow_once_cannot_be_spent_in_another_conversation() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let account = w.account("me@example.org", "mail").await;
     w.deliver(account.id, "m1", "x@y").await.unwrap();
     let here = w.repo.conversations(None, false, None).await.unwrap().items[0].id;
@@ -79,7 +79,7 @@ fn numbers_that_have_no_one_meaning_are_refused() {
 
 #[tokio::test]
 async fn revise_has_a_limit_and_does_not_keep_a_card_alive() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("shell.run", args("a")).await;
     let caller = Caller::new(AI);
     // At once: refused, and nothing is written.
@@ -124,7 +124,7 @@ async fn revise_has_a_limit_and_does_not_keep_a_card_alive() {
 
 #[tokio::test]
 async fn expiry_and_conversation_stop_do_not_refill_without_end() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     for n in 0..16 {
         w.ask("message.delete", args(&format!("/{n}"))).await;
     }
@@ -160,7 +160,7 @@ async fn expiry_and_conversation_stop_do_not_refill_without_end() {
 
 #[tokio::test]
 async fn settled_questions_are_pruned_with_their_notes() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let first = w.ask("message.delete", args("/first")).await;
     w.repo.stop(first.conversation).await.unwrap();
     let mut n = 0;

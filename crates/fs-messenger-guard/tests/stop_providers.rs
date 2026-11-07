@@ -113,7 +113,7 @@ async fn a_provider_that_hangs_or_panics_cannot_hold_up_the_stop() {
 
 #[tokio::test]
 async fn conversation_stop_settles_the_calls_there_and_only_there() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let mail = w.account("me@example.org", "mail").await;
     let notified = Arc::new(Notify::new());
     w.repo
@@ -171,7 +171,7 @@ async fn conversation_stop_settles_the_calls_there_and_only_there() {
 
 #[tokio::test]
 async fn conversation_stop_reports_a_provider_that_cannot_end_a_turn() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let mail = w.account("me@example.org", "mail").await;
     w.repo.register_provider(mail.id, Arc::new(CannotStop));
     w.deliver(mail.id, "m1", "x@y").await.unwrap();

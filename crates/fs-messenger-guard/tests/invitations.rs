@@ -11,7 +11,7 @@ fn hex(bytes: &[u8]) -> String {
 
 #[tokio::test]
 async fn uninvite_takes_it_all_and_needs_who_invited_or_the_owner() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.release(AI, ToolCallRisk::ReadsOnly, "readsOnly").await;
     let q = w.ask("message.delete", args("/m")).await;
     let friend = Device::new(FRIEND, 2);
@@ -102,7 +102,7 @@ async fn a_persons_identity_wins_over_someone_elses_invitation_of_it() {
 
 #[tokio::test]
 async fn after_a_refusal_it_may_not_ask_for_a_while() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let d = w.owner.decide(&w.identity, q.message, &q.call, "refuse");
     w.repo
@@ -135,9 +135,10 @@ async fn identifiers_are_one_whatever_their_case() {
         .proof(&w.identity, Method::Invite, &[shouted.as_bytes()]);
     w.engine.invite(shouted, &invite).await.unwrap();
     assert_eq!(w.engine.state().await.invited, [id_key(shouted)]);
-    assert!(
-        matches!(w.check("message.open", args("/")).await, Verdict::Ask(_)),
-        "the same AI"
+    assert_eq!(
+        w.check("message.open", args("/")).await,
+        Verdict::Refuse(Refusal::NotReleased),
+        "the same AI: invited, with nothing released"
     );
     // A key cannot be had under another spelling of an AI the owner invited.
     let ai = Device::new(shouted, 9);
@@ -186,7 +187,7 @@ async fn identifiers_are_one_whatever_their_case() {
 
 #[tokio::test]
 async fn the_note_of_a_question_reads_as_an_ai() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let m = w.repo.message(q.conversation, q.message).await.unwrap();
     assert_eq!(m.summary.sender_kind, SenderKind::Ai);

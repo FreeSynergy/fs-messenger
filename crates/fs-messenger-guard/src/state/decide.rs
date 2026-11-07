@@ -17,6 +17,7 @@ use crate::digest::{hex, single_use_key, unhex};
 use crate::error::Refusal;
 use crate::identity::id_key;
 use crate::model::{AiGrant, GuardMode};
+use crate::program::program_of;
 use crate::risk::can_be_released;
 use crate::signed::{Method, decide_arguments, signed_bytes};
 
@@ -140,8 +141,8 @@ impl GuardDoc {
                     granted = Some(AiGrant {
                         profile: call.caller.clone(),
                         risk,
-                        program: String::new(),
-                        goes_to: String::new(),
+                        program: program_of(&call.capability),
+                        goes_to: call.goes_to.clone(),
                     });
                 }
             }

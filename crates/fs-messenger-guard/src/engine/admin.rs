@@ -35,22 +35,28 @@ impl GuardEngine {
     async fn take_away(
         &self,
         method: Method,
-        event: &str,
         profile: &str,
+        program: &str,
         proof: &GuardProof,
     ) -> Result<(), GuardError> {
         let owner = self.config.owner.clone();
         let (key, signer) = (id_key(profile), id_key(&proof.signer));
-        let entry = GuardLogEntry::new(event, &signer).about(&key);
         let uninvite = method == Method::Uninvite;
+        let event = if uninvite { "uninvite" } else { "revoke" };
+        let mut entry = GuardLogEntry::new(event, &signer).about(&key);
+        entry.program = id_key(program);
+        // `revoke` signs the profile and the program (empty: every program); `uninvite` the profile.
+        let named: [&[u8]; 2] = [profile.as_bytes(), program.as_bytes()];
+        let named = if uninvite { &named[..1] } else { &named[..] };
+        let program = id_key(program);
         let mut cancelled = vec![];
         let doc = self
-            .signed_change(method, &[profile.as_bytes()], proof, entry, |doc| {
+            .signed_change(method, named, proof, entry, |doc| {
                 doc.check_revoke(&key, &signer, &owner)?;
                 cancelled = if uninvite {
                     doc.apply_uninvite(&key)
                 } else {
-                    doc.apply_revoke(&key)
+                    doc.apply_revoke(&key, &program)
                 };
                 Ok(())
             })
@@ -142,13 +148,21 @@ impl Guard for GuardEngine {
         let (key, signer) = (id_key(&grant.profile), id_key(&proof.signer));
         let mut entry = GuardLogEntry::new("release", &signer).about(&key);
         entry.risk = Some(grant.risk);
+        entry.program = id_key(&grant.program);
+        entry.goes_to.clone_from(&grant.goes_to);
         let stored = AiGrant {
             profile: key,
             risk: grant.risk,
-            program: String::new(),
-            goes_to: String::new(),
+            program: id_key(&grant.program),
+            goes_to: grant.goes_to.clone(),
         };
-        let arguments: [&[u8]; 2] = [grant.profile.as_bytes(), risk_name(grant.risk).as_bytes()];
+        // What the device signed, in this order: profile, class, program, where the text goes.
+        let arguments: [&[u8]; 4] = [
+            grant.profile.as_bytes(),
+            risk_name(grant.risk).as_bytes(),
+            grant.program.as_bytes(),
+            grant.goes_to.as_bytes(),
+        ];
         self.signed_change(Method::Release, &arguments, proof, entry, |doc| {
             doc.check_release(&stored, &signer, &owner)?;
             doc.apply_grant(stored.clone());
@@ -161,21 +175,19 @@ impl Guard for GuardEngine {
     async fn revoke_program(
         &self,
         profile: &str,
-        _program: &str,
+        program: &str,
         proof: &GuardProof,
     ) -> Result<(), GuardError> {
-        // Shell: the program is not used yet.
-        self.revoke(profile, proof).await
+        self.take_away(Method::Revoke, profile, program, proof)
+            .await
     }
 
     async fn revoke(&self, profile: &str, proof: &GuardProof) -> Result<(), GuardError> {
-        self.take_away(Method::Revoke, "revoke", profile, proof)
-            .await
+        self.take_away(Method::Revoke, profile, "", proof).await
     }
 
     async fn uninvite(&self, profile: &str, proof: &GuardProof) -> Result<(), GuardError> {
-        self.take_away(Method::Uninvite, "uninvite", profile, proof)
-            .await
+        self.take_away(Method::Uninvite, profile, "", proof).await
     }
 
     async fn stop(&self, proof: &GuardProof) -> Result<StopReport, GuardError> {

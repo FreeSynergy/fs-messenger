@@ -24,7 +24,7 @@ fn report(state: ToolCallState) -> ToolCall {
 
 #[tokio::test]
 async fn a_report_cannot_land_beside_a_persons_question() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let refused = w
         .repo

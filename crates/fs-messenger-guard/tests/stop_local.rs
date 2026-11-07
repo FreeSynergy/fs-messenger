@@ -8,7 +8,7 @@ use fs_messenger_guard::{Guard, GuardError, GuardMode, Method, Refusal, Verdict}
 
 #[tokio::test]
 async fn a_person_without_a_working_key_can_stop_on_the_local_path() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.release(AI, ToolCallRisk::ReadsOnly, "readsOnly").await;
     let q = w.ask("message.delete", args("/m")).await;
     assert!(matches!(

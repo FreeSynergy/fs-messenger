@@ -39,11 +39,11 @@ async fn nothing_exists_without_an_invitation_and_it_starts_with_no_release() {
     let state = w.engine.state().await;
     assert_eq!(state.invited, [AI]);
     assert!(state.grants.is_empty(), "releases start empty");
-    // Invited, and it still may not act: it can only ask.
-    assert!(matches!(
+    // Invited, and it still may not act: with no release it is refused, not even asked.
+    assert_eq!(
         w.check("message.open", args("/")).await,
-        Verdict::Ask(_)
-    ));
+        Verdict::Refuse(Refusal::NotReleased)
+    );
     // Someone else is still nobody.
     let other = w
         .engine

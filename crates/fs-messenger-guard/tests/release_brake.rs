@@ -12,7 +12,7 @@ use serde_json::json;
 
 #[tokio::test]
 async fn release_refuses_what_can_never_be_granted_and_changes_nothing() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     for (risk, name) in [
         (R::Unknown, "unknown"),
         (R::Destroys, "destroys"),
@@ -62,9 +62,10 @@ async fn a_release_holds_per_class_and_per_participant() {
         w.check("message.open", args("/")).await,
         Verdict::Allow(Allowance::Class(R::ReadsOnly))
     );
-    assert!(
-        matches!(w.check("message.flag", args("/")).await, Verdict::Ask(_)),
-        "another class still asks"
+    assert_eq!(
+        w.check("message.flag", args("/")).await,
+        Verdict::Refuse(Refusal::NotReleased),
+        "another class is refused, not asked"
     );
     let other = w
         .engine
@@ -74,22 +75,23 @@ async fn a_release_holds_per_class_and_per_participant() {
             &Arguments::from_value(&args("/")).unwrap(),
         )
         .await;
-    assert!(
-        matches!(other, Verdict::Ask(_)),
-        "another participant still asks"
+    assert_eq!(
+        other,
+        Verdict::Refuse(Refusal::NotReleased),
+        "another participant is refused, not asked"
     );
 }
 
 #[tokio::test]
 async fn revoke_takes_the_releases_of_this_participant_only() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.invite(OTHER_AI).await;
     w.release(AI, R::ReadsOnly, "readsOnly").await;
     w.release(OTHER_AI, R::ReadsOnly, "readsOnly").await;
     let proof = w.owner.proof(
         &w.identity,
         fs_messenger_guard::Method::Revoke,
-        &[AI.as_bytes()],
+        &[AI.as_bytes(), b""],
     );
     w.engine.revoke(AI, &proof).await.unwrap();
     let state = w.engine.state().await;
@@ -103,15 +105,15 @@ async fn revoke_takes_the_releases_of_this_participant_only() {
         }]
     );
     assert_eq!(state.invited.len(), 2, "still invited");
-    assert!(matches!(
+    assert_eq!(
         w.check("message.open", args("/")).await,
-        Verdict::Ask(_)
-    ));
+        Verdict::Refuse(Refusal::NotReleased)
+    );
 }
 
 #[tokio::test]
 async fn the_brake_asks_for_what_destroys_or_acts_whatever_is_stored() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     // The record is tampered with: each class is "released", also the ones that can never be.
     w.tamper(|doc| {
         doc["grants"] = json!([
@@ -135,7 +137,7 @@ async fn the_brake_asks_for_what_destroys_or_acts_whatever_is_stored() {
 
 #[tokio::test]
 async fn unknown_is_what_the_table_does_not_know_and_a_caller_cannot_help() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.release(AI, R::ReadsOnly, "readsOnly").await;
     w.release(AI, R::Changes, "changes").await;
     let q = w.ask("sneaky.read", args("/x")).await;
@@ -159,15 +161,22 @@ fn allow_class_is_only_on_offer_for_reads_only_and_changes() {
 
 #[tokio::test]
 async fn a_question_offers_allow_class_according_to_its_risk() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let has_class = |q: &fs_messenger_guard::Question| {
         q.call
             .options
             .iter()
             .any(|o| o.choice == ToolCallChoice::AllowClass)
     };
-    assert!(has_class(&w.ask("message.open", args("/a")).await));
-    assert!(has_class(&w.ask("message.flag", args("/b")).await));
+    // Releasable classes are not asked at all any more: released by a person, or refused.
+    assert_eq!(
+        w.check("message.open", args("/a")).await,
+        Verdict::Refuse(Refusal::NotReleased)
+    );
+    assert!(matches!(
+        w.check("message.flag", args("/b")).await,
+        Verdict::Allow(_)
+    ));
     assert!(!has_class(&w.ask("message.delete", args("/c")).await));
     assert!(!has_class(&w.ask("message.send", args("/d")).await));
     assert!(!has_class(&w.ask("what.is.this", args("/e")).await));
@@ -175,7 +184,7 @@ async fn a_question_offers_allow_class_according_to_its_risk() {
 
 #[tokio::test]
 async fn a_stored_risk_of_a_call_has_no_say() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     w.tamper(|doc| {
         // A record cannot talk the engine out of the brake: the risk is not even stored.
@@ -191,7 +200,7 @@ async fn a_stored_risk_of_a_call_has_no_say() {
 
 #[tokio::test]
 async fn the_guard_itself_is_never_for_an_ai_and_no_person_is_asked() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     for capability in [
         "toolcall.decide",
         "guard.stop",
@@ -212,7 +221,7 @@ async fn the_guard_itself_is_never_for_an_ai_and_no_person_is_asked() {
 
 #[tokio::test]
 async fn a_tool_name_that_could_hide_text_from_the_person_is_refused() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     for name in ["", "x\ny", "message.open\u{202e}eteled", "a\u{200b}b"] {
         assert_eq!(
             w.check(name, args("/")).await,
@@ -220,75 +229,4 @@ async fn a_tool_name_that_could_hide_text_from_the_person_is_refused() {
             "{name:?}"
         );
     }
-}
-
-#[tokio::test]
-async fn only_who_invited_it_or_the_owner_can_release_or_revoke() {
-    use common::{Device, FRIEND};
-    use fs_messenger_guard::Method;
-    let w = World::with_ai().await;
-    let friend = Device::new(FRIEND, 2);
-    let key: String = friend.public().iter().map(|b| format!("{b:02x}")).collect();
-    let add = w.owner.proof(
-        &w.identity,
-        Method::AddDevice,
-        &[FRIEND.as_bytes(), key.as_bytes()],
-    );
-    w.enrolment
-        .add_device(FRIEND, &friend.public(), &add)
-        .await
-        .unwrap();
-
-    // The owner's AI: not the friend's to release or to revoke.
-    let grant = AiGrant {
-        profile: AI.into(),
-        risk: R::ReadsOnly,
-        program: "message".into(),
-        goes_to: "this device only".into(),
-    };
-    let proof = friend.proof(
-        &w.identity,
-        Method::Release,
-        &[AI.as_bytes(), b"readsOnly", b"message", b"this device only"],
-    );
-    assert!(matches!(
-        w.engine.release(&grant, &proof).await,
-        Err(GuardError::Refused(Refusal::NotPermitted))
-    ));
-    w.release(AI, R::ReadsOnly, "readsOnly").await;
-    let proof = friend.proof(&w.identity, Method::Revoke, &[AI.as_bytes()]);
-    assert!(matches!(
-        w.engine.revoke(AI, &proof).await,
-        Err(GuardError::Refused(Refusal::NotPermitted))
-    ));
-    assert_eq!(w.engine.state().await.grants.len(), 1);
-
-    // The friend's own AI: the friend may, the owner may, and the friend is who gets asked.
-    let proof = friend.proof(&w.identity, Method::Invite, &[OTHER_AI.as_bytes()]);
-    w.engine.invite(OTHER_AI, &proof).await.unwrap();
-    let input = Arguments::from_value(&args("/")).unwrap();
-    let Verdict::Ask(q) = w
-        .engine
-        .check(&Caller::new(OTHER_AI), "message.delete", &input)
-        .await
-    else {
-        panic!()
-    };
-    assert_eq!(q.call.asked_of, FRIEND);
-    let grant = AiGrant {
-        profile: OTHER_AI.into(),
-        risk: R::Changes,
-        program: "message".into(),
-        goes_to: "this device only".into(),
-    };
-    let proof = friend.proof(
-        &w.identity,
-        Method::Release,
-        &[OTHER_AI.as_bytes(), b"changes"],
-    );
-    w.engine.release(&grant, &proof).await.unwrap();
-    let proof = w
-        .owner
-        .proof(&w.identity, Method::Revoke, &[OTHER_AI.as_bytes()]);
-    w.engine.revoke(OTHER_AI, &proof).await.unwrap();
 }

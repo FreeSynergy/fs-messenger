@@ -29,7 +29,7 @@ fn from_ai(id: &str) -> RawMessage {
 
 #[tokio::test]
 async fn the_log_shows_the_use_of_an_approval_and_a_release_and_the_end_of_a_call() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let d = w
         .owner
@@ -112,7 +112,7 @@ fn the_risks_the_review_decided() {
 
 #[tokio::test]
 async fn revoke_cancels_what_is_open_also_an_approval() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let d = w
         .owner
@@ -124,7 +124,7 @@ async fn revoke_cancels_what_is_open_also_an_approval() {
     let proof = w.owner.proof(
         &w.identity,
         fs_messenger_guard::Method::Revoke,
-        &[AI.as_bytes()],
+        &[AI.as_bytes(), b""],
     );
     w.engine.revoke(AI, &proof).await.unwrap();
     assert_eq!(w.shown(&q).await.outcome, ToolCallOutcome::Cancelled);
@@ -136,7 +136,7 @@ async fn revoke_cancels_what_is_open_also_an_approval() {
 
 #[tokio::test]
 async fn a_stop_clears_what_the_retry_limit_tracks() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.ask("message.delete", args("/m")).await;
     assert_eq!(w.engine.tracked_retries(), 1);
     w.engine.stop(&w.stop_proof()).await.unwrap();
@@ -220,7 +220,7 @@ async fn conversation_stop_asks_the_provider_even_if_settling_fails() {
     let input = Arguments::none();
     assert!(matches!(
         r.engine
-            .check(&Caller::in_conversation(AI, conv), "x.y", &input)
+            .check(&Caller::in_conversation(AI, conv), "message.delete", &input)
             .await,
         Verdict::Ask(_)
     ));

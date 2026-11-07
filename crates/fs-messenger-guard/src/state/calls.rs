@@ -2,7 +2,7 @@
 //!
 //! Pattern: State (the rules are pure transitions on `CallStage`): the order of the rules is the guarantee. Stopped first, then what is
 //! never for an AI, then the invitation. Then the exact arguments a person approved, then a release,
-//! and only then a question. The risk comes from the table, and no input makes it `unknown`.
+//! and only then a question. Between the release and the question comes "nothing without a release": what a release could cover is refused, not asked, until it is given, and what always asks is asked only once something is released in the program (ADR 0054). The risk comes from the table, and no input makes it `unknown`.
 
 use chrono::{DateTime, Duration, Utc};
 use fs_messenger_core::ToolCallRisk;
@@ -15,6 +15,8 @@ use crate::arguments::Arguments;
 use crate::digest::{arguments_digest, hex};
 use crate::error::Refusal;
 use crate::model::GuardMode;
+use crate::program::program_of;
+use crate::risk::can_be_released;
 use crate::table::{CapabilityRule, capability_rule};
 
 /// The bounds of questions. Provisional; `DESIGN.md` states the numbers.
@@ -47,6 +49,18 @@ pub(crate) struct QuestionInput {
     pub(crate) has_input: bool,
     pub(crate) asked_of: String,
     pub(crate) turn: Option<ObjectId>,
+    pub(crate) sensitive: bool,
+    pub(crate) goes_to: String,
+}
+
+/// One call to judge. `sensitive` is what the engine's source said of the object that is read (marked
+/// or not known); nothing in `arguments` can set or clear it.
+pub(crate) struct Judged<'a> {
+    pub(crate) caller: &'a str,
+    pub(crate) turn: Option<ObjectId>,
+    pub(crate) capability: &'a str,
+    pub(crate) arguments: &'a Arguments,
+    pub(crate) sensitive: bool,
 }
 
 /// More new input than this for one question is no longer a person's question. Persisted with the
@@ -67,13 +81,17 @@ impl GuardDoc {
     /// What the state says. Changes nothing.
     pub(crate) fn evaluate(
         &self,
-        caller: &str,
-        turn: Option<ObjectId>,
-        capability: &str,
-        arguments: &Arguments,
+        call: &Judged<'_>,
         now: DateTime<Utc>,
         limits: &Limits,
     ) -> Evaluation {
+        let Judged {
+            caller,
+            turn,
+            capability,
+            arguments,
+            sensitive,
+        } = *call;
         if self.mode != GuardMode::Open {
             return Evaluation::Refuse(Refusal::Stopped);
         }
@@ -94,8 +112,18 @@ impl GuardDoc {
             }
         }
         let risk = derived_risk(capability, arguments.has_input());
-        if self.is_released(caller, risk) {
+        // Only a read can be marked. A marked read is never covered by a release of its class.
+        let sensitive = sensitive && risk == ToolCallRisk::ReadsOnly;
+        let program = program_of(capability);
+        if !sensitive && self.is_released(caller, risk, &program) {
             return Evaluation::AllowClass(risk);
+        }
+        // Nothing without a release (ADR 0054): what a release could cover is refused until it is
+        // given. What always asks is asked only once something is released in this program. Nobody is
+        // asked otherwise, so a participant cannot flood a person with questions.
+        let asks_always = sensitive || !can_be_released(risk);
+        if !(asks_always && self.has_release_in(caller, &program)) {
+            return Evaluation::Refuse(Refusal::NotReleased);
         }
         if let Some(at) = held {
             return Evaluation::AskAgain(at);
@@ -122,6 +150,8 @@ impl GuardDoc {
             has_input: arguments.has_input(),
             asked_of: invitation.by.clone(),
             turn,
+            sensitive,
+            goes_to: self.destinations(caller, &program),
         })
     }
 

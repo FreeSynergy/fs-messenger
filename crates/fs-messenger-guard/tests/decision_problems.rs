@@ -31,7 +31,7 @@ fn the_uris_are_the_contracts() {
 }
 #[tokio::test]
 async fn a_stale_digest_or_revision_answers_stale_and_the_fresh_question_follows() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("shell.run", args("ls")).await;
     let click = w
         .owner
@@ -74,7 +74,7 @@ async fn a_stale_digest_or_revision_answers_stale_and_the_fresh_question_follows
 
 #[tokio::test]
 async fn a_click_on_a_call_answered_already_is_stale_and_shows_it_working() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let click = w
         .owner
@@ -98,7 +98,7 @@ async fn a_click_on_a_call_answered_already_is_stale_and_shows_it_working() {
 
 #[tokio::test]
 async fn a_settled_call_answers_settled_and_its_end_follows() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let refuse = w.owner.decide(&w.identity, q.message, &q.call, "refuse");
     let click = w

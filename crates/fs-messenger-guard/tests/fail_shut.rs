@@ -32,7 +32,7 @@ async fn each_kind_of_corrupt_record_reads_as_stopped_also_after_a_restart() {
         ("a newer version", json!({ "version": 99 })),
     ];
     for (name, value) in corrupt {
-        let w = World::with_ai().await;
+        let w = World::working().await;
         w.release(AI, ToolCallRisk::ReadsOnly, "readsOnly").await;
         w.tamper(|doc| *doc = value.clone()).await;
         assert!(w.engine.damage().await.is_some(), "{name}");
@@ -54,7 +54,7 @@ async fn a_record_that_lost_one_field_reads_as_stopped() {
         "usedProofs",
         "version",
     ] {
-        let w = World::with_ai().await;
+        let w = World::working().await;
         w.release(AI, ToolCallRisk::ReadsOnly, "readsOnly").await;
         w.tamper(|doc| {
             doc.as_object_mut().unwrap().remove(field);
@@ -66,7 +66,7 @@ async fn a_record_that_lost_one_field_reads_as_stopped() {
 
 #[tokio::test]
 async fn an_unrecognised_mode_reads_as_stopped() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.tamper(|doc| doc["mode"] = json!("wideOpen")).await;
     assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);
     assert_eq!(
@@ -77,7 +77,7 @@ async fn an_unrecognised_mode_reads_as_stopped() {
 
 #[tokio::test]
 async fn a_deleted_state_reads_as_stopped_like_a_fresh_program() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let id: ObjectId = STATE_ID.parse().unwrap();
     w.store.delete_unlogged(id).await.unwrap();
     stopped_after(&w).await;
@@ -88,7 +88,7 @@ async fn a_deleted_state_reads_as_stopped_like_a_fresh_program() {
 
 #[tokio::test]
 async fn an_object_of_another_type_under_the_id_reads_as_stopped() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let id: ObjectId = STATE_ID.parse().unwrap();
     let mut good = w.store.read_unlogged(id).await.unwrap().unwrap();
     let content = good.content.clone();
@@ -100,7 +100,7 @@ async fn an_object_of_another_type_under_the_id_reads_as_stopped() {
 
 #[tokio::test]
 async fn while_damaged_nothing_can_be_signed_and_the_stop_says_so() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let (stop, reopen) = (w.stop_proof(), w.reopen_proof());
     w.tamper(|doc| *doc = json!("oops")).await;
     let report = w.engine.stop(&stop).await.unwrap();
@@ -117,7 +117,7 @@ async fn while_damaged_nothing_can_be_signed_and_the_stop_says_so() {
 
 #[tokio::test]
 async fn recovery_is_local_starts_stopped_and_kills_every_older_proof() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.release(AI, ToolCallRisk::ReadsOnly, "readsOnly").await;
     let old_reopen = w.reopen_proof();
     let old_identity = w.identity.clone();
@@ -166,7 +166,7 @@ async fn the_state_object_is_marked_sensitive() {
 
 #[tokio::test]
 async fn a_whole_record_of_a_newer_version_reads_as_stopped() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     w.release(AI, ToolCallRisk::ReadsOnly, "readsOnly").await;
     w.tamper(|doc| doc["version"] = json!(2)).await;
     assert!(w.engine.damage().await.is_some());

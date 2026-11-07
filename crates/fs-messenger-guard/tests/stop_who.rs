@@ -123,6 +123,18 @@ async fn it_works_with_no_messenger_at_all() {
         .unwrap();
     let proof = owner.proof(&identity, Method::Invite, &[AI.as_bytes()]);
     engine.invite(AI, &proof).await.unwrap();
+    let release = owner.proof(
+        &identity,
+        Method::Release,
+        &[AI.as_bytes(), b"readsOnly", b"message", b"this device only"],
+    );
+    let grant = fs_messenger_guard::AiGrant {
+        profile: AI.into(),
+        risk: fs_messenger_core::ToolCallRisk::ReadsOnly,
+        program: "message".into(),
+        goes_to: "this device only".into(),
+    };
+    engine.release(&grant, &release).await.unwrap();
     let verdict = engine
         .check(
             &fs_messenger_guard::Caller::new(AI),

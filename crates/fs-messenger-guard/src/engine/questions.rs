@@ -82,6 +82,8 @@ impl GuardEngine {
             conversation: ObjectId::new(),
             message: ObjectId::new(),
             expires_at: now + self.limits().question_ttl,
+            sensitive: input.sensitive,
+            goes_to: input.goes_to,
         };
         let detail = arguments.detail();
         let placing = port.place_question(input.turn, profile, call.shown(&detail));

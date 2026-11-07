@@ -6,6 +6,7 @@ mod decide;
 mod gate;
 mod marker;
 mod questions;
+mod sensitive;
 mod stop;
 mod stop_conversation;
 mod stop_judge;

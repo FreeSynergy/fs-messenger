@@ -196,7 +196,7 @@ fn this_test_knows_every_method_of_the_traits() {
 
 #[tokio::test]
 async fn no_path_from_messenger_or_provider_changes_the_state_attached_on_its_own_store() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let input = fs_messenger_guard::Arguments::from_value(&args("/m")).unwrap();
     let Verdict::Ask(q) = w
         .engine
@@ -235,7 +235,11 @@ async fn no_path_from_messenger_or_provider_changes_the_state_attached_on_its_ow
         "the state object did not change at all"
     );
     assert_eq!(w.engine.state().await.mode, GuardMode::Open);
-    assert!(w.engine.state().await.grants.is_empty());
+    assert_eq!(
+        w.engine.state().await.grants.len(),
+        1,
+        "only the person's own release of `working`"
+    );
     assert_eq!(w.engine.state().await.invited, [AI]);
     assert_eq!(
         w.shown(&q).await,

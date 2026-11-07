@@ -66,6 +66,13 @@ pub(crate) struct CallRecord {
     pub(crate) conversation: ObjectId,
     pub(crate) message: ObjectId,
     pub(crate) expires_at: DateTime<Utc>,
+    /// The object read is marked: asks every time, can never be released. Shown as `unknown` until the
+    /// contract has `readsSensitive` (mirrored locally).
+    #[serde(default)]
+    pub(crate) sensitive: bool,
+    /// Where the text goes, in the words of the releases of this program, for the question to show.
+    #[serde(default)]
+    pub(crate) goes_to: String,
 }
 
 /// The stored state. Field by field required: a missing `mode` is damage, not a default.

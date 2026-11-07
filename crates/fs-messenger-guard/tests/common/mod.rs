@@ -209,7 +209,13 @@ impl World {
     /// `check` that has to come back as a question. Moves the clock past the retry pause first.
     pub async fn ask(&self, capability: &str, args: Value) -> Question {
         self.clock.advance(Duration::seconds(3));
-        match self.check(capability, args).await {
+        let mut verdict = self.check(capability, args.clone()).await;
+        if verdict == Verdict::Refuse(fs_messenger_guard::Refusal::NotReleased) {
+            // A question needs a release in the tool's own program (ADR 0054); give the least one.
+            self.unlock_program_of(capability).await;
+            verdict = self.check(capability, args).await;
+        }
+        match verdict {
             Verdict::Ask(q) => *q,
             other => panic!("expected a question, got {other:?}"),
         }

@@ -55,7 +55,7 @@ fn cases() -> Vec<(&'static str, Breaks)> {
 #[tokio::test]
 async fn each_broken_field_reads_as_stopped_and_recovery_goes_on_from_it() {
     for (name, breaks) in cases() {
-        let w = World::with_ai().await;
+        let w = World::working().await;
         w.release(AI, ToolCallRisk::ReadsOnly, "readsOnly").await;
         assert!(matches!(
             w.check("message.open", args("/")).await,

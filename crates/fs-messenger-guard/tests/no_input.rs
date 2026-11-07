@@ -41,7 +41,7 @@ async fn without_arguments_the_digest_is_still_there_risk_unknown_and_allow_once
 
 #[tokio::test]
 async fn later_input_changes_the_digest_so_a_release_lapses() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let none = Arguments::none();
     let Verdict::Ask(q) = w
         .engine
@@ -132,12 +132,14 @@ fn what_two_programs_could_read_differently_is_refused() {
 
 #[tokio::test]
 async fn what_is_shown_is_the_whole_input_and_cannot_hide_text() {
-    let w = World::with_ai().await;
+    let w = World::working().await;
     let q = w.ask("shell.run", json!({ "c": "ok\u{202e}fr- mr" })).await;
     assert!(q.call.detail.contains("\\u{202e}"), "{}", q.call.detail);
     assert!(!q.call.detail.contains('\u{202e}'));
     assert_eq!(w.shown(&q).await.detail, q.call.detail);
-    assert_eq!(q.call.summary, "", "agent text does not go here");
+    // The summary is the person's own words for where the text goes, never text of the call.
+    assert_eq!(q.call.summary, "this device only");
+    assert!(!q.call.summary.contains("ok"));
 }
 
 #[test]
