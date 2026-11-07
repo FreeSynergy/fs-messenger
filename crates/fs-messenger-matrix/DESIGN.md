@@ -11,14 +11,15 @@ Version 0.1.1 (the workspace's), not tagged. Tested against the pinned tuwunel 1
 | Login with password, session restore, same device and identity after a restart | done, against the server |
 | Stores: `CryptoStore` and `StateStore` over an encrypted `fs-store`, pure Rust, no SQLite | done: the SDK's own suites pass (35 and 28 tests; one more is `#[ignore]`d by the suite itself), restart against the server |
 | Sync into the core: rooms are conversations, `m.room.message` are messages, room and event id are the alias (`EventAlias`), `m.in_reply_to` threads, cursor persists in the core, replay does not duplicate, own copy recognised | done, against the server |
-| Gaps: a limited `/sync`, a newly joined room and a replay are read through `/messages`, 500 events per fetch, going on in the next (`more`) | done, against the server |
+| Gaps: a limited `/sync`, a newly joined room and a replay are read through `/messages`: at most 20 pages and 500 events per fetch, a page or a `/sync` answer over its limit cut and the rest kept; see "What a server cannot do" | done, against the server for the ordinary case; the cuts only against a raw server |
 | Original: the event JSON as received; see "Originals" | done |
 | Sending: `m.room.message` only into a room with `m.room.encryption`; plan and provider both check | done, against the server |
 | Incoming marks: `megolm` only after real decryption; plain is `none`; undecrypted is `unknown` | done, against the server |
 | Undecrypted, then the key arrives: replaced in place, same message, same original | done, against the server; see "Late keys" |
 | Secrets: see "Secrets" | done, tested with needles from the real secrets |
 | Review fixes (T2): URL with user info refused; alias holds the room; member cap in the plan; pattern names corrected; open points listed | done, tested; see "Open points" |
-| A hostile server: the token stays at the configured origin, requests end, memory is bounded where this crate can bound it; see "What a server cannot do" | done, tested |
+| A hostile server: the token stays at the configured origin and goes only to the server that issued it, requests end, memory is bounded where this crate can bound it; see "What a server cannot do" | done, tested |
+| Second review (T2b): token bound to its homeserver; a plain event cannot take an undecrypted one's place; pages and events per fetch bounded; no password in URL errors or `Debug`; alias used for the waiting list and the echo; one end for a whole `send` and plan; patterns corrected | done, each with a test that failed before; offline against raw servers and units, not against tuwunel (the 13 server tests still pass); see "Not verified" |
 
 ### `Unsupported`, or not built
 
@@ -44,17 +45,15 @@ Names are those of section 2 of `conventions/coding.md`, and only where the code
 | Module | Pattern | Why |
 |---|---|---|
 | `provider/facade.rs` | Facade + Strategy | the core sees `Provider`; behind it the SDK client |
-| `provider/connect.rs` | Factory | client over our stores; a stored session wins over a password |
-| `provider/rooms.rs` | Facade | invitations, opening rooms, key files: the core has no room concept |
-| `receive/alias.rs` | Newtype | `EventAlias`: room and event id as one alias, the only place that builds or reads it |
 | `store/crypto/*`, `store/state/*` (`decorate`, `store`) | Decorator | the SDK's memory stores, with a journal in front |
 | `store/forward.rs` | Decorator, the plain half | nearly a hundred methods only pass on |
 | `store/journal.rs` | Strategy | the `Journal` trait: the stores do not know `fs-store` |
 | `store/fs_journal.rs` | Adapter | `FsJournal` implements `Journal` over `fs-store` |
 | `secret.rs` | Newtype | `Password`, `SecretText`: a secret cannot be printed |
+| `lib.rs`, `provider/mod.rs` | none | only declare modules and re-export (coding rules, section 3): no logic, so no Facade |
 | `error.rs`, `*/kind.rs` | none | an error enum, constants |
 
-No pattern of section 2 fits these (module doc: `Pattern: none`), see "Open points": `provider/account.rs`, `provider/fetch.rs`, `provider/send.rs`, `provider/convert.rs`, `provider/history.rs`, `provider/plan.rs`, `provider/echo.rs`, `receive/{mod,adapter,event,cursor}.rs`, `store/crypto/{persist,restore}.rs`, `store/state/{persist,restore}.rs`, `store/{keys,hex,read_back}.rs`.
+No pattern of section 2 fits these (module doc: `Pattern: none`), see "Open points": `provider/connect.rs` (builds a concrete client, no trait object: not a Factory), `provider/rooms.rs` (more methods of `MatrixProvider`, not a type: not a Facade), `provider/deadline.rs`, `receive/alias.rs` (`EventAlias`: two public fields, no invariant: not a Newtype), `provider/account.rs`, `provider/fetch.rs`, `provider/send.rs`, `provider/convert.rs`, `provider/history.rs`, `provider/plan.rs`, `provider/echo.rs`, `receive/{mod,adapter,event,cursor}.rs`, `store/crypto/{persist,restore}.rs`, `store/state/{persist,restore}.rs`, `store/{keys,hex,read_back}.rs`.
 
 ## Stores: pure Rust, and how
 
@@ -96,9 +95,9 @@ No access token, password, passphrase, Olm or Megolm key in an activity, a hub p
 
 Found in the review of the mail crate, and all three were true here, by the SDK's defaults:
 
-* **Move the token.** The SDK follows `well_known` in a login answer, and `reqwest` follows redirects. Both are off: `respect_login_well_known(false)` and `redirect::Policy::none()`. **A homeserver behind a redirect does not work**; configure its real URL. Both tests fail with the protection removed; tried.
+* **Move the token.** The SDK follows `well_known` in a login answer, and `reqwest` follows redirects. Both are off: `respect_login_well_known(false)` and `redirect::Policy::none()`. **A homeserver behind a redirect does not work**; configure its real URL. **The token also goes only to the server that issued it:** the session is stored with the homeserver's origin (scheme, host, port; the path does not count), and a `restore` or `login` over a stored session for another origin fails before the first request. A session stored without an origin (an earlier draft) is refused the same way: use a new store and log in again. Tested with a raw server that must hear nothing. Both tests fail with the protection removed; tried.
 * **Hold the provider up.** Read in the SDK and tried here, each case on a test: without a retry limit it retries `5xx` and `429` for ever; a network failure or a timeout it does not retry without one. **With a limit it still waits as long as a `429` names in `retry_after`**, so a server could hold it for an hour. So three things: a time limit per request and a stall limit per read; 3 tries; and `MatrixAccount::bounded`, a hard end of 8 times `request_timeout` (30 s, so 4 minutes) around each call into the SDK that goes to the network. All provisional. **Dropping a send at that end can leave the message sent and recorded as failed**, so a retry sends it twice, as with any lost answer (core's open point 1).
-* **Fill memory, as far as this crate can tell.** 500 events per fetch through `/messages`, going on in the next; the waiting list holds 256 events and 1 MiB; an event over the specification's 64 KiB does not wait. **Not bounded: the size of one HTTP answer.** The SDK reads it whole and offers no limit, and the core's 25 MiB stub only helps after that; only the time limit stands in the way. The number of rooms in one `/sync` is not bounded either. Wanted from the SDK.
+* **Fill memory, as far as this crate can tell.** `limit` is only a request, so the answer is cut, not trusted. Through `/messages`: pages of 100 asked for, at most 20 pages and 500 events per fetch. A page with more events than that is cut at the budget and its rest is read from the same token in the next fetch (`Gap::skip`; a server that changes a page in between can make that miss or repeat events, the core drops repeats). A `/sync` room with more events than `timeline_limit` keeps its newest `timeline_limit`, and the cursor keeps its old `since`, so the next fetch reads the whole difference through `/messages` (events delivered before come again, the core drops them). **Reaching the event budget says `more`** (real progress). **Reaching the page limit first does not**: small pages are what a server that never ends looks like, so the fetch ends with the gap in the cursor and `sync()` of the core returns; the next call goes on. A user with more than 20 rooms with gaps may need a second `sync()`. **A server that serves endless full pages still keeps one `sync()` of the core busy**, as each page is progress; the core's loop has no limit (wanted from core, 10). The waiting list holds 256 events and 1 MiB; an event over the specification's 64 KiB does not wait. **Not bounded: the size of one HTTP answer.** The SDK reads it whole and offers no limit, and the core's 25 MiB stub only helps after that; only the time limit stands in the way. The number of rooms in one `/sync` is not bounded either. Wanted from the SDK.
 
 ## Originals (ADR 0030)
 
@@ -125,6 +124,8 @@ The SDK allows trying again: `Room::decrypt_event`. The core replaces in place: 
 2. The event waits in the cursor, so the list moves with the batch. At most 256; an older one stays a placeholder for good.
 3. Every fetch tries again, without the network. What opens goes to the core under **the same event id**. Same message id, same original, `megolm`, the text in place. It counts as `duplicates` in a `SyncReport`, not as `stored`.
 
+**A plain `m.room.message` under the id of an event that waits as a placeholder (same room) is not delivered.** The core would replace the placeholder by alias, and the text would be the sender's, `undecrypted` unset, the real key later dropped. It is dropped and named in a `tracing` warning (ids only); the placeholder stays. The core has no way yet to be told (wanted from core, 9). Only what is on the cursor's waiting list is known: a placeholder that left the list (more than 256, or over 1 MiB) is not, and nothing here can see the core's journal. The core still replaces by alias alone (wanted from core, 8).
+
 The same happens if a replay finds the event readable. Encrypted events of a type other than `m.room.message` also leave a placeholder, as nobody can tell before decrypting; when they open, nothing follows, so **such a placeholder stays**, and it leaves the waiting list. Provisional.
 
 ## Device trust (PROVISIONAL)
@@ -142,7 +143,7 @@ What the SDK does by default, unchanged:
 * **The SDK's position, not the core's, is what `/sync` asks from.** The SDK drops an answer whose `next_batch` it has seen. Asking from an older cursor would answer nothing, and the cursor would move past the batch. So the difference comes from `/messages`. A server test caught this.
 * **What a newly joined room said before the join** is read once, by `/messages`. The list of rooms read is in the cursor.
 * **Relations are in the clear.** The SDK sends `m.relates_to` outside the ciphertext, as the spec says: **the server sees which message answers which**, not the text.
-* **The alias holds the room.** `matrix` + `<room>/<event>`, with `%`, `/`, `|` and control characters in either part written `%XX` (the core refuses `|` and control characters in an id: the first version used `|` and the replay server test caught it) (`EventAlias`). The core replaces a placeholder by alias without comparing conversation or sender, so with the event id alone a hostile homeserver could send an event with room A's placeholder id into room B and have A's placeholder overwritten (sender Alice, text Mallory's, `megolm`). Now such an event has another alias. **Incompatible with aliases of earlier drafts** (`matrix` + bare event id): stored messages would be seen as new on a replay, and an old placeholder is not replaced. The cursor holds no alias (room and event id are separate fields), so it stays readable. A reply parent counts only if its alias names the room being sent into.
+* **The alias holds the room.** `matrix` + `<room>/<event>`, with `%`, `/`, `|` and control characters in either part written `%XX` (the core refuses `|` and control characters in an id: the first version used `|` and the replay server test caught it) (`EventAlias`). The core replaces a placeholder by alias without comparing conversation or sender, so with the event id alone a hostile homeserver could send an event with room A's placeholder id into room B and have A's placeholder overwritten (sender Alice, text Mallory's, `megolm`). Now such an event has another alias. **In the same room** the alias is the same, so this does not help: see "Late keys". **Incompatible with aliases of earlier drafts** (`matrix` + bare event id): stored messages would be seen as new on a replay, and an old placeholder is not replaced. The cursor holds no alias (room and event id are separate fields), so it stays readable. A reply parent counts only if its alias names the room being sent into.
 * **Own echo:** sending and syncing exclude each other, and what this process sent is not delivered back. After a restart the core's receipt recognises it. `Message.receipts` holds the event id; `aliases` only if a copy did come by.
 * **The `/sync` filter** sets the timeline limit to 100 per room, configurable, sent inline.
 * **`http://` only to loopback.** The test server has no TLS. The homeserver URL is parsed by the `url` crate: user info (also with `https`), a backslash and an unparsable URL are refused; plain `http` needs the host exactly `localhost`, `127.0.0.1` or `[::1]`. Before, `http://localhost:80@evil.org` passed.
@@ -159,6 +160,9 @@ Worked around here, nothing changed there:
 5. **Rooms in the model:** invitations, joining.
 6. **`Outgoing` could carry the client's own id** (transaction id), which would close the echo race for all providers.
 7. **Replace by alias should compare the conversation** (and the sender) of the placeholder with the new message. This crate defends itself by putting the room into the alias, other providers do not.
+8. **Replace a placeholder only by the decrypted variant of the same ciphertext** (`repo/ingest_upgrade.rs`): today any message with the alias and `undecrypted` unset replaces it, also a plain one from the same room. This crate drops such an event while the placeholder is on its waiting list (see "Late keys"), which does not cover a placeholder that left the list.
+9. **A way to report events a provider dropped** (a `dropped` count or list in `FetchBatch`, shown in `SyncReport`): now only a `tracing` warning, and an error would hold the account up for ever.
+10. **A limit for one `sync()`** (events, pages or time): the loop in `repo/ingest.rs` goes on while `more` and the cursor changes, so a server of endless full pages keeps it busy; this crate can only end a fetch without `more`.
 
 ## Open points (for the strategy session)
 
@@ -166,7 +170,9 @@ Worked around here, nothing changed there:
 
 **A permanent failure blocks the account (not changed).** `ciphertext_of` (convert) and `room.messages` (history) pass their error on, so a 403/404 for one event or one gap fails every fetch for ever (the cursor stays). Retrying a bounded number of times is no problem, but the end of it is: to go on, the event must become a placeholder (`unknown`) or the gap be given up. A decrypted event whose ciphertext cannot be fetched has no ciphertext to wait with, so its placeholder would stay for good and its readable text be lost; a given-up gap loses messages without the core being told. Telling a permanent from a temporary failure also means reading the SDK's HTTP error kinds. That is a decision about losing data and about a "gap" concept in the core: not taken here.
 
-**Limits not set (not changed).** (a) A deadline for a whole fetch: dropping `fetch_batch` half-way is safe by design (the replay), but a fetch that always exceeds it would never progress; the value is a decision. (b) A cap on pages per gap across fetches: a hostile server can return endless pages with ever-new tokens, and `more` stays true. A cap would end a gap and so give up history, and the count needs a new cursor field. Within one fetch the budget of 500 events bounds the work, also for empty pages (they count as one).
+**Limits not set (not changed).** (a) A deadline for a whole fetch: dropping `fetch_batch` half-way is safe by design (the replay), but a fetch that always exceeds it would never progress; the value is a decision. (b) A cap on pages per gap across fetches: a hostile server can return endless pages with ever-new tokens. Within one fetch 20 pages and 500 events now bound the work (an empty page counts as one event), and a fetch cut by the page limit ends without `more`, so one `sync()` returns and the gap stays in the cursor. Across calls the gap never ends. A cap would give up history, and the count needs a new cursor field: not taken here.
+
+**Without a total end (partly changed).** One `send` and one plan now have an end of 16 times `request_timeout` (8 minutes at 30 s); passing it is an error and nothing counts as sent (as with `bounded`, the message may have left all the same). Still open: (a) inside that end, a room of up to 500 members is checked person by person, each up to 4 minutes (at worst about 33 hours without the new end; the new end cuts it, so a large room whose server is slow fails instead of finishing). (b) The member cap counts members, not devices: a few members with very many devices pass it, and only the 4-minute end per call and the new total stand in the way, not memory. (c) Each decrypted event takes one more request, `ciphertext_of` (up to 4 minutes), so a fetch of 500 decrypted events from a slow server can take hours; there is no end for a whole fetch (above, "Limits not set" (a)). (d) `cursor.rooms` and `cursor.gaps` grow with every room id a server invents, and the cursor is stored with each batch; the number of rooms in one `/sync` is not bounded (above). A new `Gap` per room is read at most 20 pages per fetch.
 
 ## Not verified
 
@@ -178,6 +184,9 @@ Worked around here, nothing changed there:
 * **An expired or revoked access token:** not tried. It should show as a `matrix:` error; there is no flow to log in again over a stored session. Refresh tokens are not requested.
 * **Concurrent send and sync:** the exclusion is by a lock and the test does them in turn; no test forces the race.
 * **Scale:** rooms of two or three, tens of messages. Each journal write took about 20 ms here (900 writes in 18 s in the fold test, on this machine), and a sync can make several.
+* **The second review's corrections** (stored origin, the dropped plain event, page and event limits, the `/sync` cut, password-free errors, alias keys, the total end) were tested offline: raw HTTP servers that answer what each case needs, units, and the core on an encrypted file. None of them against tuwunel: the 13 server tests still pass, and none of them reaches a limit. The `/sync` cut and the page cut rest on the assumption that a server answers `/messages` from a `/sync` token with the same events when asked twice; the raw server does, a real one was not tried.
+* **The total end of `send` and the plan** is tested as a unit (a future that never ends); no test drives a real slow room.
+* **A plain event under a waiting placeholder's id** is tested with one waiting placeholder. A placeholder that already left the waiting list is not covered.
 * **Edits and files** are tested only on hand-written JSON.
 * **MPL-2.0** comes along with the SDK: `as_variant`, `eyeball`, `eyeball-im`, `imbl`, `imbl-sized-chunks`, `readlock`, `readlock-tokio`. File-level copyleft, not our code; not an ADR 0015 question I can settle.
 
