@@ -1,6 +1,7 @@
 //! Doubles for `DestinationLookup`: one that says what it is told and keeps what it was asked, one that
 //! never answers, one that panics.
 #![allow(dead_code)]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -53,4 +54,36 @@ impl DestinationLookup for Panics {
 
 pub fn known(words: &str) -> Destination {
     Destination::Known(words.into())
+}
+
+/// Says "only this device" and keeps what it was asked, until it is told to hang.
+pub struct Switch {
+    pub hang: AtomicBool,
+    pub asked: Mutex<Vec<(String, String)>>,
+}
+
+impl Switch {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            hang: AtomicBool::new(false),
+            asked: Mutex::new(vec![]),
+        })
+    }
+    pub fn hangs_from_now(&self) {
+        self.hang.store(true, Ordering::SeqCst);
+    }
+}
+
+#[async_trait]
+impl DestinationLookup for Switch {
+    async fn destination(&self, participant: &str, program: &str) -> Destination {
+        self.asked
+            .lock()
+            .unwrap()
+            .push((participant.into(), program.into()));
+        if self.hang.load(Ordering::SeqCst) {
+            std::future::pending().await
+        }
+        known("only this device")
+    }
 }
