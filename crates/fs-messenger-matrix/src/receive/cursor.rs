@@ -2,7 +2,8 @@
 //!
 //! Pattern: Memento: a snapshot of where this provider stands (the `/sync` token, the rooms read, the
 //! open gaps, the events waiting for a key). The core keeps it as opaque text (`ProviderCursor`) and
-//! hands it back to be read from. Being one value, the waiting list moves with the batch: the core stores both, or neither, and a crash replays.
+//! hands it back to be read from. Being one value, the waiting list moves with the batch. The core stores each
+//! message, then the cursor; a crash in between replays, and the core drops what it has.
 
 use fs_messenger_core::ProviderCursor;
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,8 @@ const MAX_PENDING: usize = 256;
 const MAX_PENDING_BYTES: usize = 1024 * 1024;
 /// What the Matrix specification allows for one event. Anything larger does not wait.
 const MAX_EVENT_BYTES: usize = 65_536;
+/// Given-up gaps the cursor names. The cursor is stored with every batch; the older ones are in the log.
+const MAX_GIVEN_UP: usize = 32;
 
 /// An event that could not be decrypted, as it arrived.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,6 +78,10 @@ pub(crate) struct MatrixCursor {
     /// What is still to be read, so that one fetch stays small and a long gap goes on in the next.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) gaps: Vec<Gap>,
+    /// Gaps nothing can read any more (the room is unknown to the SDK), named so that it is known what
+    /// was left unread: room and tokens, never content. The newest [`MAX_GIVEN_UP`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) given_up: Vec<Gap>,
 }
 
 impl MatrixCursor {
@@ -95,6 +102,14 @@ impl MatrixCursor {
 
     fn pending_bytes(&self) -> usize {
         self.pending.iter().map(|p| p.raw.len()).sum()
+    }
+
+    /// This gap cannot be read any more: say so, by name, and drop it from the open ones.
+    pub(crate) fn give_up(&mut self, gap: Gap) {
+        tracing::warn!(room = %gap.room, from = %gap.from, "gap given up: the room is not known any more");
+        self.given_up.push(gap);
+        let over = self.given_up.len().saturating_sub(MAX_GIVEN_UP);
+        self.given_up.drain(..over);
     }
 
     /// Whether this event is a placeholder in the core that still waits for its key.

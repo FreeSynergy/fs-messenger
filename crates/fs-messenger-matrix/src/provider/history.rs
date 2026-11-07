@@ -43,7 +43,11 @@ impl MatrixProvider {
             let room_id = <&RoomId>::try_from(gap.room.as_str())
                 .map_err(|e| MatrixError::Cursor(e.to_string()))?;
             let Some(room) = self.client.get_room(room_id) else {
-                cursor.gaps.pop();
+                // Nothing can read it: the SDK does not know the room (left and forgotten, or its
+                // store was lost). Not removed in silence.
+                if let Some(gap) = cursor.gaps.pop() {
+                    cursor.give_up(gap);
+                }
                 continue;
             };
             pages += 1;
