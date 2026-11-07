@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use fs_messenger_core::{ToolCallOutcome, ToolCallRisk};
 
 use super::core::GuardEngine;
+use super::lookup_once::OnceLookup;
 use super::store_access::View;
 use crate::api::Gate;
 use crate::arguments::Arguments;
@@ -34,11 +35,16 @@ impl GuardEngine {
     }
 
     /// Show what the state now says. What is shown decides nothing, so a failure only misleads.
-    pub(super) async fn show(&self, call: &CallRecord, detail: &str) -> Result<(), String> {
+    pub(super) async fn show(
+        &self,
+        look: &OnceLookup,
+        call: &CallRecord,
+        detail: &str,
+    ) -> Result<(), String> {
         if self.port.get().is_none() {
             return Ok(());
         }
-        let words = self.destination_for(call).await;
+        let words = self.destination_for(look, call).await;
         self.show_with(call, detail, &words).await
     }
 
@@ -66,7 +72,7 @@ impl GuardEngine {
             .map_err(|_| "the store did not answer in time".to_string())?
     }
 
-    async fn use_approval(&self, mut doc: GuardDoc, at: usize) -> Verdict {
+    async fn use_approval(&self, look: &OnceLookup, mut doc: GuardDoc, at: usize) -> Verdict {
         let call = &mut doc.calls[at];
         call.stage = CallStage::Running;
         call.revision += 1;
@@ -78,7 +84,7 @@ impl GuardEngine {
         if self.save(&doc).await.is_err() {
             return Verdict::Refuse(Refusal::NotRecorded);
         }
-        let _ = self.show(&call, "").await;
+        let _ = self.show(look, &call, "").await;
         let mut entry = GuardLogEntry::new("approvalUsed", &call.caller).about(&call.caller);
         entry.call.clone_from(&call.id);
         entry.capability.clone_from(&call.capability);
@@ -145,6 +151,7 @@ impl GuardEngine {
             Ok(doc) => doc,
             Err(refusal) => return Verdict::Refuse(refusal),
         };
+        let look = self.look();
         let profile = id_key(&caller.profile);
         let now = self.clock.now();
         let limits = self.limits();
@@ -166,13 +173,16 @@ impl GuardEngine {
                 }
                 Verdict::Allow(Allowance::Class(risk))
             }
-            Evaluation::UseApproval(at) => self.use_approval(doc, at).await,
+            Evaluation::UseApproval(at) => self.use_approval(&look, doc, at).await,
             Evaluation::AskAgain(at) => match self.count_retry(&doc.calls[at].id) {
-                Ok(()) => self.question(&doc.calls[at], &arguments.detail()).await,
+                Ok(()) => {
+                    self.question(&look, &doc.calls[at], &arguments.detail())
+                        .await
+                }
                 Err(refusal) => Verdict::Refuse(refusal),
             },
             Evaluation::AskNew(input) => {
-                self.ask_new(doc, &profile, capability, arguments, input)
+                self.ask_new(&look, doc, &profile, capability, arguments, input)
                     .await
             }
         }
@@ -207,7 +217,8 @@ impl Gate for GuardEngine {
             Ok(doc) => doc,
             Err(refusal) => return Verdict::Refuse(refusal),
         };
-        self.revise_call(doc, caller, call, arguments).await
+        let look = self.look();
+        self.revise_call(&look, doc, caller, call, arguments).await
     }
 
     async fn finished(
@@ -238,7 +249,7 @@ impl Gate for GuardEngine {
         record.revision += 1;
         let record = record.clone();
         self.save(&doc).await.map_err(|_| Refusal::NotRecorded)?;
-        let _ = self.show(&record, "").await;
+        let _ = self.show(&self.look(), &record, "").await;
         let mut entry = GuardLogEntry::new("finished", &profile).about(&profile);
         entry.call.clone_from(&record.id);
         entry.capability.clone_from(&record.capability);

@@ -10,7 +10,7 @@
 use fs_messenger_core::ToolCallRisk;
 
 use super::admin::usable_name;
-use super::doc::{GuardDoc, Invitation};
+use super::doc::{CallRecord, GuardDoc, Invitation};
 use super::stage::derived_risk;
 use crate::error::Refusal;
 use crate::model::GuardMode;
@@ -48,6 +48,18 @@ impl GuardDoc {
             return Err(Refusal::NeverForAi);
         }
         self.invited.get(caller).ok_or(Refusal::NotInvited)
+    }
+
+    /// Whether a call that a person answered may still go on: the same `standing` as when a call
+    /// comes in, with the call counted as a marked read where it is a read (it was asked, so it
+    /// asked every time). Only "no" matters here; whether a release covers it changes nothing. A
+    /// question or approval that a version before releases per program left behind is refused.
+    pub(crate) fn approval_standing(&self, call: &CallRecord) -> Result<(), Refusal> {
+        let marked = counts_as_marked(&call.capability, true);
+        match self.standing(&call.caller, &call.capability, call.has_input, marked) {
+            Standing::Refused(refusal) => Err(refusal),
+            Standing::Released(_) | Standing::AsksEachTime => Ok(()),
+        }
     }
 
     /// Nothing without a release (ADR 0054): what a release could cover is refused until it is given,

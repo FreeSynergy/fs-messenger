@@ -99,6 +99,10 @@ impl GuardDoc {
             ToolCallChoice::AllowOnce => Answer::Once,
             ToolCallChoice::AllowClass => return Err(Refusal::UnknownOption),
         };
+        // Only an answer that lets the call go on needs a release, as seen now (open point 14).
+        if answer == Answer::Once {
+            self.approval_standing(call)?;
+        }
         if hex(&d.arguments_digest) != call.digest {
             return Err(Refusal::DigestMismatch);
         }
