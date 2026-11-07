@@ -4,7 +4,7 @@
 //! stored at all until the key vault exists (ADR 0024).
 
 use fs_interfaces::provider::Unsupported;
-use fs_store::{Envelope, ObjectId, Query, StoredObject};
+use fs_objects::{Envelope, ObjectId, Query, StoredObject};
 use serde::{Deserialize, Serialize};
 
 use super::consts::{ACCOUNT, CONTENT_TYPE, IDX_ADDRESS, IDX_KIND, SENSITIVE};

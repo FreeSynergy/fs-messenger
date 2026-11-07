@@ -11,8 +11,8 @@ use fs_messenger_core::{MessageAction, Messenger};
 use fs_messenger_guard::{
     Guard, GuardEngine, GuardError, GuardMode, GuardRepository, Method, Refusal, STATE_ID, Verdict,
 };
-use fs_store::ObjectId;
-use fs_store::traits::UnloggedObjects;
+use fs_objects::ObjectId;
+use fs_objects::traits::UnloggedObjects;
 use serde_json::json;
 async fn verdict(engine: &GuardEngine) -> Verdict {
     common::program::read_unmarked(engine, "message.open", &args("/")).await
@@ -127,7 +127,7 @@ async fn an_allow_once_that_cannot_be_used_up_in_the_state_is_refused() {
     // write of the state fails for real. It reads, and it cannot be written.
     let id: ObjectId = STATE_ID.parse().unwrap();
     let current = w.store.read_unlogged(id).await.unwrap().unwrap();
-    use fs_store::Store;
+    use fs_objects::Store;
     w.store.put(current, "someone").await.unwrap();
     assert_eq!(
         w.check("message.delete", args("/m")).await,

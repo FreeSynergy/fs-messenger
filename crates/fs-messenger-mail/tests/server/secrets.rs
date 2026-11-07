@@ -8,7 +8,7 @@ use fs_messenger_mail::jmap::{JmapClient, JmapConfig, JmapFetch};
 use fs_messenger_mail::keys::KeyStore as _;
 use fs_messenger_mail::submit::{MailEnvelope, MailSubmit, SmtpConfig, SmtpSubmit};
 use fs_messenger_mail::{Endpoint, Password, TlsTrust};
-use fs_store::{ActivityFilter, Store, TursoStore};
+use fs_objects::{ActivityFilter, Store, TursoStore};
 use std::sync::Arc;
 
 use crate::common::{Fetch, Person, Submit, Who, serial, token};

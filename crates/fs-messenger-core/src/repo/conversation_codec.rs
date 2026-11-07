@@ -4,7 +4,7 @@
 //! needs no scan; `Inner::refresh` always recomputes them from the messages, so they cannot drift.
 
 use chrono::{DateTime, Utc};
-use fs_store::{Envelope, ObjectId, StoredObject};
+use fs_objects::{Envelope, ObjectId, StoredObject};
 use serde::{Deserialize, Serialize};
 
 use super::consts::{

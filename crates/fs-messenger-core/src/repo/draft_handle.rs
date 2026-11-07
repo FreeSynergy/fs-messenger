@@ -8,7 +8,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use fs_interfaces::provider::Unsupported;
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use super::consts::{TEXT_MARKDOWN, TEXT_PLAIN};
 use super::draft_data::DraftData;

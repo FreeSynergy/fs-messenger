@@ -3,7 +3,7 @@
 //! Pattern: Adapter: the core's hooks over the engine. The core holds `Route`, and the engine holds a
 //! port with a weak way back, so there is no cycle. `sender_kind` takes no lock of the engine: the core
 //! calls it holding its write lock, and the engine holds its own while it writes into the messenger.
-//! Over the guard's own invited list because `fs-people` pins `fs-store` v0.2.0 and this repo v0.3.0,
+//! Over the guard's own invited list because `fs-people` pins `fs-objects` v0.2.0 and this repo v0.3.0,
 //! so that crate cannot be a dependency here; it is what the card lookup replaces, provisional.
 
 use std::sync::Arc;
@@ -14,7 +14,7 @@ use fs_messenger_core::{
     EngineGuard, Error, MessengerRepo, Result as CoreResult, SenderKind, SenderLookup,
     ToolCallDecision,
 };
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use super::core::GuardEngine;
 use super::store_access::View;

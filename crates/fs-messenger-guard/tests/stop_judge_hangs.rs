@@ -13,7 +13,7 @@ use fs_messenger_guard::{
     DeviceVerifier, Ed25519Verifier, Guard, GuardEngine, GuardMode, Method, OwnerOnly,
     StopPermission,
 };
-use fs_store::TursoStore;
+use fs_objects::TursoStore;
 
 /// Ed25519, but it waits first for as long as the flag is set.
 struct Blocks(AtomicBool);

@@ -7,7 +7,7 @@ use fs_messenger_core::{
     Encryption, Error, Ingest, Ingested, MessageAction, Messenger, MessengerRepo, RawAttachment,
     RawMessage, SearchFilter, SignatureCheck,
 };
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 async fn stored(repo: &MessengerRepo, me: ObjectId, m: RawMessage) -> ObjectId {
     let Ingested::Stored(id) = repo.ingest(me, m).await.unwrap() else {

@@ -7,7 +7,7 @@ use fs_messenger_core::{
     Encryption, Error, FetchBatch, Ingest, Ingested, Messenger, MessengerRepo, ProviderCursor,
     RawMessage, RawToolCall, ToolCall,
 };
-use fs_store::{ObjectId, Query};
+use fs_objects::{ObjectId, Query};
 use serde_json::json;
 
 async fn stored(repo: &MessengerRepo, me: ObjectId, m: RawMessage) -> ObjectId {

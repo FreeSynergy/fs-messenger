@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use common::{account, raw_at, repo_over};
 use fs_messenger_core::{Cursor, Ingest, Messenger};
-use fs_store::{Store, TursoStore};
+use fs_objects::{Store, TursoStore};
 
 async fn small_pages(size: usize) -> fs_messenger_core::MessengerRepo {
     let store: Arc<dyn Store> = Arc::new(TursoStore::open_in_memory().await.unwrap());

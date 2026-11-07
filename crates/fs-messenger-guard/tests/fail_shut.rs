@@ -10,8 +10,8 @@ use fs_messenger_core::ToolCallRisk;
 use fs_messenger_guard::{
     Guard, GuardError, GuardMode, Method, Refusal, STATE_ID, TursoGuardRepository, Verdict,
 };
-use fs_store::traits::UnloggedObjects;
-use fs_store::{Envelope, ObjectId, StoredObject, TursoStore};
+use fs_objects::traits::UnloggedObjects;
+use fs_objects::{Envelope, ObjectId, StoredObject, TursoStore};
 use serde_json::{Value, json};
 async fn stopped_after(w: &World) {
     assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);

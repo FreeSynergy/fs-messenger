@@ -3,7 +3,7 @@
 //! Pattern: none, allowed by section 2 (a small set of functions for one concept): what can be searched and sorted, derived in one place. An
 //! undecrypted message or a stub has no text here: no ciphertext in search.
 
-use fs_store::StoredObject;
+use fs_objects::StoredObject;
 
 use super::consts::{
     IDX_ACCOUNT, IDX_ALIAS, IDX_ARRIVAL, IDX_ARRIVAL_DESC, IDX_BLOB, IDX_DESC, IDX_ENCRYPTION,

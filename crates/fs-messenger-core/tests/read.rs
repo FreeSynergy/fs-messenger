@@ -4,7 +4,7 @@ mod common;
 
 use common::{account, conversation_of, raw_at, setup};
 use fs_messenger_core::{Error, Ingest, Ingested, MessageAction, Messenger, MessengerRepo};
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 async fn three(repo: &MessengerRepo, thread: &str, base: u32) -> Vec<ObjectId> {
     let me = repo.accounts().await.unwrap()[0].id;

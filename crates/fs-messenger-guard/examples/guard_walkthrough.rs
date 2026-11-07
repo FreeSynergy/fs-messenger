@@ -13,7 +13,7 @@ use fs_messenger_guard::{
     Arguments, Caller, Gate, Guard, GuardConfig, GuardEngine, GuardProof, Method,
     TursoGuardRepository, Verdict, decide_arguments, signed_bytes,
 };
-use fs_store::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
+use fs_objects::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
 
 const OWNER: &str = "https://local.invalid/users/owner";
 const AI: &str = "https://local.invalid/ai/helper";

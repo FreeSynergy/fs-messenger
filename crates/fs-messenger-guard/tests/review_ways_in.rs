@@ -12,7 +12,7 @@ use fs_messenger_core::{
     ToolCall, ToolCallKind, ToolCallState,
 };
 use fs_messenger_guard::{GuardError, TursoGuardRepository};
-use fs_store::TursoStore;
+use fs_objects::TursoStore;
 fn report(state: ToolCallState) -> ToolCall {
     ToolCall {
         name: "rm".into(),

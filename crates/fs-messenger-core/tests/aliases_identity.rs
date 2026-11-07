@@ -7,7 +7,7 @@ use fs_messenger_core::{
     AccountSetup, Encryption, Error, ExternalId, Ingest, Ingested, Messenger, MessengerRepo,
     RawMessage,
 };
-use fs_store::{ObjectId, Query};
+use fs_objects::{ObjectId, Query};
 
 async fn stored(repo: &MessengerRepo, me: ObjectId, m: RawMessage) -> ObjectId {
     let Ingested::Stored(id) = repo.ingest(me, m).await.unwrap() else {
