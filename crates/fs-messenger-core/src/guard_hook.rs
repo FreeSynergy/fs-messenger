@@ -49,6 +49,11 @@ pub trait EngineGuard: Send + Sync {
 
     /// `Conversation.stop`: ends its turns and settles its open calls as cancelled.
     async fn stop_conversation(&self, conversation: ObjectId) -> Result<()>;
+
+    /// May a report of a tool call from this sender land as it is? `false` while the program is
+    /// stopped, not open, or cannot say: in doubt shut. A report is then kept as `cancelled`. The core
+    /// asks this under its write lock, so an answer must not wait for the guard's own writes.
+    async fn open_for_reports(&self, sender: &str) -> bool;
 }
 
 /// The kind on a sender's card (ADR 0054). Answers `Unknown` for whom it does not know; never a guess

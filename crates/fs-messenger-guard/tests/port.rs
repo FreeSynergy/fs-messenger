@@ -22,6 +22,9 @@ impl EngineGuard for Nobody {
     async fn stop_conversation(&self, _: ObjectId) -> Result<()> {
         Ok(())
     }
+    async fn open_for_reports(&self, _: &str) -> bool {
+        true
+    }
 }
 
 #[async_trait]

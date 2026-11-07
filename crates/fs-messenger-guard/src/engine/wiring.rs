@@ -44,6 +44,14 @@ impl EngineGuard for Route {
     async fn stop_conversation(&self, conversation: ObjectId) -> CoreResult<()> {
         Ok(self.0.stop_conversation_now(conversation).await?)
     }
+
+    async fn open_for_reports(&self, sender: &str) -> bool {
+        // Only "not invited" leaves the program open: stopped, missing and unreadable all shut.
+        matches!(
+            self.0.admission(sender, self.0.config.sender_wait).await,
+            Ok(()) | Err(Refusal::NotInvited)
+        )
+    }
 }
 
 #[async_trait]

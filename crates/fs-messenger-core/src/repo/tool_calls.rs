@@ -4,13 +4,19 @@
 //! that it can claim nothing. Calls reach this version only from outside the engine, so they read
 //! as `unknown` without options. Nobody here can answer, so an outside question is `working`: it is
 //! shown and not asked. The guard follows, see `DESIGN.md`.
+//!
+//! Also Strategy, through the trait `EngineGuard::open_for_reports`: a report from a sender who is not
+//! known to be a person or plain software is kept as `cancelled` while the guard says it is not open
+//! (stopped, or cannot say). The core knows the trait, not the guard; a stop settles what is stored,
+//! and this keeps a late report from showing `working` again.
 
 use fs_store::ObjectId;
 
+use super::guard_port::GUARD_WAIT;
 use super::handle::Inner;
 use super::message_codec::message_to;
 use crate::error::{Error, Result};
-use crate::model::{Message, ToolCall, ToolCallRisk, ToolCallState};
+use crate::model::{Message, SenderKind, ToolCall, ToolCallOutcome, ToolCallRisk, ToolCallState};
 
 /// Take the agent's fields only. `id` and `revision` are assigned by the caller.
 fn from_agent(mut call: ToolCall) -> ToolCall {
@@ -69,7 +75,35 @@ fn holds_engine_call(message: &Message) -> bool {
     message.tool_calls.iter().any(|c| !c.asked_of.is_empty())
 }
 
+/// Settled as `cancelled`: what a report becomes while the guard is shut.
+fn cancelled(mut call: ToolCall) -> ToolCall {
+    call.state = ToolCallState::Settled;
+    call.outcome = ToolCallOutcome::Cancelled;
+    call
+}
+
 impl Inner {
+    /// Only a person or plain software reports freely. `Ai` and `Unknown` need the guard to be open;
+    /// without a guard nothing can be stopped, so the report stays as it is.
+    async fn report_is_shut(&self, message: &Message) -> bool {
+        if matches!(
+            message.summary.sender_kind,
+            SenderKind::Person | SenderKind::Software
+        ) {
+            return false;
+        }
+        let Some(wiring) = self.wiring.get() else {
+            return false;
+        };
+        let sender = message.summary.envelope.attributed_to.as_deref();
+        let open = tokio::time::timeout(
+            GUARD_WAIT,
+            wiring.guard.open_for_reports(sender.unwrap_or_default()),
+        )
+        .await;
+        !open.unwrap_or(false)
+    }
+
     /// A report may not land beside a question of the engine. It gets no right either way.
     async fn report_may_land(&self, id: ObjectId) -> Result<()> {
         let message = self.load_note(id).await?;
@@ -97,6 +131,13 @@ impl Inner {
         if holds_engine_call(&message) {
             return Err(Error::GuardRefused(BESIDE_QUESTION.into()));
         }
+        // Under the write lock: a stop that settles what is stored comes after this report or has
+        // already shut the guard, so no report slips between the two.
+        let call = if self.report_is_shut(&message).await {
+            cancelled(call)
+        } else {
+            call
+        };
         let (stored, changed) = apply(&mut message, agent_ref, call);
         let size = message.body_text.len() + serde_json::to_string(&message.tool_calls)?.len();
         let limit = self.config.max_message_bytes;

@@ -202,7 +202,9 @@ impl Guard for GuardEngine {
         if !self.clear_stop_unless_newer(seen) {
             // A stop came in while the marker went: it wrote its marker before this removed it.
             if let Some(mark) = self.unsaved_mark() {
-                let _ = marker::write(self.config.stop_marker.clone(), mark).await;
+                // Within the time limit, as every step under the lock; the retry task goes on.
+                let writing = marker::write(self.config.stop_marker.clone(), mark);
+                let _ = tokio::time::timeout(self.config.store_wait, writing).await;
             }
             return Err(Refusal::Stopped.into());
         }

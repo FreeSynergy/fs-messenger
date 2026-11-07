@@ -73,6 +73,25 @@ impl GuardEngine {
         })
     }
 
+    /// `judge` in a task of its own: a foreign verifier or permission that panics must not end this
+    /// stop before its marker is written. What cannot be judged is a stop by nobody: fail-shut, as
+    /// when the state cannot be read.
+    async fn judge_surely(
+        self: &Arc<Self>,
+        proof: Option<GuardProof>,
+    ) -> Result<StopMark, Refusal> {
+        let judge = self.clone();
+        let at = self.clock.now();
+        let task = tokio::spawn(async move { judge.judge(proof.as_ref()).await });
+        task.await.unwrap_or_else(|_| {
+            Ok(StopMark {
+                by: marker::NOBODY.to_string(),
+                at,
+                used: None,
+            })
+        })
+    }
+
     /// With a proof, or without one from the local console: the caller can walk away from this. The
     /// latch is up before this awaits anything.
     pub(crate) async fn pull_stop(
@@ -90,7 +109,7 @@ impl GuardEngine {
         self: Arc<Self>,
         proof: Option<GuardProof>,
     ) -> Result<StopReport, GuardError> {
-        let mark = match self.judge(proof.as_ref()).await {
+        let mark = match self.judge_surely(proof).await {
             Ok(mark) => mark,
             Err(refusal) => {
                 self.pending.fetch_sub(1, Ordering::SeqCst);

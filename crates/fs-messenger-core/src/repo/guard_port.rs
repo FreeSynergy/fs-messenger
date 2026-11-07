@@ -1,7 +1,7 @@
 //! [`GuardPort`]: the only way to write what the engine itself says about a tool call.
 //!
-//! Pattern: Capability object + Facade: `install_guard` works once and hands out the one port, which
-//! nothing else can build. `Messenger`, `Ingest` and `Provider` have no path to it. The port holds the
+//! Pattern: Facade (the one port into the messenger). `install_guard` works once and hands it out;
+//! nothing else can build it (a convention, no pattern of coding.md section 2: open point 0). `Messenger`, `Ingest` and `Provider` have no path to it. The port holds the
 //! repo weakly: the repo holds the guard, and a cycle would keep the store's claim for ever.
 
 use std::sync::{Arc, Weak};
@@ -19,10 +19,10 @@ use crate::guard_hook::{EngineGuard, SenderLookup};
 use crate::model::{Event, SenderKind, ToolCall, ToolCallChange, ToolCallOutcome, ToolCallState};
 
 /// How long the core waits for a guard, which it never does while holding its write lock.
-const GUARD_WAIT: Duration = Duration::from_secs(1);
+pub(super) const GUARD_WAIT: Duration = Duration::from_secs(1);
 
 pub(super) struct Wiring {
-    guard: Arc<dyn EngineGuard>,
+    pub(super) guard: Arc<dyn EngineGuard>,
     senders: Arc<dyn SenderLookup>,
 }
 
