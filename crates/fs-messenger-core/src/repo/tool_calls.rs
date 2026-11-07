@@ -131,14 +131,14 @@ impl Inner {
         if holds_engine_call(&message) {
             return Err(Error::GuardRefused(BESIDE_QUESTION.into()));
         }
-        // Under the write lock: a stop that settles what is stored comes after this report or has
-        // already shut the guard, so no report slips between the two.
+        // Under the write lock; asked again after the write (below), because a stop's settling does
+        // not wait for this lock before it reads the index.
         let call = if self.report_is_shut(&message).await {
             cancelled(call)
         } else {
             call
         };
-        let (stored, changed) = apply(&mut message, agent_ref, call);
+        let (mut stored, changed) = apply(&mut message, agent_ref, call);
         let size = message.body_text.len() + serde_json::to_string(&message.tool_calls)?.len();
         let limit = self.config.max_message_bytes;
         if changed && size > limit {
@@ -146,6 +146,15 @@ impl Inner {
         }
         if changed {
             self.put(message_to(&message)?).await?;
+            // A stop may have come in between the question above and the write: its settling asks
+            // the index before it takes the write lock, so it may not have seen this message. Asked
+            // again after the write: a stop's latch is up before its settling begins, so either the
+            // settling saw the message, or this look sees the latch.
+            if stored.state != ToolCallState::Settled && self.report_is_shut(&message).await {
+                let (shut, _) = apply(&mut message, agent_ref, cancelled(stored));
+                self.put(message_to(&message)?).await?;
+                stored = shut;
+            }
         }
         Ok(stored)
     }

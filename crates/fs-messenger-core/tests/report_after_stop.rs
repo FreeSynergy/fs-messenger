@@ -4,6 +4,7 @@
 mod common;
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
 use common::{account, raw, setup};
@@ -86,4 +87,42 @@ async fn a_person_or_plain_software_is_not_cancelled() {
 async fn without_a_guard_nothing_is_stopped() {
     let call = report_from("ai@x", false).await;
     assert_eq!(call.state, ToolCallState::Working);
+}
+
+/// Open for the first question, and shut from then on: a stop pulled right after the answer, whose
+/// settling has already read the index and found nothing.
+struct StopsAfterAnswer(AtomicBool);
+
+#[async_trait]
+impl EngineGuard for StopsAfterAnswer {
+    async fn decide(&self, _: ObjectId, _: ObjectId, _: ToolCallDecision) -> Result<()> {
+        Ok(())
+    }
+    async fn stop_conversation(&self, _: ObjectId) -> Result<()> {
+        Ok(())
+    }
+    async fn open_for_reports(&self, _: &str) -> bool {
+        self.0.swap(false, Ordering::SeqCst)
+    }
+}
+
+#[async_trait]
+impl SenderLookup for StopsAfterAnswer {
+    async fn sender_kind(&self, _: &str) -> SenderKind {
+        SenderKind::Ai
+    }
+}
+
+#[tokio::test]
+async fn a_stop_between_the_question_and_the_write_still_cancels_the_report() {
+    let (repo, _) = setup().await;
+    let late = Arc::new(StopsAfterAnswer(AtomicBool::new(true)));
+    repo.install_guard(late.clone(), late).unwrap();
+    let me = account(&repo, "me@example.org").await;
+    let Ingested::Stored(id) = repo.ingest(me.id, raw("m1", "t", "hi")).await.unwrap() else {
+        panic!()
+    };
+    let call = repo.record_tool_call(id, "r", working()).await.unwrap();
+    assert_eq!(call.state, ToolCallState::Settled);
+    assert_eq!(call.outcome, ToolCallOutcome::Cancelled);
 }
