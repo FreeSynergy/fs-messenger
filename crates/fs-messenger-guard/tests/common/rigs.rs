@@ -190,13 +190,12 @@ impl Rig {
         let release = owner.proof(
             &identity,
             Method::Release,
-            &[AI.as_bytes(), b"readsOnly", b"message", b"this device only"],
+            &[AI.as_bytes(), b"readsOnly", b"message"],
         );
         let grant = AiGrant {
             profile: AI.into(),
             risk: ToolCallRisk::ReadsOnly,
             program: "message".into(),
-            goes_to: "this device only".into(),
         };
         engine.release(&grant, &release).await.unwrap();
         Self {
@@ -217,9 +216,7 @@ impl Rig {
     }
 
     pub async fn read_check(&self) -> Verdict {
-        let input = Arguments::from_text(r#"{"path":"/"}"#).unwrap();
-        self.engine
-            .check(&Caller::new(AI), "message.open", &input)
-            .await
+        let input = serde_json::json!({"path": "/"});
+        super::program::read_unmarked(&self.engine, "message.open", &input).await
     }
 }

@@ -1,23 +1,22 @@
 //! `check` as a pure function: what the state says about one call.
 //!
 //! Pattern: State (the rules are pure transitions on `CallStage`): the order of the rules is the guarantee. Stopped first, then what is
-//! never for an AI, then the invitation. Then the exact arguments a person approved, then a release,
-//! and only then a question. Between the release and the question comes "nothing without a release": what a release could cover is refused, not asked, until it is given, and what always asks is asked only once something is released in the program (ADR 0054). The risk comes from the table, and no input makes it `unknown`.
+//! never for an AI, then the invitation (`head`). Then the exact arguments a person approved, then a release,
+//! and only then a question. Between the release and the question comes "nothing without a release"
+//! (`standing`): what a release could cover is refused, not asked, until it is given, and what always
+//! asks is asked only once something is released in the program (ADR 0054). `revise` goes through the
+//! same two rules. The risk comes from the table, and no input makes it `unknown`.
 
 use chrono::{DateTime, Duration, Utc};
 use fs_messenger_core::ToolCallRisk;
 use fs_store::ObjectId;
 
-use super::admin::usable_name;
 use super::doc::{CallRecord, GuardDoc};
-use super::stage::{CallStage, derived_risk};
+use super::stage::CallStage;
+use super::standing::{Standing, counts_as_marked};
 use crate::arguments::Arguments;
 use crate::digest::{arguments_digest, hex};
 use crate::error::Refusal;
-use crate::model::GuardMode;
-use crate::program::program_of;
-use crate::risk::can_be_released;
-use crate::table::{CapabilityRule, capability_rule};
 
 /// The bounds of questions. Provisional; `DESIGN.md` states the numbers.
 #[derive(Clone, Copy, Debug)]
@@ -50,7 +49,6 @@ pub(crate) struct QuestionInput {
     pub(crate) asked_of: String,
     pub(crate) turn: Option<ObjectId>,
     pub(crate) sensitive: bool,
-    pub(crate) goes_to: String,
 }
 
 /// One call to judge. `sensitive` is what the engine's source said of the object that is read (marked
@@ -92,17 +90,9 @@ impl GuardDoc {
             arguments,
             sensitive,
         } = *call;
-        if self.mode != GuardMode::Open {
-            return Evaluation::Refuse(Refusal::Stopped);
-        }
-        if !usable_name(capability) {
-            return Evaluation::Refuse(Refusal::BadName);
-        }
-        if capability_rule(capability) == CapabilityRule::NeverForAi {
-            return Evaluation::Refuse(Refusal::NeverForAi);
-        }
-        let Some(invitation) = self.invited.get(caller) else {
-            return Evaluation::Refuse(Refusal::NotInvited);
+        let invitation = match self.head(caller, capability) {
+            Ok(invitation) => invitation,
+            Err(refusal) => return Evaluation::Refuse(refusal),
         };
         let digest = hex(&arguments_digest(caller, turn, capability, arguments));
         let held = self.matching(caller, &digest, now);
@@ -111,19 +101,12 @@ impl GuardDoc {
                 return Evaluation::UseApproval(at);
             }
         }
-        let risk = derived_risk(capability, arguments.has_input());
         // Only a read can be marked. A marked read is never covered by a release of its class.
-        let sensitive = sensitive && risk == ToolCallRisk::ReadsOnly;
-        let program = program_of(capability);
-        if !sensitive && self.is_released(caller, risk, &program) {
-            return Evaluation::AllowClass(risk);
-        }
-        // Nothing without a release (ADR 0054): what a release could cover is refused until it is
-        // given. What always asks is asked only once something is released in this program. Nobody is
-        // asked otherwise, so a participant cannot flood a person with questions.
-        let asks_always = sensitive || !can_be_released(risk);
-        if !(asks_always && self.has_release_in(caller, &program)) {
-            return Evaluation::Refuse(Refusal::NotReleased);
+        let sensitive = counts_as_marked(capability, sensitive);
+        match self.standing(caller, capability, arguments.has_input(), sensitive) {
+            Standing::Refused(refusal) => return Evaluation::Refuse(refusal),
+            Standing::Released(risk) => return Evaluation::AllowClass(risk),
+            Standing::AsksEachTime => {}
         }
         if let Some(at) = held {
             return Evaluation::AskAgain(at);
@@ -151,7 +134,6 @@ impl GuardDoc {
             asked_of: invitation.by.clone(),
             turn,
             sensitive,
-            goes_to: self.destinations(caller, &program),
         })
     }
 
@@ -191,13 +173,27 @@ impl GuardDoc {
         at: usize,
         arguments: &Arguments,
     ) -> Result<bool, Refusal> {
-        let call = self.calls.get_mut(at).ok_or(Refusal::UnknownCall)?;
+        let call = self.calls.get(at).ok_or(Refusal::UnknownCall)?;
         if call.stage.is_settled() {
             return Err(Refusal::SettledCall);
         }
         if call.stage == CallStage::Running {
             return Err(Refusal::RunningCall);
         }
+        // The same rules as `check`, with the call as it stands: a revise can refuse where `check`
+        // would, and it never allows. It names no object, so a read counts as marked.
+        let marked = counts_as_marked(&call.capability, true);
+        self.head(&call.caller, &call.capability)?;
+        let standing = self.standing(
+            &call.caller,
+            &call.capability,
+            arguments.has_input(),
+            marked,
+        );
+        if let Standing::Refused(refusal) = standing {
+            return Err(refusal);
+        }
+        let call = &mut self.calls[at];
         let digest = hex(&arguments_digest(
             &call.caller,
             call.turn,
@@ -212,6 +208,7 @@ impl GuardDoc {
         }
         call.digest = digest;
         call.has_input = arguments.has_input();
+        call.sensitive |= marked;
         call.stage = CallStage::Question;
         call.revision += 1;
         Ok(true)

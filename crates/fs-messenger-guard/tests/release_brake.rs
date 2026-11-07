@@ -6,7 +6,7 @@ use common::{AI, OTHER_AI, World, args};
 use fs_messenger_core::{ToolCallChoice, ToolCallRisk as R};
 use fs_messenger_guard::{
     AiGrant, Allowance, Arguments, Caller, Gate, Guard, GuardError, Refusal, Verdict,
-    can_be_released, offers_allow_class,
+    can_be_released,
 };
 use serde_json::json;
 
@@ -23,7 +23,6 @@ async fn release_refuses_what_can_never_be_granted_and_changes_nothing() {
             profile: AI.into(),
             risk,
             program: "message".into(),
-            goes_to: "this device only".into(),
         };
         let refused = w.engine.release(&grant, &w.release_proof(AI, name)).await;
         assert!(
@@ -41,7 +40,6 @@ async fn a_release_needs_an_invited_participant() {
         profile: AI.into(),
         risk: R::ReadsOnly,
         program: "message".into(),
-        goes_to: "this device only".into(),
     };
     let refused = w
         .engine
@@ -59,7 +57,7 @@ async fn a_release_holds_per_class_and_per_participant() {
     w.invite(OTHER_AI).await;
     w.release(AI, R::ReadsOnly, "readsOnly").await;
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Allow(Allowance::Class(R::ReadsOnly))
     );
     assert_eq!(
@@ -101,12 +99,11 @@ async fn revoke_takes_the_releases_of_this_participant_only() {
             profile: OTHER_AI.into(),
             risk: R::ReadsOnly,
             program: "message".into(),
-            goes_to: "this device only".into(),
         }]
     );
     assert_eq!(state.invited.len(), 2, "still invited");
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::NotReleased)
     );
 }
@@ -147,20 +144,17 @@ async fn unknown_is_what_the_table_does_not_know_and_a_caller_cannot_help() {
 }
 
 #[test]
-fn allow_class_is_only_on_offer_for_reads_only_and_changes() {
+fn only_reads_only_and_changes_can_be_released_and_no_question_offers_the_class() {
     for risk in [R::ReadsOnly, R::Changes] {
         assert!(can_be_released(risk));
-        assert!(offers_allow_class(risk, true));
-        assert!(!offers_allow_class(risk, false), "not without input");
     }
     for risk in [R::Unknown, R::Destroys, R::ActsForPerson] {
         assert!(!can_be_released(risk));
-        assert!(!offers_allow_class(risk, true));
     }
 }
 
 #[tokio::test]
-async fn a_question_offers_allow_class_according_to_its_risk() {
+async fn no_question_offers_allow_class_whatever_its_risk() {
     let w = World::working().await;
     let has_class = |q: &fs_messenger_guard::Question| {
         q.call
@@ -168,9 +162,9 @@ async fn a_question_offers_allow_class_according_to_its_risk() {
             .iter()
             .any(|o| o.choice == ToolCallChoice::AllowClass)
     };
-    // Releasable classes are not asked at all any more: released by a person, or refused.
+    // Releasable classes are not asked at all: released by a person, or refused.
     assert_eq!(
-        w.check("message.open", args("/a")).await,
+        w.read("message.open", args("/a")).await,
         Verdict::Refuse(Refusal::NotReleased)
     );
     assert!(matches!(

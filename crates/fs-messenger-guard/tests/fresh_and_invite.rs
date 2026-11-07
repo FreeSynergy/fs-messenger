@@ -12,7 +12,7 @@ async fn a_fresh_program_is_stopped_and_stays_so_after_the_first_key() {
     assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);
     assert!(w.record().await.is_none(), "reading writes nothing");
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
     w.enrolment.enrol_owner(&w.owner.public()).await.unwrap();
@@ -32,7 +32,7 @@ async fn reopen_opens_it_and_a_restart_keeps_it_open() {
 async fn nothing_exists_without_an_invitation_and_it_starts_with_no_release() {
     let w = World::open().await;
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::NotInvited)
     );
     w.invite(AI).await;
@@ -41,7 +41,7 @@ async fn nothing_exists_without_an_invitation_and_it_starts_with_no_release() {
     assert!(state.grants.is_empty(), "releases start empty");
     // Invited, and it still may not act: with no release it is refused, not even asked.
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::NotReleased)
     );
     // Someone else is still nobody.
@@ -98,7 +98,6 @@ async fn invite_and_release_are_refused_while_stopped() {
         profile: AI.into(),
         risk: ToolCallRisk::ReadsOnly,
         program: "message".into(),
-        goes_to: "this device only".into(),
     };
     let proof = w.release_proof(AI, "readsOnly");
     assert!(matches!(

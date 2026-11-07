@@ -114,8 +114,6 @@ pub struct GuardEngine {
     pub(super) class_logged: StdMutex<HashMap<(String, String), DateTime<Utc>>>,
     pub(super) port: OnceLock<GuardPort>,
     pub(super) sensitivity: OnceLock<Arc<dyn SensitivityLookup>>,
-    /// Shell: not asked yet.
-    #[allow(dead_code)]
     pub(super) destinations: OnceLock<Arc<dyn DestinationLookup>>,
 }
 

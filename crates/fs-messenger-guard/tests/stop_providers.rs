@@ -89,7 +89,7 @@ async fn a_provider_that_hangs_or_panics_cannot_hold_up_the_stop() {
     // Well before the provider's time is up, `check` already refuses.
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
     assert_eq!(

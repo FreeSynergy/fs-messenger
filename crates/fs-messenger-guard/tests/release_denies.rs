@@ -49,7 +49,7 @@ async fn a_release_holds_for_its_participant_only() {
     w.invite(OTHER_AI).await;
     w.release(AI, R::ReadsOnly, "readsOnly").await;
     assert!(matches!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Allow(Allowance::Class(R::ReadsOnly))
     ));
     let other = fs_messenger_guard::Arguments::from_value(&args("/")).unwrap();
@@ -80,23 +80,21 @@ async fn a_release_holds_for_its_program_only() {
     let w = World::with_ai().await;
     w.release(AI, R::ReadsOnly, "readsOnly").await; // program "message"
     assert!(matches!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Allow(_)
     ));
     // Same class, other programs: refused. `account.list` and `conversation.list` are readsOnly.
-    assert_eq!(w.check("account.list", args("/")).await, DENIED);
-    assert_eq!(w.check("conversation.list", args("/")).await, DENIED);
+    assert_eq!(w.read("account.list", args("/")).await, DENIED);
+    assert_eq!(w.read("conversation.list", args("/")).await, DENIED);
     // What always asks needs a release in its own program too.
     assert_eq!(w.check("account.remove", args("/")).await, DENIED);
-    w.release_in(AI, R::ReadsOnly, "account", "this device only")
-        .await
-        .unwrap();
+    w.release_in(AI, R::ReadsOnly, "account").await.unwrap();
     assert!(matches!(
-        w.check("account.list", args("/")).await,
+        w.read("account.list", args("/")).await,
         Verdict::Allow(_)
     ));
     w.ask("account.remove", args("/")).await;
-    assert_eq!(w.check("conversation.list", args("/")).await, DENIED);
+    assert_eq!(w.read("conversation.list", args("/")).await, DENIED);
 }
 
 #[tokio::test]

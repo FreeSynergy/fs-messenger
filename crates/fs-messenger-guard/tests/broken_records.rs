@@ -58,14 +58,14 @@ async fn each_broken_field_reads_as_stopped_and_recovery_goes_on_from_it() {
         let w = World::working().await;
         w.release(AI, ToolCallRisk::ReadsOnly, "readsOnly").await;
         assert!(matches!(
-            w.check("message.open", args("/")).await,
+            w.read("message.open", args("/")).await,
             Verdict::Allow(_)
         ));
         w.tamper(&*breaks).await;
         assert!(w.engine.damage().await.is_some(), "{name}: not damage");
         assert_eq!(w.engine.state().await.mode, GuardMode::Stopped, "{name}");
         assert_eq!(
-            w.check("message.open", args("/")).await,
+            w.read("message.open", args("/")).await,
             Verdict::Refuse(Refusal::Stopped),
             "{name}"
         );

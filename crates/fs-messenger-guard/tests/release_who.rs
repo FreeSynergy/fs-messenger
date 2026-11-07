@@ -28,12 +28,11 @@ async fn only_who_invited_it_or_the_owner_can_release_or_revoke() {
         profile: AI.into(),
         risk: R::ReadsOnly,
         program: "message".into(),
-        goes_to: "this device only".into(),
     };
     let proof = friend.proof(
         &w.identity,
         Method::Release,
-        &[AI.as_bytes(), b"readsOnly", b"message", b"this device only"],
+        &[AI.as_bytes(), b"readsOnly", b"message"],
     );
     assert!(matches!(
         w.engine.release(&grant, &proof).await,
@@ -54,17 +53,11 @@ async fn only_who_invited_it_or_the_owner_can_release_or_revoke() {
         profile: OTHER_AI.into(),
         risk: R::Changes,
         program: "message".into(),
-        goes_to: "this device only".into(),
     };
     let proof = friend.proof(
         &w.identity,
         Method::Release,
-        &[
-            OTHER_AI.as_bytes(),
-            b"changes",
-            b"message",
-            b"this device only",
-        ],
+        &[OTHER_AI.as_bytes(), b"changes", b"message"],
     );
     w.engine.release(&grant, &proof).await.unwrap();
     let input = Arguments::from_value(&args("/")).unwrap();

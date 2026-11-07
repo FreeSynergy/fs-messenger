@@ -120,8 +120,15 @@ async fn an_ai_can_neither_set_nor_influence_it() {
     let odd = w.ask("goesTo-to-nobody.read", args("/x")).await;
     assert_eq!(odd.call.summary, UNKNOWN);
     let asked = says.asked.lock().unwrap().clone();
+    // Only the participant and the program of the engine's own record, never text of the arguments. (The
+    // program is the tool's name before the dot: a source must treat it as a key, not as words.)
     for (who, program) in &asked {
-        assert!(!format!("{who} {program}").contains("nobody"), "{asked:?}");
+        let said = format!("{who} {program}");
+        assert!(
+            !said.contains("to nobody") && !said.contains("this stays"),
+            "{asked:?}"
+        );
+        assert_eq!(who, AI);
     }
     assert!(asked.contains(&(AI.to_string(), "goesto-to-nobody".to_string())));
 }
@@ -183,4 +190,32 @@ async fn an_open_question_shows_the_destination_of_now() {
         !record.to_string().contains("only this device"),
         "nothing of it is stored"
     );
+}
+
+/// A marked read shows the words of the engine, too (it was a test of `sensitive_reads.rs`, where the
+/// words came from the person's release).
+#[tokio::test]
+async fn the_question_of_a_marked_read_names_where_the_text_goes() {
+    let w = World::with_ai().await;
+    w.release_in(AI, R::ReadsOnly, "message").await.unwrap();
+    assert!(w.engine.set_sensitivity(common::program::Fixed::new(
+        fs_messenger_guard::Sensitivity::Marked
+    )));
+    assert!(w.engine.set_destinations(Says::new(known("to Anthropic"))));
+    w.clock.advance(chrono::Duration::seconds(3));
+    let arguments = Arguments::from_value(&serde_json::json!({"id": "1"})).unwrap();
+    let verdict = w
+        .engine
+        .check_object(
+            &Caller::new(AI),
+            "message.open",
+            &arguments,
+            &common::program::object(),
+        )
+        .await;
+    let Verdict::Ask(q) = verdict else {
+        panic!("{verdict:?}")
+    };
+    assert_eq!(q.call.summary, "to Anthropic");
+    assert_eq!(w.shown(&q).await.summary, "to Anthropic");
 }

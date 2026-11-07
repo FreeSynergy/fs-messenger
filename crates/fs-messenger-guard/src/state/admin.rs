@@ -22,6 +22,16 @@ pub(crate) fn usable_name(name: &str) -> bool {
     !name.is_empty() && name.len() <= MAX_NAME_BYTES && !name.contains(hides_text)
 }
 
+/// A program named in an argument: a name, no dot, and not changed by trimming. What a device signed
+/// is what is used, so a program with white space around it is refused and not quietly trimmed.
+pub(crate) fn check_program_argument(program: &str) -> Result<(), Refusal> {
+    if usable_name(program) && !program.contains('.') && program == program.trim() {
+        Ok(())
+    } else {
+        Err(Refusal::BadName)
+    }
+}
+
 /// Who pulled the stop, when, and the proof it used up: whatever is written later, that proof has
 /// been used.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -97,15 +107,7 @@ impl GuardDoc {
         if grant.program.is_empty() {
             return Err(Refusal::Empty("program"));
         }
-        if grant.goes_to.is_empty() {
-            return Err(Refusal::Empty("goesTo"));
-        }
-        if !usable_name(&grant.program)
-            || grant.program.contains('.')
-            || !usable_name(&grant.goes_to)
-        {
-            return Err(Refusal::BadName);
-        }
+        check_program_argument(&grant.program)?;
         self.require_inviter(&grant.profile, signer, owner)
     }
 

@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 
 use super::doc::CallRecord;
 use crate::digest::unhex;
-use crate::risk::offers_allow_class;
 use crate::table::{CapabilityRule, capability_rule};
 
 /// One call's stage.
@@ -65,25 +64,38 @@ pub(crate) fn derived_risk(capability: &str, has_input: bool) -> ToolCallRisk {
     }
 }
 
-/// What a question offers. There is deliberately no "always".
-pub(crate) fn options_for(risk: ToolCallRisk, has_input: bool) -> Vec<ToolCallOption> {
-    let option = |id: &str, label: &str, choice| ToolCallOption {
-        id: id.to_string(),
-        label: label.to_string(),
-        choice,
-    };
-    let mut options = vec![
-        option("refuse", "Refuse", ToolCallChoice::Refuse),
-        option("allow-once", "Allow once", ToolCallChoice::AllowOnce),
-    ];
-    if offers_allow_class(risk, has_input) {
-        options.push(option(
-            "allow-class",
-            "Allow this class for this participant",
-            ToolCallChoice::AllowClass,
-        ));
+/// What a person's answer to a question can be. There is no "allow this class" and no "always"
+/// (strategy 4d(1), 2026-11-07): a release is given only through `Guard::release`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Answer {
+    Refuse,
+    Once,
+}
+
+impl Answer {
+    /// Its name in the log.
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Refuse => "refuse",
+            Self::Once => "allowOnce",
+        }
     }
-    options
+}
+
+/// What every question offers, and nothing else.
+pub(crate) fn options_for() -> Vec<ToolCallOption> {
+    vec![
+        ToolCallOption {
+            id: "refuse".to_string(),
+            label: "Refuse".to_string(),
+            choice: ToolCallChoice::Refuse,
+        },
+        ToolCallOption {
+            id: "allow-once".to_string(),
+            label: "Allow once".to_string(),
+            choice: ToolCallChoice::AllowOnce,
+        },
+    ]
 }
 
 impl CallRecord {
@@ -96,24 +108,21 @@ impl CallRecord {
         derived_risk(&self.capability, self.has_input)
     }
 
-    /// As shown in the messenger. `detail` is known only when the arguments are at hand.
-    pub(crate) fn shown(&self, detail: &str) -> ToolCall {
+    /// As shown in the messenger. `detail` is known only when the arguments are at hand. `goes_to` is
+    /// what the engine found out when it showed this, never something stored in the call.
+    pub(crate) fn shown(&self, detail: &str, goes_to: &str) -> ToolCall {
         let question = self.stage == CallStage::Question;
         ToolCall {
             id: self.id.clone(),
             name: self.capability.clone(),
             kind: ToolCallKind::Unknown,
             state: self.stage.state(),
-            summary: self.goes_to.clone(),
+            summary: goes_to.to_string(),
             risk: self.risk(),
             outcome: self.stage.outcome(),
             detail: detail.to_string(),
             result: String::new(),
-            options: if question {
-                options_for(self.risk(), self.has_input)
-            } else {
-                vec![]
-            },
+            options: if question { options_for() } else { vec![] },
             arguments_digest: unhex(&self.digest).unwrap_or_default(),
             asked_of: self.asked_of.clone(),
             revision: self.revision,

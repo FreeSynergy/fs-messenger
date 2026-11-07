@@ -201,22 +201,6 @@ async fn the_same_answer_twice_is_refused() {
 }
 
 #[tokio::test]
-async fn the_question_names_where_the_text_goes() {
-    let w = World::with_ai().await;
-    w.release_in(AI, R::ReadsOnly, "message", "to Anthropic")
-        .await
-        .unwrap();
-    assert!(w.engine.set_sensitivity(Fixed::new(Sensitivity::Marked)));
-    let q = question(read(&w, json!({"id": "1"})).await);
-    assert!(
-        q.call.summary.contains("to Anthropic"),
-        "{:?}",
-        q.call.summary
-    );
-    assert!(w.shown(&q).await.summary.contains("to Anthropic"));
-}
-
-#[tokio::test]
 async fn a_stop_empties_releases_so_a_marked_read_is_refused_after_reopen() {
     let w = world_reading(Fixed::new(Sensitivity::Marked)).await;
     w.engine.stop(&w.stop_proof()).await.unwrap();

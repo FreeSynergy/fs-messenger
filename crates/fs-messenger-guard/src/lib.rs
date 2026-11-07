@@ -37,6 +37,7 @@ mod sensitivity;
 mod signed;
 mod state;
 mod table;
+mod words;
 
 pub use api::{Gate, Guard};
 pub use arguments::{Arguments, ArgumentsError};
@@ -57,7 +58,7 @@ pub use no_marks::NoMarks;
 pub use permission::{OwnerOnly, StopPermission};
 pub use program::program_of;
 pub use repo::{GuardRepository, STATE_ID, TursoGuardRepository};
-pub use risk::{can_be_released, offers_allow_class};
+pub use risk::can_be_released;
 pub use secret_name::is_secret_name;
 pub use sensitivity::{ObjectRef, Sensitivity, SensitivityLookup};
 pub use signed::{CONTEXT, Method, decide_arguments, signed_bytes};

@@ -5,20 +5,27 @@ mod common;
 use std::sync::atomic::Ordering;
 
 use common::AI;
+use common::program::{Fixed, object};
 use common::rigs::Rig;
 use fs_messenger_core::{MessageAction, Messenger as _};
-use fs_messenger_guard::{Arguments, Caller, Gate, Guard, Method, Refusal, Verdict};
+use fs_messenger_guard::{Arguments, Caller, Gate, Guard, Method, Refusal, Sensitivity, Verdict};
 
 #[tokio::test]
 async fn a_stop_during_the_log_of_a_class_allow_is_not_answered_with_allow() {
     let r = Rig::open().await;
+    // A read is allowed by its class only when it names an object the engine knows to be unmarked.
+    assert!(r.engine.set_sensitivity(Fixed::new(Sensitivity::Unmarked)));
     r.faulty.hold_append.store(true, Ordering::SeqCst);
     let (engine, input) = (
         r.engine.clone(),
         Arguments::from_text(r#"{"path":"/"}"#).unwrap(),
     );
-    let checking =
-        tokio::spawn(async move { engine.check(&Caller::new(AI), "message.open", &input).await });
+    let checking = tokio::spawn(async move {
+        let caller = Caller::new(AI);
+        engine
+            .check_object(&caller, "message.open", &input, &object())
+            .await
+    });
     r.faulty.entered.notified().await;
     r.engine.stop(&r.proof(Method::Stop)).await.unwrap();
     r.faulty.go.notify_one();

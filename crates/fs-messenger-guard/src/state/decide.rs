@@ -11,14 +11,12 @@ use fs_store::ObjectId;
 
 use super::calls::Limits;
 use super::doc::{CallRecord, GuardDoc};
-use super::stage::{CallStage, options_for};
+use super::stage::{Answer, CallStage, options_for};
 use crate::device::DeviceVerifier;
 use crate::digest::{hex, single_use_key, unhex};
 use crate::error::Refusal;
 use crate::identity::id_key;
-use crate::model::{AiGrant, GuardMode};
-use crate::program::program_of;
-use crate::risk::can_be_released;
+use crate::model::GuardMode;
 use crate::signed::{Method, decide_arguments, signed_bytes};
 
 /// A decision, and where it was made.
@@ -34,8 +32,7 @@ pub(crate) struct DecideInput<'a> {
 #[derive(Debug)]
 pub(crate) struct Decided {
     pub(crate) call: CallRecord,
-    pub(crate) choice: ToolCallChoice,
-    pub(crate) granted: Option<AiGrant>,
+    pub(crate) answer: Answer,
 }
 
 fn refuse_empty(d: &ToolCallDecision) -> Result<(), Refusal> {
@@ -90,12 +87,18 @@ impl GuardDoc {
         if call.expires_at <= input.now {
             return Err(Refusal::Expired);
         }
-        let risk = call.risk();
-        let choice = options_for(risk, call.has_input)
+        // Only what the question offers can be answered. `allowClass` is a word of the contract and
+        // is on offer nowhere (strategy 4d(1)): an answer that names it is an unknown option.
+        let answer = match options_for()
             .into_iter()
             .find(|o| o.id == d.option)
             .ok_or(Refusal::UnknownOption)?
-            .choice;
+            .choice
+        {
+            ToolCallChoice::Refuse => Answer::Refuse,
+            ToolCallChoice::AllowOnce => Answer::Once,
+            ToolCallChoice::AllowClass => return Err(Refusal::UnknownOption),
+        };
         if hex(&d.arguments_digest) != call.digest {
             return Err(Refusal::DigestMismatch);
         }
@@ -123,39 +126,22 @@ impl GuardDoc {
         // From here on it holds.
         let call = &mut self.calls[at];
         call.revision += 1;
-        let mut granted = None;
         let mut paused = None;
-        match choice {
-            ToolCallChoice::Refuse => {
+        match answer {
+            Answer::Refuse => {
                 call.stage = CallStage::Refused;
                 paused = Some(call.caller.clone());
             }
-            ToolCallChoice::AllowOnce => {
+            Answer::Once => {
                 call.stage = CallStage::Approved;
                 call.expires_at = input.now + input.limits.approval_ttl;
-            }
-            ToolCallChoice::AllowClass => {
-                call.stage = CallStage::Approved;
-                call.expires_at = input.now + input.limits.approval_ttl;
-                if can_be_released(risk) {
-                    granted = Some(AiGrant {
-                        profile: call.caller.clone(),
-                        risk,
-                        program: program_of(&call.capability),
-                        goes_to: call.goes_to.clone(),
-                    });
-                }
             }
         }
         let decided = Decided {
             call: call.clone(),
-            choice,
-            granted: granted.clone(),
+            answer,
         };
         self.used_proofs.insert(used);
-        if let Some(grant) = granted {
-            self.apply_grant(grant);
-        }
         if let Some(invitation) = paused.and_then(|caller: String| self.invited.get_mut(&caller)) {
             invitation.paused_until = Some(input.now + input.limits.refusal_pause);
         }

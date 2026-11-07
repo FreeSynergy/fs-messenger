@@ -176,12 +176,7 @@ impl World {
         self.owner.proof(
             &self.identity,
             Method::Release,
-            &[
-                profile.as_bytes(),
-                risk.as_bytes(),
-                PROGRAM.as_bytes(),
-                GOES_TO.as_bytes(),
-            ],
+            &[profile.as_bytes(), risk.as_bytes(), PROGRAM.as_bytes()],
         )
     }
 
@@ -190,7 +185,6 @@ impl World {
             profile: profile.to_string(),
             risk,
             program: PROGRAM.into(),
-            goes_to: GOES_TO.into(),
         };
         self.engine
             .release(&grant, &self.release_proof(profile, name))
@@ -288,9 +282,8 @@ impl World {
     }
 }
 
-/// The program and the destination a plain `release` of the helpers names.
+/// The program a plain `release` of the helpers names.
 pub const PROGRAM: &str = "message";
-pub const GOES_TO: &str = "this device only";
 
 pub fn args(path: &str) -> Value {
     json!({ "path": path })

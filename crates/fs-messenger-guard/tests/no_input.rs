@@ -137,8 +137,9 @@ async fn what_is_shown_is_the_whole_input_and_cannot_hide_text() {
     assert!(q.call.detail.contains("\\u{202e}"), "{}", q.call.detail);
     assert!(!q.call.detail.contains('\u{202e}'));
     assert_eq!(w.shown(&q).await.detail, q.call.detail);
-    // The summary is the person's own words for where the text goes, never text of the call.
-    assert_eq!(q.call.summary, "this device only");
+    // The summary is the engine's words for where the text goes (here: it knows none), never text of
+    // the call. Before 4d(4) it was the person's free text of the release.
+    assert_eq!(q.call.summary, "unbekannt");
     assert!(!q.call.summary.contains("ok"));
 }
 

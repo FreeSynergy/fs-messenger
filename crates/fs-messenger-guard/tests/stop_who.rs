@@ -126,13 +126,12 @@ async fn it_works_with_no_messenger_at_all() {
     let release = owner.proof(
         &identity,
         Method::Release,
-        &[AI.as_bytes(), b"readsOnly", b"message", b"this device only"],
+        &[AI.as_bytes(), b"readsOnly", b"message"],
     );
     let grant = fs_messenger_guard::AiGrant {
         profile: AI.into(),
         risk: fs_messenger_core::ToolCallRisk::ReadsOnly,
         program: "message".into(),
-        goes_to: "this device only".into(),
     };
     engine.release(&grant, &release).await.unwrap();
     let verdict = engine

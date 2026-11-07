@@ -16,7 +16,7 @@ use crate::identity::id_key;
 use crate::log::GuardLogEntry;
 use crate::model::{AiGrant, GuardMode, GuardProof, GuardState, StopReport};
 use crate::signed::Method;
-use crate::state::{GuardDoc, ProofRequest};
+use crate::state::{GuardDoc, ProofRequest, check_program_argument};
 
 /// The arguments of `release`: the profile, and the risk by its contract name.
 pub(crate) fn risk_name(risk: fs_messenger_core::ToolCallRisk) -> &'static str {
@@ -39,6 +39,10 @@ impl GuardEngine {
         program: &str,
         proof: &GuardProof,
     ) -> Result<(), GuardError> {
+        // Not trimmed quietly: what was signed is what is used. Empty means every program.
+        if !program.is_empty() {
+            check_program_argument(program)?;
+        }
         let owner = self.config.owner.clone();
         let (key, signer) = (id_key(profile), id_key(&proof.signer));
         let uninvite = method == Method::Uninvite;
@@ -144,24 +148,25 @@ impl Guard for GuardEngine {
     }
 
     async fn release(&self, grant: &AiGrant, proof: &GuardProof) -> Result<(), GuardError> {
+        // Not trimmed quietly: what was signed is what is used. Empty is refused further on.
+        if !grant.program.is_empty() {
+            check_program_argument(&grant.program)?;
+        }
         let owner = self.config.owner.clone();
         let (key, signer) = (id_key(&grant.profile), id_key(&proof.signer));
         let mut entry = GuardLogEntry::new("release", &signer).about(&key);
         entry.risk = Some(grant.risk);
         entry.program = id_key(&grant.program);
-        entry.goes_to.clone_from(&grant.goes_to);
         let stored = AiGrant {
             profile: key,
             risk: grant.risk,
             program: id_key(&grant.program),
-            goes_to: grant.goes_to.clone(),
         };
-        // What the device signed, in this order: profile, class, program, where the text goes.
-        let arguments: [&[u8]; 4] = [
+        // What the device signed, in this order: profile, class, program.
+        let arguments: [&[u8]; 3] = [
             grant.profile.as_bytes(),
             risk_name(grant.risk).as_bytes(),
             grant.program.as_bytes(),
-            grant.goes_to.as_bytes(),
         ];
         self.signed_change(Method::Release, &arguments, proof, entry, |doc| {
             doc.check_release(&stored, &signer, &owner)?;

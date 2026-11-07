@@ -70,9 +70,6 @@ pub(crate) struct CallRecord {
     /// contract has `readsSensitive` (mirrored locally).
     #[serde(default)]
     pub(crate) sensitive: bool,
-    /// Where the text goes, in the words of the releases of this program, for the question to show.
-    #[serde(default)]
-    pub(crate) goes_to: String,
 }
 
 /// The stored state. Field by field required: a missing `mode` is damage, not a default.

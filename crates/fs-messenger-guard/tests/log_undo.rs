@@ -142,7 +142,7 @@ async fn undo_cannot_reopen_a_stop_also_after_a_restart() {
     undo_everything(&w).await;
     assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
 }
@@ -155,7 +155,6 @@ async fn undo_cannot_restore_a_release() {
         profile: AI.into(),
         risk: ToolCallRisk::ReadsOnly,
         program: "message".into(),
-        goes_to: "this device only".into(),
     };
     assert_eq!(w.engine.state().await.grants, [grant]);
     let proof = w
@@ -168,7 +167,7 @@ async fn undo_cannot_restore_a_release() {
     undo_everything(&w).await;
     assert!(w.engine.state().await.grants.is_empty());
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(fs_messenger_guard::Refusal::NotReleased)
     );
 }

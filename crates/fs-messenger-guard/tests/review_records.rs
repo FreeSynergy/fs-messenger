@@ -71,14 +71,14 @@ async fn the_log_shows_the_use_of_an_approval_and_a_release_and_the_end_of_a_cal
     assert_eq!(count().await, 0);
     for _ in 0..5 {
         assert!(matches!(
-            w.check("message.open", args("/")).await,
+            w.read("message.open", args("/")).await,
             Verdict::Allow(_)
         ));
     }
     assert_eq!(count().await, 1, "bounded");
     w.clock.advance(chrono::Duration::minutes(2));
     assert!(matches!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Allow(_)
     ));
     assert_eq!(count().await, 2);

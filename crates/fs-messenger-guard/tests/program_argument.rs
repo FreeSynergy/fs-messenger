@@ -10,9 +10,7 @@ use fs_messenger_guard::{Guard, GuardError, Method, ObjectRef, Refusal};
 async fn two_releases() -> World {
     let w = World::with_ai().await;
     w.release_default(R::ReadsOnly).await;
-    w.release_in(AI, R::ReadsOnly, "account", "this device only")
-        .await
-        .unwrap();
+    w.release_in(AI, R::ReadsOnly, "account").await.unwrap();
     w
 }
 
@@ -47,9 +45,7 @@ async fn only_the_empty_field_means_every_program_and_it_is_signed_so() {
 #[tokio::test]
 async fn a_release_for_a_program_with_spaces_around_it_is_refused_not_trimmed() {
     let w = World::with_ai().await;
-    let refused = w
-        .release_in(AI, R::ReadsOnly, " message ", "this device only")
-        .await;
+    let refused = w.release_in(AI, R::ReadsOnly, " message ").await;
     assert!(
         matches!(refused, Err(GuardError::Refused(Refusal::BadName))),
         "{refused:?}"

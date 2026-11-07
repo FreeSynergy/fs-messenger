@@ -192,7 +192,7 @@ async fn reopen_goes_by_the_latch_when_the_record_says_open() {
     w.engine.reopen(&w.reopen_proof()).await.unwrap();
     assert_eq!(w.engine.state().await.mode, GuardMode::Open);
     assert_eq!(
-        w.check("message.open", common::args("/")).await,
+        w.read("message.open", common::args("/")).await,
         Verdict::Refuse(Refusal::NotReleased)
     );
     assert!(matches!(

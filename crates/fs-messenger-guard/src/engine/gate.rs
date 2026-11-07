@@ -18,8 +18,8 @@ use crate::identity::id_key;
 use crate::log::GuardLogEntry;
 use crate::model::{Allowance, Caller, GuardMode, Verdict};
 use crate::sensitivity::ObjectRef;
-use crate::state::derived_risk;
 use crate::state::{CallRecord, CallStage, Evaluation, GuardDoc, Judged};
+use crate::table::{CapabilityRule, capability_rule};
 
 impl GuardEngine {
     /// The state, if it allows anything at all.
@@ -38,7 +38,8 @@ impl GuardEngine {
         let Some(port) = self.port.get() else {
             return Ok(());
         };
-        let update = port.update_call(call.message, call.shown(detail));
+        let shown = self.shown_call(call, detail).await;
+        let update = port.update_call(call.message, shown);
         tokio::time::timeout(self.config.store_wait, update)
             .await
             .map_err(|_| "the messenger did not answer in time".to_string())?
@@ -113,11 +114,15 @@ impl GuardEngine {
             self.ensure_retry();
             return Verdict::Refuse(Refusal::Stopped);
         }
-        // Only a read of a named object is looked up, and before the lock: the source may be slow.
-        let reads = derived_risk(capability, arguments.has_input()) == ToolCallRisk::ReadsOnly;
+        // A read that names its object is looked up, and before the lock: the source may be slow. One
+        // that names none counts as marked (strategy 4d(2)); only `check_object` can say otherwise.
+        // The table decides what is a read, not whether the call has input, so that a call without
+        // input is looked up too.
+        let reads = capability_rule(capability) == CapabilityRule::Risk(ToolCallRisk::ReadsOnly);
         let sensitive = match object {
             Some(object) if reads => self.read_asks(object).await,
-            _ => false,
+            Some(_) => false,
+            None => true,
         };
         let Ok(_ops) = self.lock_ops().await else {
             return Verdict::Refuse(Refusal::Stopped);
@@ -149,7 +154,7 @@ impl GuardEngine {
             }
             Evaluation::UseApproval(at) => self.use_approval(doc, at).await,
             Evaluation::AskAgain(at) => match self.count_retry(&doc.calls[at].id) {
-                Ok(()) => self.question(&doc.calls[at], &arguments.detail()),
+                Ok(()) => self.question(&doc.calls[at], &arguments.detail()).await,
                 Err(refusal) => Verdict::Refuse(refusal),
             },
             Evaluation::AskNew(input) => {

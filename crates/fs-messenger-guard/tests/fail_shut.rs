@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 async fn stopped_after(w: &World) {
     assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
     assert!(w.engine.state().await.grants.is_empty());
@@ -70,7 +70,7 @@ async fn an_unrecognised_mode_reads_as_stopped() {
     w.tamper(|doc| doc["mode"] = json!("wideOpen")).await;
     assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
 }

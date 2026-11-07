@@ -39,9 +39,10 @@ pub struct GuardState {
     pub stopped_at: Option<DateTime<Utc>>,
 }
 
-/// `AiGrant` of the contract (one participant, one risk class), and here also one program and where
-/// the text goes. **Provisional:** the contract has the first two only. A release holds for the
-/// participant, the class and the program together (ADR 0054, "Ohne Befugnis nichts").
+/// `AiGrant` of the contract (one participant, one risk class), and here also one program.
+/// **Provisional:** the contract has the first two only. A release holds for the participant, the
+/// class and the program together (ADR 0054, "Ohne Befugnis nichts"). Where the text goes is not part
+/// of it (strategy 4d(4), 2026-11-07): the engine finds that out (`DestinationLookup`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiGrant {
@@ -53,11 +54,6 @@ pub struct AiGrant {
     /// record has it, holds for nothing.
     #[serde(default)]
     pub program: String,
-    /// Where the text goes, in the person's words ("only this device", "to Anthropic"). Free text,
-    /// signed by the person's device and shown with every question of this program; the engine does not
-    /// take it from an AI. Empty holds for nothing.
-    #[serde(default)]
-    pub goes_to: String,
 }
 
 /// `GuardProof` of the contract.

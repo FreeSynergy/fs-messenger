@@ -16,9 +16,9 @@ use crate::model::{Caller, Question, Verdict};
 use crate::state::{CallRecord, CallStage, GuardDoc, QuestionInput};
 
 impl GuardEngine {
-    pub(super) fn question(&self, call: &CallRecord, detail: &str) -> Verdict {
+    pub(super) async fn question(&self, call: &CallRecord, detail: &str) -> Verdict {
         Verdict::Ask(Box::new(Question {
-            call: call.shown(detail),
+            call: self.shown_call(call, detail).await,
             conversation: call.conversation,
             message: call.message,
             retry_after: self.config.retry_after,
@@ -83,10 +83,10 @@ impl GuardEngine {
             message: ObjectId::new(),
             expires_at: now + self.limits().question_ttl,
             sensitive: input.sensitive,
-            goes_to: input.goes_to,
         };
         let detail = arguments.detail();
-        let placing = port.place_question(input.turn, profile, call.shown(&detail));
+        let shown = self.shown_call(&call, &detail).await;
+        let placing = port.place_question(input.turn, profile, shown);
         let placed = tokio::time::timeout(self.config.store_wait, placing).await;
         let Ok(Ok(placed)) = placed else {
             return Verdict::Refuse(Refusal::NoWayToAsk);
@@ -114,7 +114,7 @@ impl GuardEngine {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(call.id.clone(), count);
-        self.question(&call, &detail)
+        self.question(&call, &detail).await
     }
 
     /// New input has the same limit as a retry, and does not make the card live longer.
@@ -138,14 +138,14 @@ impl GuardEngine {
         }
         match doc.apply_revise(at, arguments) {
             Err(refusal) => Verdict::Refuse(refusal),
-            Ok(false) => self.question(&doc.calls[at], &arguments.detail()),
+            Ok(false) => self.question(&doc.calls[at], &arguments.detail()).await,
             Ok(true) => {
                 if self.save(&doc).await.is_err() {
                     return Verdict::Refuse(Refusal::NotRecorded);
                 }
                 let detail = arguments.detail();
                 let _ = self.show(&doc.calls[at], &detail).await;
-                self.question(&doc.calls[at], &detail)
+                self.question(&doc.calls[at], &detail).await
             }
         }
     }

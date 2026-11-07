@@ -45,7 +45,7 @@ async fn uninvite_takes_it_all_and_needs_who_invited_or_the_owner() {
     assert!(state.invited.is_empty());
     assert!(state.grants.is_empty());
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::NotInvited)
     );
     assert_eq!(w.shown(&q).await.outcome, ToolCallOutcome::Cancelled);
@@ -136,7 +136,7 @@ async fn identifiers_are_one_whatever_their_case() {
     w.engine.invite(shouted, &invite).await.unwrap();
     assert_eq!(w.engine.state().await.invited, [id_key(shouted)]);
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::NotReleased),
         "the same AI: invited, with nothing released"
     );
@@ -165,22 +165,16 @@ async fn identifiers_are_one_whatever_their_case() {
         profile: AI.to_uppercase(),
         risk: ToolCallRisk::ReadsOnly,
         program: "message".into(),
-        goes_to: "this device only".into(),
     };
     let name = AI.to_uppercase();
     let proof = w.owner.proof(
         &w.identity,
         Method::Release,
-        &[
-            name.as_bytes(),
-            b"readsOnly",
-            b"message",
-            b"this device only",
-        ],
+        &[name.as_bytes(), b"readsOnly", b"message"],
     );
     w.engine.release(&grant, &proof).await.unwrap();
     assert!(matches!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Allow(_)
     ));
 }

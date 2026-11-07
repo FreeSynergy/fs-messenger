@@ -5,7 +5,7 @@
 //! the log. What a message shows is written afterwards and decides nothing. On a stale or settled
 //! refusal listeners hear how the call stands, from memory only.
 
-use fs_messenger_core::{DecisionProblem, ToolCallChoice, ToolCallDecision};
+use fs_messenger_core::{DecisionProblem, ToolCallDecision};
 use fs_store::ObjectId;
 
 use super::core::GuardEngine;
@@ -15,14 +15,6 @@ use crate::identity::id_key;
 use crate::log::GuardLogEntry;
 use crate::model::GuardMode;
 use crate::state::{DecideInput, GuardDoc};
-
-fn choice_name(choice: ToolCallChoice) -> &'static str {
-    match choice {
-        ToolCallChoice::Refuse => "refuse",
-        ToolCallChoice::AllowOnce => "allowOnce",
-        ToolCallChoice::AllowClass => "allowClass",
-    }
-}
 
 impl GuardEngine {
     /// Stale and settled are answered with the state as it really is, so a card can show it. Nothing
@@ -41,8 +33,9 @@ impl GuardEngine {
         }
         let call = doc.calls.iter().find(|c| c.id == decision.tool_call);
         if let (Some(call), Some(port)) = (call, self.port.get()) {
+            let shown = self.shown_call(call, "").await;
             let _ = port
-                .announce_call(call.conversation, call.message, call.shown(""))
+                .announce_call(call.conversation, call.message, shown)
                 .await;
         }
     }
@@ -85,8 +78,7 @@ impl GuardEngine {
         let mut entry = GuardLogEntry::new("decide", &signer).about(&decided.call.caller);
         entry.call.clone_from(&decided.call.id);
         entry.capability.clone_from(&decided.call.capability);
-        entry.choice = choice_name(decided.choice).to_string();
-        entry.risk = decided.granted.as_ref().map(|g| g.risk);
+        entry.choice = decided.answer.name().to_string();
         if let Err(why) = self.log_entry(&entry).await {
             problems.push(why);
         }

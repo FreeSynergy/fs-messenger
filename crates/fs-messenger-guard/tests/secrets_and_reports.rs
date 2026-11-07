@@ -66,21 +66,18 @@ async fn the_secret_tool_is_never_for_an_ai_in_any_spelling() {
     let _ = AI;
 }
 
-/// The limit, stated: the gate knows a secret tool only by the exact name `account.secret`. Another
-/// name for a tool that hands out a key or a token is `unknown` here; with no release in its program
-/// it is refused, and with one it asks, but it is not `NeverForAi`. See `DESIGN.md`, open points.
+/// Was: "the gate knows a secret tool only by the exact name `account.secret`" (open point 11).
+/// Since strategy 4d(3), 2026-11-07, a rule catches every name with a part `secret`, `token`, `key`,
+/// `password`, `passphrase`, `proof` or `credential` (`tests/secret_names.rs`): `NeverForAi`, also with
+/// nothing released and with no invitation.
 #[tokio::test]
-async fn another_name_for_a_secret_is_only_unknown_to_the_gate() {
+async fn another_name_for_a_secret_is_never_for_an_ai_by_the_rule() {
     for tool in ["account.token", "account.credentials", "attachment.key"] {
-        assert_eq!(
-            capability_rule(tool),
-            CapabilityRule::Risk(R::Unknown),
-            "{tool}"
-        );
+        assert_eq!(capability_rule(tool), CapabilityRule::NeverForAi, "{tool}");
     }
     let w = World::with_ai().await;
     assert_eq!(
         w.check("account.token", args("/")).await,
-        Verdict::Refuse(Refusal::NotReleased)
+        Verdict::Refuse(Refusal::NeverForAi)
     );
 }

@@ -6,10 +6,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use async_trait::async_trait;
 use fs_messenger_core::ToolCallRisk;
 use fs_messenger_guard::{
-    AiGrant, GuardError, Method, ObjectRef, Sensitivity, SensitivityLookup, program_of,
+    AiGrant, Arguments, Caller, Gate, GuardError, Method, ObjectRef, Sensitivity,
+    SensitivityLookup, Verdict, program_of,
 };
 
-use super::{AI, GOES_TO, PROGRAM, World};
+use super::{AI, PROGRAM, World};
 
 pub fn risk_word(risk: ToolCallRisk) -> &'static str {
     match risk {
@@ -22,6 +23,13 @@ pub fn risk_word(risk: ToolCallRisk) -> &'static str {
 }
 
 impl World {
+    /// A read of an object the engine knows to be unmarked: the way a read is allowed by its class
+    /// (strategy 4d(2): `check` without an object counts as marked and asks). The first source set
+    /// wins, so this is for tests that set none of their own.
+    pub async fn read(&self, capability: &str, args: serde_json::Value) -> Verdict {
+        read_unmarked(&self.engine, capability, &args).await
+    }
+
     /// `AI` invited, with `changes` released in the program `message` and nothing else. Calls of a
     /// class that always asks (`message.delete`, `message.send`) then ask, as they did before a
     /// release was needed for anything.
@@ -31,19 +39,17 @@ impl World {
         w
     }
 
-    /// A release in a program, with the words the person gave for where the text goes.
+    /// A release in a program.
     pub async fn release_in(
         &self,
         profile: &str,
         risk: ToolCallRisk,
         program: &str,
-        goes_to: &str,
     ) -> Result<(), GuardError> {
         let grant = AiGrant {
             profile: profile.into(),
             risk,
             program: program.into(),
-            goes_to: goes_to.into(),
         };
         let proof = self.owner.proof(
             &self.identity,
@@ -52,7 +58,6 @@ impl World {
                 profile.as_bytes(),
                 risk_word(risk).as_bytes(),
                 program.as_bytes(),
-                goes_to.as_bytes(),
             ],
         );
         fs_messenger_guard::Guard::release(&*self.engine, &grant, &proof).await
@@ -61,15 +66,33 @@ impl World {
     /// Something is released in the program of this tool, so that what always asks can ask.
     pub async fn unlock_program_of(&self, capability: &str) {
         let program = program_of(capability);
-        self.release_in(AI, ToolCallRisk::ReadsOnly, &program, GOES_TO)
+        self.release_in(AI, ToolCallRisk::ReadsOnly, &program)
             .await
             .unwrap();
     }
 
     /// The default release of the helpers: `message`, this device only.
     pub async fn release_default(&self, risk: ToolCallRisk) {
-        self.release_in(AI, risk, PROGRAM, GOES_TO).await.unwrap();
+        self.release_in(AI, risk, PROGRAM).await.unwrap();
     }
+}
+
+/// `read` for an engine that is not in a `World`.
+pub async fn read_unmarked(
+    engine: &fs_messenger_guard::GuardEngine,
+    capability: &str,
+    args: &serde_json::Value,
+) -> Verdict {
+    let _ = engine.set_sensitivity(Fixed::new(Sensitivity::Unmarked));
+    let arguments = Arguments::from_value(args).unwrap();
+    let object = ObjectRef::new(
+        &program_of(capability),
+        "01900000-0000-7000-8000-0000000000aa",
+    );
+    let caller = Caller::new(AI);
+    engine
+        .check_object(&caller, capability, &arguments, &object.unwrap())
+        .await
 }
 
 /// A source of marks that answers one thing, and counts its questions.

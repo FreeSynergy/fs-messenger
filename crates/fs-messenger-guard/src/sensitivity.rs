@@ -39,15 +39,14 @@ pub struct ObjectRef {
 }
 
 impl ObjectRef {
-    /// Both parts need to be usable names (not empty, nothing that hides text).
+    /// Both parts need to be usable names after trimming (not empty, nothing that hides text): a part
+    /// of white space alone is no name.
     pub fn new(program: &str, id: &str) -> Result<Self, Refusal> {
-        if !usable_name(program) || !usable_name(id) {
+        let (program, id) = (program.trim().to_lowercase(), id.trim().to_string());
+        if !usable_name(&program) || !usable_name(&id) {
             return Err(Refusal::BadName);
         }
-        Ok(Self {
-            program: program.trim().to_lowercase(),
-            id: id.trim().to_string(),
-        })
+        Ok(Self { program, id })
     }
 
     /// The program the object belongs to.

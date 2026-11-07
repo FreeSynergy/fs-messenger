@@ -43,7 +43,7 @@ async fn stop_refuses_every_ai_takes_all_releases_and_settles_all_calls() {
     );
 
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
     assert_eq!(
@@ -90,7 +90,7 @@ async fn a_restart_stays_stopped_with_the_releases_gone() {
     assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);
     assert!(w.engine.state().await.grants.is_empty());
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
 }
@@ -105,8 +105,10 @@ async fn reopen_needs_a_proof_and_the_releases_stay_taken_also_a_tampered_one() 
     assert!(w.engine.reopen(&bad).await.is_err());
     assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);
 
-    w.tamper(|doc| doc["grants"] = json!([{ "profile": AI, "risk": "readsOnly", "program": "message", "goesTo": "this device only" }]))
-        .await;
+    w.tamper(|doc| {
+        doc["grants"] = json!([{ "profile": AI, "risk": "readsOnly", "program": "message" }])
+    })
+    .await;
     w.engine.reopen(&w.reopen_proof()).await.unwrap();
     let state = w.engine.state().await;
     assert_eq!(state.mode, GuardMode::Open);
@@ -115,7 +117,7 @@ async fn reopen_needs_a_proof_and_the_releases_stay_taken_also_a_tampered_one() 
         "a release does not come back through a reopen"
     );
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::NotReleased)
     );
     assert!(matches!(
@@ -140,19 +142,18 @@ async fn a_stop_cannot_lose_a_race_with_decisions_or_a_check() {
     tokio::task::yield_now().await;
     w.engine.stop(&w.stop_proof()).await.unwrap();
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
     runner.await.unwrap();
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
     let grant = AiGrant {
         profile: AI.into(),
         risk: ToolCallRisk::ReadsOnly,
         program: "message".into(),
-        goes_to: "this device only".into(),
     };
     assert!(
         w.engine
@@ -178,7 +179,7 @@ async fn after_a_stop_this_process_stays_stopped_even_if_a_record_says_open() {
     })
     .await;
     assert_eq!(
-        w.check("message.open", args("/")).await,
+        w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
     assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);
