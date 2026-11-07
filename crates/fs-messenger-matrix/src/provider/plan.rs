@@ -9,7 +9,19 @@ use matrix_sdk::ruma::{EventEncryptionAlgorithm, RoomId, UserId};
 use matrix_sdk::{Room, RoomMemberships, RoomState};
 
 use super::MatrixProvider;
-use crate::error::Result;
+use crate::error::{MatrixError, Result};
+
+/// Members whose devices one check looks at: each may cost a request. Provisional.
+const MAX_MEMBERS_CHECKED: usize = 500;
+
+/// Fail closed: a room too big to check person by person is not sent into.
+fn within_member_limit(count: usize) -> Result<()> {
+    if count > MAX_MEMBERS_CHECKED {
+        let why = format!("room has {count} members, more than the {MAX_MEMBERS_CHECKED} checked");
+        return Err(MatrixError::Sdk(why));
+    }
+    Ok(())
+}
 
 /// The way a room offers.
 #[derive(Debug)]
@@ -102,11 +114,12 @@ impl MatrixProvider {
             return Ok(Verdict::none(own, Encryption::Unknown));
         }
         let mut missing = Vec::new();
-        for member in self
+        let members = self
             .account
             .bounded(room.members(RoomMemberships::ACTIVE))
-            .await?
-        {
+            .await?;
+        within_member_limit(members.len())?;
+        for member in members {
             let user = member.user_id();
             if user.as_str() != self.account.user_id && !self.has_usable_device(user).await? {
                 missing.push(user.to_string());
@@ -180,5 +193,11 @@ mod tests {
         assert!(!v(Encryption::Megolm, &["@a:x"]).passes());
         assert!(!v(Encryption::None, &[]).passes());
         assert!(!v(Encryption::Unknown, &[]).passes());
+    }
+
+    #[test]
+    fn a_room_with_too_many_members_is_not_checked_member_by_member() {
+        assert!(within_member_limit(MAX_MEMBERS_CHECKED).is_ok());
+        assert!(within_member_limit(MAX_MEMBERS_CHECKED + 1).is_err());
     }
 }
