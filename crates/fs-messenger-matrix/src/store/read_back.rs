@@ -1,6 +1,7 @@
 //! Reading journal records back into the SDK's types.
 //!
-//! Pattern: Strategy (pure functions). The value of a record is not named in an error: it may be a key.
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Pure functions. The value of a record is not named in an error: it may be a key.
 
 use matrix_sdk_base::ruma::{OwnedRoomId, OwnedUserId, RoomId, UserId};
 use serde::de::DeserializeOwned;

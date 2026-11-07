@@ -1,8 +1,9 @@
 //! Keys of the journals: a record kind plus its parts, as one unambiguous text.
 //!
-//! Pattern: Strategy (pure functions). A key is a JSON array, so a state key or a room id from a
-//! server can hold any character and still never run into the next part; a prefix is the same text
-//! without its end, so removing "everything of this room" cannot touch another room.
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Pure functions. A key is a JSON array, so a state key or a room id from a server can hold any
+//! character and still never run into the next part; a prefix is the same text without its end, so
+//! removing "everything of this room" cannot touch another room.
 
 use crate::error::StoreFail;
 

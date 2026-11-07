@@ -1,6 +1,7 @@
 //! What a change of the crypto store looks like in the journal.
 //!
-//! Pattern: Adapter: `Changes` to journal entries. Pickles of the SDK are serde values, and the
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Free functions: `Changes` to journal entries. Pickles of the SDK are serde values, and the
 //! pickle key is none: the store around them is what is encrypted (ADR 0024).
 
 use matrix_sdk_base::crypto::olm::InboundGroupSession;

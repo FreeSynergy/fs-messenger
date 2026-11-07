@@ -1,6 +1,7 @@
 //! One event to one `RawMessage`, and another try at what had no key.
 //!
-//! Pattern: Adapter over what the SDK made of an event. The mark comes from how the SDK came by the
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Free functions over what the SDK made of an event. The mark comes from how the SDK came by the
 //! text: `Decrypted` is `megolm`, `PlainText` is `none`, anything else claims nothing.
 
 use std::future::IntoFuture;

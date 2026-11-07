@@ -1,8 +1,9 @@
 //! Rebuilding the memory store from the journal.
 //!
-//! Pattern: Adapter: journal entries back to `Changes`, which the memory store then takes as if they
-//! had just happened. An unreadable entry fails the opening: a crypto store with holes would make new
-//! keys and lose the old identity without saying so.
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Free functions: journal entries back to `Changes`, which the memory store then takes as if they
+//! had just happened. An unreadable entry fails the opening: a crypto store with holes would make
+//! new keys and lose the old identity without saying so.
 
 use std::collections::BTreeMap;
 use std::mem::take;

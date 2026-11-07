@@ -1,7 +1,8 @@
 //! `encryption_plan`: is there really an encrypted way, and who stands in the way.
 //!
-//! Pattern: Specification over what the SDK knows now. The same check runs in `send`, so it holds even
-//! if nobody asked for a plan. A recipient is a room (`!...`) or a person (`@...`).
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). A
+//! check over what the SDK knows now. The same check runs in `send`, so it holds even if nobody
+//! asked for a plan. A recipient is a room (`!...`) or a person (`@...`).
 
 use fs_messenger_core::{Encryption, EncryptionPlan};
 use matrix_sdk::encryption::identities::Device;

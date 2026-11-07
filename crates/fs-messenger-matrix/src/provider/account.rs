@@ -1,7 +1,8 @@
 //! [`MatrixAccount`]: where an account lives, and what may be refused before anything connects.
 //!
-//! No pattern from the coding rules fits (a validation function); see DESIGN.md, open points. A token over plain HTTP is readable on the way, so `http://`
-//! passes only for loopback: the local test server, or a tunnel.
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). A
+//! token over plain HTTP is readable on the way, so `http://` passes only for loopback: the local
+//! test server, or a tunnel.
 
 use std::future::Future;
 use std::net::{Ipv4Addr, Ipv6Addr};

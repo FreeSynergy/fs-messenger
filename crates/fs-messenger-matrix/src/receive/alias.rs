@@ -5,15 +5,18 @@
 //! the id of a placeholder from room A. So the alias holds the room as well, and every place that
 //! builds, reads or looks up an alias goes through this type.
 
+use std::fmt::Write;
+
 use fs_messenger_core::ExternalId;
 
 /// Scheme of a Matrix event alias: what the provider issued, so what recognises a replay.
 pub const SCHEME_EVENT: &str = "matrix";
 
-const SEPARATOR: char = '|';
+const SEPARATOR: char = '/';
 
-/// A room id and an event id, as one alias: `<room>|<event>`, each part with `%` and `|` written as
-/// `%25` and `%7C`, so the single unescaped `|` is the separator whatever a server puts in an id.
+/// A room id and an event id, as one alias: `<room>/<event>`. In each part `%`, `/`, `|` and control
+/// characters are written `%XX`, so the single unescaped `/` is the separator whatever a server puts
+/// in an id, and the core, which refuses `|` and control characters in an id, keeps the alias.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EventAlias {
     /// The room the event was sent into.
@@ -23,26 +26,36 @@ pub struct EventAlias {
 }
 
 fn escape(part: &str) -> String {
-    part.replace('%', "%25").replace(SEPARATOR, "%7C")
+    let mut out = String::with_capacity(part.len());
+    for c in part.chars() {
+        if matches!(c, '%' | SEPARATOR | '|') || c.is_control() {
+            let mut buf = [0; 4];
+            for byte in c.encode_utf8(&mut buf).bytes() {
+                let _ = write!(out, "%{byte:02X}");
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 fn unescape(part: &str) -> Option<String> {
-    // One pass from the left, so "%257C" comes back as "%7C" and not as "|".
-    let mut out = String::with_capacity(part.len());
-    let mut rest = part;
-    while let Some(at) = rest.find('%') {
-        out.push_str(&rest[..at]);
-        let tail = &rest[at..];
-        if let Some(after) = tail.strip_prefix("%25") {
-            out.push('%');
-            rest = after;
+    let mut bytes = Vec::with_capacity(part.len());
+    let mut rest = part.as_bytes();
+    while let Some((&byte, tail)) = rest.split_first() {
+        if byte == b'%' {
+            let hex = std::str::from_utf8(tail.get(..2)?).ok()?;
+            bytes.push(u8::from_str_radix(hex, 16).ok()?);
+            rest = &tail[2..];
         } else {
-            rest = tail.strip_prefix("%7C")?;
-            out.push(SEPARATOR);
+            bytes.push(byte);
+            rest = tail;
         }
     }
-    out.push_str(rest);
-    Some(out)
+    let text = String::from_utf8(bytes).ok()?;
+    // Only what `escape` writes: another spelling of the same pair would be a second alias for it.
+    (escape(&text) == part).then_some(text)
 }
 
 impl EventAlias {
@@ -96,10 +109,10 @@ mod tests {
     fn round_trips_whatever_the_ids_hold() {
         for (room, event) in [
             ("!r:x", "$e"),
-            ("!a|b:x", "$c|d"),
+            ("!a/b|:x", "$c/d|"),
             ("!%7C:x", "$%25"),
             ("", ""),
-            ("!r:x|", "|$e"),
+            ("!r:x/", "/$e"),
         ] {
             let alias = EventAlias::new(room, event);
             assert_eq!(EventAlias::parse(&alias.id()), Some(alias.clone()));
@@ -108,18 +121,32 @@ mod tests {
     }
 
     #[test]
+    fn the_core_keeps_it() {
+        // The core refuses an id with `|` or a control character: its store keys are built with `|`.
+        for (room, event) in [("!r:x", "$e"), ("!a|b\n:x", "$c|d\r")] {
+            assert!(EventAlias::new(room, event).external().is_well_formed());
+        }
+    }
+
+    #[test]
     fn different_pairs_never_share_an_alias() {
-        let a = EventAlias::new("!a|b", "$c").id();
-        let b = EventAlias::new("!a", "b|$c").id();
+        let a = EventAlias::new("!a/b", "$c").id();
+        let b = EventAlias::new("!a", "b/$c").id();
         assert_ne!(a, b);
     }
 
     #[test]
     fn a_foreign_or_old_alias_is_not_read() {
         assert_eq!(EventAlias::parse("$e"), None);
-        assert_eq!(EventAlias::parse("!r|$e|more"), None);
-        assert_eq!(EventAlias::parse("!r|%zz"), None);
-        let other = ExternalId::new("matrix-room", "!r|$e");
+        assert_eq!(EventAlias::parse("!r/$e/more"), None);
+        assert_eq!(EventAlias::parse("!r/%zz"), None);
+        assert_eq!(
+            EventAlias::parse("!r/%41"),
+            None,
+            "not the spelling we write"
+        );
+        assert_eq!(EventAlias::parse("!r/$e%"), None);
+        let other = ExternalId::new("matrix-room", "!r/$e");
         assert_eq!(EventAlias::from_external(&other), None);
     }
 }

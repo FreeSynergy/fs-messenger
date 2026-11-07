@@ -1,8 +1,9 @@
 //! Sending: find the room, check it again, send, report what really happened.
 //!
-//! Pattern: Template method. The core's plan went first, but the plan only sees recipients and not the
-//! room a reply goes to, so the provider checks the room itself. Nothing reaches `Room::send` unless
-//! the room is encrypted right now, and the SDK only leaves encrypted rooms with encrypted events.
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). The
+//! core's plan went first, but the plan only sees recipients and not the room a reply goes to, so
+//! the provider checks the room itself. Nothing reaches `Room::send` unless the room is encrypted
+//! right now, and the SDK only leaves encrypted rooms with encrypted events.
 
 use std::future::IntoFuture;
 

@@ -4,19 +4,20 @@ The Matrix provider of FreeSynergy.Messenger: one account behind the core's `Pro
 
 ## State
 
-Version 0.1.0, not tagged. Tested against the pinned tuwunel 1.9.4 only; see "Not verified".
+Version 0.1.1 (the workspace's), not tagged. Tested against the pinned tuwunel 1.9.4 only; see "Not verified".
 
 | Area | State |
 |---|---|
 | Login with password, session restore, same device and identity after a restart | done, against the server |
 | Stores: `CryptoStore` and `StateStore` over an encrypted `fs-store`, pure Rust, no SQLite | done: the SDK's own suites pass (35 and 28 tests; one more is `#[ignore]`d by the suite itself), restart against the server |
-| Sync into the core: rooms are conversations, `m.room.message` are messages, event id is the alias, `m.in_reply_to` threads, cursor persists in the core, replay does not duplicate, own copy recognised | done, against the server |
+| Sync into the core: rooms are conversations, `m.room.message` are messages, room and event id are the alias (`EventAlias`), `m.in_reply_to` threads, cursor persists in the core, replay does not duplicate, own copy recognised | done, against the server |
 | Gaps: a limited `/sync`, a newly joined room and a replay are read through `/messages`, 500 events per fetch, going on in the next (`more`) | done, against the server |
 | Original: the event JSON as received; see "Originals" | done |
 | Sending: `m.room.message` only into a room with `m.room.encryption`; plan and provider both check | done, against the server |
 | Incoming marks: `megolm` only after real decryption; plain is `none`; undecrypted is `unknown` | done, against the server |
 | Undecrypted, then the key arrives: replaced in place, same message, same original | done, against the server; see "Late keys" |
 | Secrets: see "Secrets" | done, tested with needles from the real secrets |
+| Review fixes (T2): URL with user info refused; alias holds the room; member cap in the plan; pattern names corrected; open points listed | done, tested; see "Open points" |
 | A hostile server: the token stays at the configured origin, requests end, memory is bounded where this crate can bound it; see "What a server cannot do" | done, tested |
 
 ### `Unsupported`, or not built
@@ -38,25 +39,22 @@ Version 0.1.0, not tagged. Tested against the pinned tuwunel 1.9.4 only; see "No
 
 ## Pattern map (ADR 0043)
 
+Names are those of section 2 of `conventions/coding.md`, and only where the code is that. Where none fits, the module doc says `Pattern: none` and the place is under "Open points".
+
 | Module | Pattern | Why |
 |---|---|---|
 | `provider/facade.rs` | Facade + Strategy | the core sees `Provider`; behind it the SDK client |
 | `provider/connect.rs` | Factory | client over our stores; a stored session wins over a password |
-| `provider/account.rs` | Specification | plain `http://` only to loopback: a token would be readable on the way |
-| `provider/fetch.rs` | Template method | sync, close gaps, convert, retry, say where we are |
-| `provider/convert.rs` | Adapter | one event to one message; the mark comes from how the SDK came by the text |
-| `provider/history.rs` | Iterator | the pages of `/messages` |
-| `provider/plan.rs` | Specification | is there really an encrypted way; used by the plan and by `send` |
-| `provider/send.rs` | Template method | find the room, check again, send, report what happened |
-| `provider/echo.rs` | Value object | closes the core's echo race from this side |
 | `provider/rooms.rs` | Facade | invitations, opening rooms, key files: the core has no room concept |
-| `receive/*` | Adapter, Specification | pure: JSON to `RawMessage`, no network |
-| `receive/cursor.rs` | Value object | the token and the waiting list move together |
-| `store/crypto/*`, `store/state/*` | Decorator | the SDK's memory stores, with a journal in front |
+| `receive/alias.rs` | Newtype | `EventAlias`: room and event id as one alias, the only place that builds or reads it |
+| `store/crypto/*`, `store/state/*` (`decorate`, `store`) | Decorator | the SDK's memory stores, with a journal in front |
 | `store/forward.rs` | Decorator, the plain half | nearly a hundred methods only pass on |
-| `store/journal.rs`, `store/fs_journal.rs` | Strategy, Adapter | atomic log of changes, over `fs-store` |
-| `store/keys.rs`, `store/hex.rs`, `store/read_back.rs` | Strategy (pure functions) | unambiguous keys, whatever a server puts in them |
+| `store/journal.rs` | Strategy | the `Journal` trait: the stores do not know `fs-store` |
+| `store/fs_journal.rs` | Adapter | `FsJournal` implements `Journal` over `fs-store` |
 | `secret.rs` | Newtype | `Password`, `SecretText`: a secret cannot be printed |
+| `error.rs`, `*/kind.rs` | none | an error enum, constants |
+
+No pattern of section 2 fits these (module doc: `Pattern: none`), see "Open points": `provider/account.rs`, `provider/fetch.rs`, `provider/send.rs`, `provider/convert.rs`, `provider/history.rs`, `provider/plan.rs`, `provider/echo.rs`, `receive/{mod,adapter,event,cursor}.rs`, `store/crypto/{persist,restore}.rs`, `store/state/{persist,restore}.rs`, `store/{keys,hex,read_back}.rs`.
 
 ## Stores: pure Rust, and how
 
@@ -144,9 +142,11 @@ What the SDK does by default, unchanged:
 * **The SDK's position, not the core's, is what `/sync` asks from.** The SDK drops an answer whose `next_batch` it has seen. Asking from an older cursor would answer nothing, and the cursor would move past the batch. So the difference comes from `/messages`. A server test caught this.
 * **What a newly joined room said before the join** is read once, by `/messages`. The list of rooms read is in the cursor.
 * **Relations are in the clear.** The SDK sends `m.relates_to` outside the ciphertext, as the spec says: **the server sees which message answers which**, not the text.
+* **The alias holds the room.** `matrix` + `<room>/<event>`, with `%`, `/`, `|` and control characters in either part written `%XX` (the core refuses `|` and control characters in an id: the first version used `|` and the replay server test caught it) (`EventAlias`). The core replaces a placeholder by alias without comparing conversation or sender, so with the event id alone a hostile homeserver could send an event with room A's placeholder id into room B and have A's placeholder overwritten (sender Alice, text Mallory's, `megolm`). Now such an event has another alias. **Incompatible with aliases of earlier drafts** (`matrix` + bare event id): stored messages would be seen as new on a replay, and an old placeholder is not replaced. The cursor holds no alias (room and event id are separate fields), so it stays readable. A reply parent counts only if its alias names the room being sent into.
 * **Own echo:** sending and syncing exclude each other, and what this process sent is not delivered back. After a restart the core's receipt recognises it. `Message.receipts` holds the event id; `aliases` only if a copy did come by.
 * **The `/sync` filter** sets the timeline limit to 100 per room, configurable, sent inline.
-* **`http://` only to loopback.** The test server has no TLS.
+* **`http://` only to loopback.** The test server has no TLS. The homeserver URL is parsed by the `url` crate: user info (also with `https`), a backslash and an unparsable URL are refused; plain `http` needs the host exactly `localhost`, `127.0.0.1` or `[::1]`. Before, `http://localhost:80@evil.org` passed.
+* **Rooms over 500 members** are not checked person by person (each may cost a request): `send` and the plan fail closed with an error. Provisional.
 
 ## Wanted from core
 
@@ -158,6 +158,15 @@ Worked around here, nothing changed there:
 4. **The sender's verification state.** `RawMessage.signature` now exists, and stays unset here: `not verified`. It speaks of signatures, and whether a verified Megolm sender is `Valid` is for the core to say.
 5. **Rooms in the model:** invitations, joining.
 6. **`Outgoing` could carry the client's own id** (transaction id), which would close the echo race for all providers.
+7. **Replace by alias should compare the conversation** (and the sender) of the placeholder with the new message. This crate defends itself by putting the room into the alias, other providers do not.
+
+## Open points (for the strategy session)
+
+**Patterns: "an Strategie melden".** The code is free functions and plain structs; section 2 of the coding rules has no pattern for these, and none is invented here. The old names were wrong (no default trait methods for "Template method", no trait implemented for "Adapter", no `impl Iterator`, no trait for "Strategy", "Specification" and "Value object" are not in section 2): `provider/account.rs` (validation), `provider/fetch.rs`, `provider/send.rs` (sequences of steps), `provider/convert.rs`, `receive/{mod,adapter}.rs`, `store/{crypto,state}/{persist,restore}.rs` (conversion functions), `provider/history.rs` (resumable paging, no `impl Iterator`), `provider/plan.rs` (a check), `provider/echo.rs`, `receive/cursor.rs`, `receive/event.rs` (plain values and pure rules), `store/{keys,hex,read_back}.rs` (pure functions). Do these need a pattern in section 2, or is "none" right?
+
+**A permanent failure blocks the account (not changed).** `ciphertext_of` (convert) and `room.messages` (history) pass their error on, so a 403/404 for one event or one gap fails every fetch for ever (the cursor stays). Retrying a bounded number of times is no problem, but the end of it is: to go on, the event must become a placeholder (`unknown`) or the gap be given up. A decrypted event whose ciphertext cannot be fetched has no ciphertext to wait with, so its placeholder would stay for good and its readable text be lost; a given-up gap loses messages without the core being told. Telling a permanent from a temporary failure also means reading the SDK's HTTP error kinds. That is a decision about losing data and about a "gap" concept in the core: not taken here.
+
+**Limits not set (not changed).** (a) A deadline for a whole fetch: dropping `fetch_batch` half-way is safe by design (the replay), but a fetch that always exceeds it would never progress; the value is a decision. (b) A cap on pages per gap across fetches: a hostile server can return endless pages with ever-new tokens, and `more` stays true. A cap would end a gap and so give up history, and the count needs a new cursor field. Within one fetch the budget of 500 events bounds the work, also for empty pages (they count as one).
 
 ## Not verified
 

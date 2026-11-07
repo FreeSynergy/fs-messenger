@@ -1,9 +1,9 @@
 //! Building the `RawMessage`: aliases, threading, the encryption mark, the original.
 //!
-//! No pattern from the coding rules fits (free functions, no trait implemented): see DESIGN.md, open
-//! points. The mark says what really happened to this event, never what the room promises:
-//! a plain event in an encrypted room is `none`, an event nobody could decrypt is `unknown`. When the
-//! key comes, the same event id with `undecrypted` unset makes the core replace the text in place.
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). The
+//! mark says what really happened to this event, never what the room promises: a plain event in an
+//! encrypted room is `none`, an event nobody could decrypt is `unknown`. When the key comes, the
+//! same event id with `undecrypted` unset makes the core replace the text in place.
 
 use fs_messenger_core::{Encryption, ExternalId, Kind, RawMessage};
 use fs_store::Blob;

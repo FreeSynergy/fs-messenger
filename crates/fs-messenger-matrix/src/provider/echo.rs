@@ -1,10 +1,11 @@
 //! [`SentEvents`]: what this provider has sent, so a copy that returns is not delivered as new.
 //!
-//! Pattern: Value object over a bounded set. The core recognises a copy by its receipt, but only once
-//! the receipt is stored. Between `send` returning and that, a sync in another task would deliver the
-//! copy as a second message (core's open point "echo race"). Sending and syncing exclude each other,
-//! so an event in the stream was entered here first. After a restart the receipt is stored or the
-//! send was never recorded, so being empty then is right.
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). A
+//! bounded set over a bounded set. The core recognises a copy by its receipt, but only once the
+//! receipt is stored. Between `send` returning and that, a sync in another task would deliver the
+//! copy as a second message (core's open point "echo race"). Sending and syncing exclude each
+//! other, so an event in the stream was entered here first. After a restart the receipt is stored
+//! or the send was never recorded, so being empty then is right.
 
 use std::collections::{HashSet, VecDeque};
 

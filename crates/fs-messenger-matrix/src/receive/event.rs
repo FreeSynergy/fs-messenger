@@ -1,7 +1,8 @@
 //! What this provider reads out of an event's JSON.
 //!
-//! Pattern: Specification: pure rules over untrusted JSON. A field of the wrong shape counts as
-//! absent, and the event as "not a message", so a stranger's odd event cannot fail a sync.
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Pure rules: pure rules over untrusted JSON. A field of the wrong shape counts as absent, and the
+//! event as "not a message", so a stranger's odd event cannot fail a sync.
 
 use chrono::{DateTime, Utc};
 use serde_json::Value;

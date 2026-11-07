@@ -1,7 +1,9 @@
 //! What a change of the state store looks like in the journal.
 //!
-//! Pattern: Adapter: `StateChanges` to journal entries. Raw events stay the text they were, so nothing
-//! is reordered on the way. Receipts, presence and global profiles are left out: see `DESIGN.md`.
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Free functions: `StateChanges` to journal entries. Raw events stay the text they were, so
+//! nothing is reordered on the way. Receipts, presence and global profiles are left out: see
+//! `DESIGN.md`.
 
 use matrix_sdk_base::StateChanges;
 use matrix_sdk_base::store::StateStoreDataKey;

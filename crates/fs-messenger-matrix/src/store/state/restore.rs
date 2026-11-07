@@ -1,6 +1,7 @@
 //! Rebuilding the memory store from the journal.
 //!
-//! Pattern: Adapter: journal entries back to one `StateChanges`, which the memory store takes as if
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Free functions: journal entries back to one `StateChanges`, which the memory store takes as if
 //! it had just arrived, redactions included.
 
 use std::collections::BTreeMap;

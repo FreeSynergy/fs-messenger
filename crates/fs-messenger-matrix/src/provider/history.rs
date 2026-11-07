@@ -1,7 +1,8 @@
 //! Reading what `/sync` did not bring: a limited timeline, a newly joined room, a replay.
 //!
-//! Pattern: Iterator over the pages of `/messages`, resumable: where it stands is in the cursor. One
-//! fetch reads a bounded number of events and says `more`, so a long room does not sit in memory whole.
+//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points).
+//! Reads the pages of `/messages`, resumable: where it stands is in the cursor. One fetch reads a
+//! bounded number of events and says `more`, so a long room does not sit in memory whole.
 
 use matrix_sdk::deserialized_responses::TimelineEvent;
 use matrix_sdk::room::MessagesOptions;
