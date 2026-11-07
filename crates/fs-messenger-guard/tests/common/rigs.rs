@@ -11,7 +11,7 @@ use fs_messenger_guard::{
     GuardLogEntry, GuardRepository, LocalEnrolment, Method, OwnerOnly, TursoGuardRepository,
     Verdict,
 };
-use fs_store::TursoStore;
+use fs_objects::TursoStore;
 use serde_json::Value;
 use tempfile::TempDir;
 use tokio::sync::Notify;

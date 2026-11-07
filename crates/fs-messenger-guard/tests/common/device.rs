@@ -7,7 +7,7 @@ use chrono::{DateTime, Duration, Utc};
 use ed25519_compact::{KeyPair, Seed};
 use fs_messenger_core::{ToolCall, ToolCallDecision};
 use fs_messenger_guard::{Clock, GuardProof, Method, decide_arguments, signed_bytes};
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 /// A clock a test can move.
 #[derive(Default)]

@@ -11,7 +11,7 @@ use common::{Device, OWNER, TestClock, encrypted};
 use fs_messenger_guard::{
     DeviceVerifier, Ed25519Verifier, Guard, GuardEngine, GuardMode, Method, OwnerOnly,
 };
-use fs_store::TursoStore;
+use fs_objects::TursoStore;
 
 /// Ed25519, until it is told to panic.
 struct Breaks(AtomicBool);

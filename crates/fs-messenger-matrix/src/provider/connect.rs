@@ -1,7 +1,7 @@
 //! Logging in, and coming back after a restart.
 //!
 //! Pattern: Adapter, part of `MatrixProvider` (the type is spread over the files of this folder): building the SDK client over our stores, `login` and `restore`. It
-//! builds the SDK client over the stores of `fs-store`, a concrete type and no trait object, so not a
+//! builds the SDK client over the stores of `fs-objects`, a concrete type and no trait object, so not a
 //! Factory. The session lives in the same encrypted store as the keys. A stored session always wins
 //! over a password: a new login would be a new device, with new keys, and the old messages would stay
 //! unreadable.
@@ -16,7 +16,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use fs_store::TursoStore;
+use fs_objects::TursoStore;
 use matrix_sdk::Client;
 use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::config::{RequestConfig, StoreConfig};

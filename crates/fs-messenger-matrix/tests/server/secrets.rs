@@ -5,8 +5,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use fs_messenger_matrix::{MatrixAccount, MatrixProvider, Password};
-use fs_store::ActivityFilter;
-use fs_store::traits::{ActivityLog, ObjectQuery};
+use fs_objects::ActivityFilter;
+use fs_objects::traits::{ActivityLog, ObjectQuery};
 use matrix_sdk_crypto::decrypt_room_key_export;
 
 use crate::capture::captured;
@@ -15,7 +15,7 @@ use crate::http;
 
 /// A journal's record as it stands, through the store's own API.
 async fn record(person: &Person, key: &str) -> serde_json::Value {
-    let q = fs_store::Query::new().of_type("freesynergy.net:MatrixStoreSegment");
+    let q = fs_objects::Query::new().of_type("freesynergy.net:MatrixStoreSegment");
     let segments = person.keys.query(&q).await.unwrap();
     let mut newest = None;
     let mut segments: Vec<_> = segments.iter().map(|s| &s.content).collect();

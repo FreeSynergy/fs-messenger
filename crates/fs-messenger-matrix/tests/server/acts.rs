@@ -6,7 +6,7 @@ use std::time::Duration;
 use fs_messenger_core::{
     Ingest, Message, Messenger, Result as CoreResult, SearchFilter, SyncReport,
 };
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use crate::common::Person;
 use crate::http;

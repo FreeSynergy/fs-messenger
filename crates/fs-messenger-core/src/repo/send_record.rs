@@ -3,7 +3,7 @@
 //! Pattern: State: `sending` -> `sent` or `failed`. A provider's answer is reloaded against the store
 //! under the write lock, so a change made while the message was on its way is kept.
 
-use fs_store::{Envelope, ObjectId};
+use fs_objects::{Envelope, ObjectId};
 
 use super::consts::NOTE;
 use super::draft_data::DraftData;

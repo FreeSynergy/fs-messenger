@@ -17,8 +17,8 @@ fn key() -> Vec<u8> {
 }
 
 /// The store the SDK's keys live in.
-pub async fn open_keys(path: &Path) -> fs_store::TursoStore {
-    use fs_store::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
+pub async fn open_keys(path: &Path) -> fs_objects::TursoStore {
+    use fs_objects::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
     let options = OpenOptions {
         key_provider: Some(Arc::new(StaticKeyProvider(EncryptionKey {
             cipher: Cipher::Aes256Gcm,
@@ -30,8 +30,8 @@ pub async fn open_keys(path: &Path) -> fs_store::TursoStore {
 }
 
 /// The store of the core's messages.
-async fn open_messages(path: &Path) -> fs_store::TursoStore {
-    use fs_store::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
+async fn open_messages(path: &Path) -> fs_objects::TursoStore {
+    use fs_objects::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
     let options = OpenOptions {
         key_provider: Some(Arc::new(StaticKeyProvider(EncryptionKey {
             cipher: Cipher::Aes256Gcm,
@@ -44,7 +44,7 @@ async fn open_messages(path: &Path) -> fs_store::TursoStore {
 
 /// A short unique word, so that tests can run side by side on one server.
 pub fn token() -> String {
-    let id = fs_store::ObjectId::new().to_string().replace('-', "");
+    let id = fs_objects::ObjectId::new().to_string().replace('-', "");
     id[id.len() - 12..].to_owned()
 }
 
@@ -56,8 +56,8 @@ pub struct Person {
     pub provider: Arc<MatrixProvider>,
     pub repo: MessengerRepo,
     pub account: Account,
-    pub keys: Arc<fs_store::TursoStore>,
-    pub messages: Arc<fs_store::TursoStore>,
+    pub keys: Arc<fs_objects::TursoStore>,
+    pub messages: Arc<fs_objects::TursoStore>,
 }
 
 /// A name for a new user.

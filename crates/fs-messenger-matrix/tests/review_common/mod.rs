@@ -59,7 +59,7 @@ pub fn sync(next: &str, events: &[Value], limited: bool, prev: Option<&str>) -> 
 }
 
 /// A core with this provider as its one account.
-pub async fn core(provider: MatrixProvider) -> (MessengerRepo, fs_store::ObjectId) {
+pub async fn core(provider: MatrixProvider) -> (MessengerRepo, fs_objects::ObjectId) {
     let messages = support::fresh_store().await;
     let config = MessengerConfig::new("https://local.invalid/u");
     let repo = MessengerRepo::open_turso(messages, config).await.unwrap();

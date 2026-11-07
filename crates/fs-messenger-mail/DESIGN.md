@@ -14,7 +14,7 @@ Version 0.2.0 (the workspace version; it carried 0.1.0 here by mistake), not tag
 | OpenPGP (rPGP): RFC 3156 section 6.2 combined form, v6 keys, SEIPDv2 AES-256 OCB, RFC 9788 Header Protection, to all recipients and the sender | done, between our own two ends only |
 | Autocrypt, own: send the header, learn from incoming, the rule below | done, **provisional** |
 | Incoming: decrypt, verify (combined, or `multipart/signed` at the root or just inside), `openpgp` only if really decrypted; `raw.undecrypted`, `raw.signature` | done |
-| Keys: `KeyStore`, `FsKeyStore` over `fs-store` as sensitive objects | done |
+| Keys: `KeyStore`, `FsKeyStore` over `fs-objects` as sensitive objects | done |
 
 ### `Unsupported`, or not built
 
@@ -45,7 +45,7 @@ Version 0.2.0 (the workspace version; it carried 0.1.0 here by mistake), not tag
 | `jmap/client.rs`, `jmap/session.rs` | Facade, Specification | what a server's session document may make us do |
 | `mime/classify.rs`, `autocrypt/rule.rs`, `openpgp/usable.rs` | Specification | security rules as pure functions |
 | `mime/build.rs` | Builder | the two forms of a mail |
-| `keys/*` | Repository + Adapter | the provider does not know `fs-store` |
+| `keys/*` | Repository + Adapter | the provider does not know `fs-objects` |
 | `secret.rs`, `openpgp/cert.rs` | Newtype | a secret cannot be printed |
 | `tls.rs` | Strategy | whose certificates count; there is no "accept invalid" |
 
@@ -87,8 +87,8 @@ The first contact: nothing leaves unencrypted, so asking for a key by mail is no
 * **Byte budget and idle timeouts.** One call takes up to 50 MiB by the sizes the server reports, at least one mail, and `more` says the rest waits. IMAP's cursor stops at what was taken. JMAP's state has moved past the ids of a page, so what is left is kept in the cursor (`pending`) until read. No total timeout: connections fail when nothing moves for `idle_timeout`, because a total one lets a sender stall an account with a large mail on a slow line.
 * **`jmap-client` is not used.** It builds its HTTP client inside and has only a general "accept invalid certificates" switch for a self-signed server, and it follows the session document's URLs. Ours refuses a session that advertises anything but `https`, or another origin than the configured one: the document decides where the password goes next. `rebase_on_session_origin` moves the URLs onto the configured origin; the test server needs this, it advertises `http://` even when asked over HTTPS. `other_credential_origins` names further origins for one account, empty by default.
 * **Secret keys never go through the logged path.** `FsKeyStore` writes them with `UnloggedObjects`: no activity, no event, no undo, nothing towards the hub, so no log can hold them and no `Debug` of an `Activity` can print them. A `KeyProvider`-style path, where the secret is in no object at all, would be cleaner and needs a key vault outside the store, which does not exist yet (ADR 0024). All own keys share one object under a fixed id, because the unlogged path has no query and a fresh UUIDv7 per key would date it. Public peer keys stay logged. Only test data existed, so there is no migration; a store written before this holds old secrets in its log and has to be thrown away.
-* **Keys in a store of their own**, as `fs-store` asks for unlogged objects: a logged call must never touch that id. `open_turso` refuses an unencrypted store, and a plain store refuses both paths through the sensitive category. Behind a trait, a store opted out of the sensitive-data rule cannot be told apart, and then the file does hold the secret (a test shows it): a program binary uses `open_turso`. The secret has no passphrase: it relies on the encrypted store. Old pages can stay on disk until the database reuses them, also after a key is replaced; they are encrypted with the store.
-* **What is wiped, exactly.** Wiped on drop: `Password` (`Zeroizing<String>`), the secret packets inside `SecretCert` (rPGP's `ZeroizeOnDrop`), and the binary buffers `FsKeyStore` decodes into or encodes from. **Not wiped:** the base64 `String`s and the `serde_json::Value` the key passes through in `FsKeyStore`; the copy `lettre`'s `Credentials` takes and the header `reqwest` builds, for every login; whatever the allocator kept from moved buffers; what fs-store and turso hold in memory. `Debug` and `Display` of `Password` and `SecretCert` show no secret, `Password` cannot be serialised into an object, and needle tests read the whole log, the raw files and refused logins over all three protocols.
+* **Keys in a store of their own**, as `fs-objects` asks for unlogged objects: a logged call must never touch that id. `open_turso` refuses an unencrypted store, and a plain store refuses both paths through the sensitive category. Behind a trait, a store opted out of the sensitive-data rule cannot be told apart, and then the file does hold the secret (a test shows it): a program binary uses `open_turso`. The secret has no passphrase: it relies on the encrypted store. Old pages can stay on disk until the database reuses them, also after a key is replaced; they are encrypted with the store.
+* **What is wiped, exactly.** Wiped on drop: `Password` (`Zeroizing<String>`), the secret packets inside `SecretCert` (rPGP's `ZeroizeOnDrop`), and the binary buffers `FsKeyStore` decodes into or encodes from. **Not wiped:** the base64 `String`s and the `serde_json::Value` the key passes through in `FsKeyStore`; the copy `lettre`'s `Credentials` takes and the header `reqwest` builds, for every login; whatever the allocator kept from moved buffers; what fs-objects and turso hold in memory. `Debug` and `Display` of `Password` and `SecretCert` show no secret, `Password` cannot be serialised into an object, and needle tests read the whole log, the raw files and refused logins over all three protocols.
 * **The certificate of a test server** can only be trusted under the `test-trust` feature, which only the dev-dependency turns on. Exactly that certificate, host name still checked.
 
 ## Interoperability (measured 2026-11-06)
@@ -202,7 +202,7 @@ Thunderbird itself; Mozilla's own builds; RNP built with `ENABLE_CRYPTO_REFRESH`
 * **A lying IMAP server can exhaust the memory:** `async-imap` buffers a literal before we can stop it, whatever `RFC822.SIZE` said. JMAP is bounded by the early stop.
 * **A server that trickles forever** passes the idle timeout. Bounded for JMAP by the byte limit of a download, not in time.
 * **`allow_sensitive_unencrypted`:** behind a trait, a store with this opt-out cannot be told apart, and its file then holds the secret (a test shows it). A program binary uses `open_turso`.
-* **The secret object's id:** a logged call must never touch it, until fs-store enforces that. `Store::get` and `Store::query` do reach the secret object in its own store, so that store goes to nobody else.
+* **The secret object's id:** a logged call must never touch it, until fs-objects enforces that. `Store::get` and `Store::query` do reach the secret object in its own store, so that store goes to nobody else.
 * **What is not zeroized:** see "What is wiped": the base64 and JSON copies in `FsKeyStore`, `lettre`'s `Credentials`, the auth header `reqwest` builds.
 * **UIDVALIDITY:** a change makes a mailbox's mail new under new aliases, so it is stored again. So does changing an account from IMAP to JMAP.
 

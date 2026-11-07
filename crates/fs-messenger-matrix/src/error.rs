@@ -67,9 +67,9 @@ pub enum StoreFail {
     /// The store is not encrypted, and refused for it (ADR 0018, 0024).
     #[error("the store is not encrypted; the Matrix stores do not open on it (ADR 0024)")]
     NotEncrypted,
-    /// `fs-store` failed.
-    #[error("fs-store: {0}")]
-    Backend(#[from] fs_store::Error),
+    /// `fs-objects` failed.
+    #[error("fs-objects: {0}")]
+    Backend(#[from] fs_objects::Error),
     /// A record could not be read or written. The value is not named.
     #[error("record: {0}")]
     Record(String),

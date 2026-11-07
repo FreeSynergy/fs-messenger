@@ -10,7 +10,7 @@ use fs_messenger_core::{
     ToolCallState,
 };
 use fs_messenger_guard::{Guard, Method};
-use fs_store::Store;
+use fs_objects::Store;
 #[test]
 fn the_uris_are_the_contracts() {
     assert_eq!(
@@ -165,7 +165,7 @@ async fn a_listener_filtered_to_another_conversation_hears_nothing() {
         .await
         .unwrap();
     let filter = EventFilter {
-        conversations: vec![fs_store::ObjectId::new()],
+        conversations: vec![fs_objects::ObjectId::new()],
         ..EventFilter::default()
     };
     let (_s, mut rx) = listen(&w, filter).await;

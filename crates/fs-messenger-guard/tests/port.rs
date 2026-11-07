@@ -10,7 +10,7 @@ use fs_messenger_core::{
     EngineGuard, Messenger, MessengerConfig, MessengerRepo, Result, SenderKind, SenderLookup,
     ToolCall, ToolCallDecision, ToolCallOutcome, ToolCallState,
 };
-use fs_store::{ObjectId, TursoStore};
+use fs_objects::{ObjectId, TursoStore};
 
 struct Nobody;
 

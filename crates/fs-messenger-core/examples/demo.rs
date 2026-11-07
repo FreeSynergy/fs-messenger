@@ -8,7 +8,7 @@ use fs_messenger_core::{
     AccountSetup, Encryption, EncryptionPlan, Error, ExternalId, Ingest, Kind, Messenger,
     MessengerConfig, MessengerRepo, Outgoing, Provider, RawMessage, Result, SendReceipt,
 };
-use fs_store::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
+use fs_objects::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
 
 /// Knows a key for Ada only, and sends nowhere.
 struct DemoProvider;

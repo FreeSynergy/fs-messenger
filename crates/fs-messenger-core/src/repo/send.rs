@@ -4,7 +4,7 @@
 //! written to the messages and no provider has seen the message. The message is stored as `sending`
 //! before the provider runs, so a crash shows it instead of losing it.
 
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use super::draft_data::DraftData;
 use super::handle::Inner;

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use common::{ME, account, raw, repo_over};
 use fs_messenger_core::{Error, Ingest, Ingested, Messenger, MessengerConfig, MessengerRepo};
-use fs_store::{
+use fs_objects::{
     ActivityFilter, Cipher, EncryptionKey, OpenOptions, Query, StaticKeyProvider, Store, TursoStore,
 };
 
@@ -168,6 +168,6 @@ async fn the_stores_own_refusal_holds_for_a_message_built_by_the_program() {
     let refused = plain.put(object, ME).await;
     assert!(matches!(
         refused,
-        Err(fs_store::Error::EncryptionRequired(_))
+        Err(fs_objects::Error::EncryptionRequired(_))
     ));
 }

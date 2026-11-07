@@ -181,6 +181,6 @@ async fn conversation_stop_reports_a_provider_that_cannot_end_a_turn() {
         matches!(&result, Err(Error::Unsupported(u)) if u.capability() == "turn.stop"),
         "{result:?}"
     );
-    let unknown = fs_store::ObjectId::new();
+    let unknown = fs_objects::ObjectId::new();
     assert!(w.repo.stop(unknown).await.is_err());
 }

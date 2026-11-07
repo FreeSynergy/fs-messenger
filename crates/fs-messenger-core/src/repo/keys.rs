@@ -5,7 +5,7 @@
 //! makes cursors stable.
 
 use chrono::{DateTime, Utc};
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use crate::model::ExternalId;
 

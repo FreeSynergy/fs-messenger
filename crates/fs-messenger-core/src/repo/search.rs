@@ -1,9 +1,9 @@
 //! Search: substring over subject and text, newest first.
 //!
 //! Pattern: Builder: `SearchFilter` becomes one store `Query`. Tokenised full text is a gap of
-//! `fs-store`, see `DESIGN.md`.
+//! `fs-objects`, see `DESIGN.md`.
 
-use fs_store::{Cond, Op, Query, TimeField};
+use fs_objects::{Cond, Op, Query, TimeField};
 
 use super::consts::{IDX_DESC, IDX_FROM, IDX_HAS_ATTACHMENT, IDX_TEXT, IDX_UNREAD, NOTE, YES};
 use super::handle::Inner;

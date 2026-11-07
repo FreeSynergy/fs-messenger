@@ -3,7 +3,7 @@
 //! Pattern: Value objects. The secret never appears in `Debug` output, and the core does not store
 //! it: there is no key vault yet (ADR 0024), see `Messenger::add_account`.
 
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 use serde::{Deserialize, Serialize};
 
 /// One account of the person.

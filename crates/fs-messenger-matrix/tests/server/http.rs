@@ -135,7 +135,7 @@ pub async fn plain_room(token: &str, invite: &[&str]) -> String {
 
 /// What another client does: a plain event straight into a room. Answers the event id.
 pub async fn plain_message(token: &str, room: &str, text: &str) -> String {
-    let nonce = fs_store::ObjectId::new();
+    let nonce = fs_objects::ObjectId::new();
     let path = format!("/rooms/{}/send/m.room.message/{nonce}", encode(room));
     let answer = put(&path, token, json!({"msgtype": "m.text", "body": text})).await;
     answer["event_id"]
