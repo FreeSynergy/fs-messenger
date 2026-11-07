@@ -155,17 +155,25 @@ fn away_and_left_again_with_an_own_join_reads_the_absence_and_stays_away() {
 }
 
 #[test]
-fn away_and_left_again_without_an_own_join_delivers_nothing_and_asks() {
-    let known = away(Some("a"));
-    let got = run(&known, &seen(Section::Leave, false, true, false));
-    assert_eq!(got, want(false, None, check(), away(Some("a"))));
+fn away_and_left_again_without_an_own_join_reads_the_absence_and_stays_away() {
+    // The account agreed to this room once: no check (it cannot see a return the server hides).
+    let got = run(&away(Some("a")), &seen(Section::Leave, false, true, false));
+    assert_eq!(
+        got,
+        want(false, read("n", Some("a")), None, away(Some("a")))
+    );
+    let from_start = run(&away(None), &seen(Section::Leave, false, false, false));
+    assert_eq!(from_start, want(false, read("n", None), None, away(None)));
 }
 
 #[test]
-fn away_and_invited_or_knocked_asks_and_stays_away() {
+fn away_and_invited_or_knocked_reads_the_absence_and_stays_away() {
     for section in [Section::Invite, Section::Knock] {
         let got = run(&away(Some("a")), &seen(section, false, false, false));
-        assert_eq!(got, want(false, None, check(), away(Some("a"))));
+        assert_eq!(
+            got,
+            want(false, read("n", Some("a")), None, away(Some("a")))
+        );
     }
 }
 

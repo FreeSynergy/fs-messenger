@@ -134,3 +134,55 @@ async fn an_overlapping_replay_changes_no_state_twice() {
         "{starts:?}"
     );
 }
+
+/// Ninth review, finding 2: a room that the account joined after the SDK's position is not known to
+/// the SDK when a replay brings it (our own answer reaches past that position). The replay must not
+/// plan work for it and then give that work up as `unknown_room`: the ordinary fetch from the SDK's
+/// position brings the room, and everything it said.
+#[tokio::test]
+async fn a_replay_names_no_room_the_sdk_does_not_hold_yet_and_the_room_still_arrives() {
+    let server = Server::start(move |path| {
+        let b = || timeline(&[plain("$b1", "hi")], false, Some("pb"));
+        let c = || timeline(&[plain("$c1", "new")], false, Some("pc"));
+        match path {
+            p if p.ends_with("/login") => login(),
+            p if p.contains("since=s3") => answer("s9", &json!({})),
+            // The SDK has taken s2 (b only); our own answer from s1 reaches s3 (b and c).
+            p if p.contains("since=s2") => answer("s3", &json!({"join": {room_id("c"): c()}})),
+            p if p.contains("since=s1") && review_common::is_sdk_sync(p) => {
+                answer("s2", &json!({"join": {room_id("b"): b()}}))
+            }
+            p if p.contains("since=s1") => answer(
+                "s3",
+                &json!({"join": {room_id("b"): b(), room_id("c"): c()}}),
+            ),
+            p if p.contains("/sync") => answer("s1", &json!({})),
+            p if p.contains("/messages") && is_room(p, "c") => page(&[plain("$c0", "before")]),
+            p if p.contains("/messages") => page(&[]),
+            p => ordinary(p),
+        }
+    })
+    .await;
+    let provider = provider(&server).await;
+    let one = provider.fetch(None).await.unwrap();
+    // Fetch 2 goes through at the SDK but its cursor never reaches the core.
+    let _dropped = provider.fetch(one.next.as_ref()).await.unwrap();
+    let replay = provider.fetch(one.next.as_ref()).await.unwrap();
+    assert!(replay.more, "a replay says more");
+    let cursor = cursor_json(&replay);
+    assert_eq!(cursor.get("given_up"), None, "false loss named: {cursor}");
+    let mut seen = ids(&replay);
+    let mut next = replay.next;
+    for _ in 0..4 {
+        let batch = provider.fetch(next.as_ref()).await.unwrap();
+        seen.extend(ids(&batch));
+        next = batch.next;
+    }
+    let got = |w: &str| seen.iter().any(|i| i.contains(w));
+    assert!(got("$c1") && got("$c0"), "lost: {seen:?}");
+    assert_eq!(cursor_json_of(next.as_ref()).get("given_up"), None);
+}
+
+fn cursor_json_of(cursor: Option<&fs_messenger_core::ProviderCursor>) -> serde_json::Value {
+    serde_json::from_str(&cursor.unwrap().0).unwrap()
+}

@@ -184,6 +184,11 @@ async fn a_left_room_is_met_from_its_start_only_in_failed_attempts_never_after_a
         asked.iter().filter(|p| p.contains("from=pa")).count()
     };
     let after_first = reads(&lost);
+    let open = |lost: &Lost| {
+        let asked = review_common::messages_for(&lost.server, "a");
+        review_common::from_the_start(&asked).len()
+    };
+    let open_after_first = open(&lost);
     for _ in 0..3 {
         let batch = lost.provider.fetch(cursor.as_ref()).await.unwrap();
         seen.extend(ids(&batch));
@@ -193,6 +198,13 @@ async fn a_left_room_is_met_from_its_start_only_in_failed_attempts_never_after_a
         reads(&lost),
         after_first,
         "read from the start after a fetch that went through"
+    );
+    // Not only `from=pa`: no `/messages` of the room without an end (`to=`) after that fetch, from
+    // whatever token and by whatever name.
+    assert_eq!(
+        open(&lost),
+        open_after_first,
+        "an unbounded read after a fetch that went through"
     );
     let got = |w: &str| seen.iter().any(|i| i.contains(w));
     assert!(got("$a1") && got("$a0"), "lost: {seen:?}");

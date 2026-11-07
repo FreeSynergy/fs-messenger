@@ -24,6 +24,7 @@ mod kicked;
 mod late_key;
 mod membership;
 mod membership_acts;
+mod membership_away;
 mod plain;
 mod rejoin;
 mod replay;

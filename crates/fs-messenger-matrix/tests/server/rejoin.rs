@@ -5,7 +5,7 @@ use crate::http;
 use serde_json::json;
 
 /// Alice and Carol in a plain room, one message read. Answers `(room, carol's token, alice's token)`.
-async fn together(alice: &Person, carol: &Person) -> (String, String, String) {
+pub(crate) async fn together(alice: &Person, carol: &Person) -> (String, String, String) {
     let view = carol.server_view().await;
     let room = http::plain_room(&view, &[&alice.user_id]).await;
     assert_eq!(alice.join_next_invite().await, room);
@@ -15,7 +15,7 @@ async fn together(alice: &Person, carol: &Person) -> (String, String, String) {
     (room, view, alice.server_view().await)
 }
 
-async fn invite(carol_view: &str, room: &str, who: &Person) {
+pub(crate) async fn invite(carol_view: &str, room: &str, who: &Person) {
     let answer =
         http::room_action(carol_view, room, "invite", json!({"user_id": who.user_id})).await;
     assert!(answer.get("errcode").is_none(), "{answer}");
