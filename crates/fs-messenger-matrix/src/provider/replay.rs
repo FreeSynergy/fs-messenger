@@ -17,7 +17,7 @@ pub(super) fn worth_replaying(state: RoomState, known: bool) -> bool {
     match state {
         RoomState::Joined | RoomState::Left => true,
         RoomState::Invited | RoomState::Knocked => known,
-        _ => false,
+        RoomState::Banned => false,
     }
 }
 
