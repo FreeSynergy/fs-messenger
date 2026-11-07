@@ -10,7 +10,7 @@
 //! it catches `apikey`, `apiKey`, `credentials`. CamelCase needs no split of its own for that, because
 //! lower-casing makes `apiKey` the part `apikey`. The price is false alarms, by design ("in doubt,
 //! shut"): `keyboard`, `monkey`, `turkey`, `keyword`, `proofread` are caught as well. Such a tool is
-//! named differently or released by the program's owner in the schema, never by this rule.
+//! named differently, never released past this rule (open point 11).
 
 /// The words that make a name secret, as parts of a part.
 const WORDS: [&str; 7] = [

@@ -4,7 +4,9 @@
 //! participant and the program of the call, both from its own record. The answer never comes from an
 //! AI: not from a call's arguments, not from a name, not from what the AI says of itself. What the
 //! engine does not know reads [`Destination::Unknown`], and the question then says so (`words.rs`).
-//! [`Destination`] is a Value object: a small type, compared by value.
+//! [`Destination`] is a Value object, stretched: a small type, compared by value, but not valid on
+//! construction (`Known("")` and text that hides characters can be built); its validity is checked
+//! where it is shown (`engine/destination.rs`), and an invalid one reads "unbekannt".
 
 use async_trait::async_trait;
 
