@@ -4,11 +4,14 @@
 //! that it can claim nothing. Calls reach this version only from outside the engine, so they read
 //! as `unknown` without options. Nobody here can answer, so an outside question is `working`: it is
 //! shown and not asked. The guard follows, see `DESIGN.md`.
+//!
+//! What happens to a report while the guard is shut is decided in one place, `report_landing.rs`,
+//! which every way of storing an agent's tool call goes through.
 
 use fs_store::ObjectId;
 
 use super::handle::Inner;
-use super::message_codec::message_to;
+use super::report_landing::Landing;
 use crate::error::{Error, Result};
 use crate::model::{Message, ToolCall, ToolCallRisk, ToolCallState};
 
@@ -62,7 +65,23 @@ pub(super) fn apply(message: &mut Message, agent_ref: &str, call: ToolCall) -> (
     (clean, true)
 }
 
+const BESIDE_QUESTION: &str = "this message holds a question of the engine; no report lands here";
+
+/// Only the engine ever sets `asked_of`: a report has it taken away.
+fn holds_engine_call(message: &Message) -> bool {
+    message.tool_calls.iter().any(|c| !c.asked_of.is_empty())
+}
+
 impl Inner {
+    /// A report may not land beside a question of the engine. It gets no right either way.
+    async fn report_may_land(&self, id: ObjectId) -> Result<()> {
+        let message = self.load_note(id).await?;
+        if holds_engine_call(&message) {
+            return Err(Error::GuardRefused(BESIDE_QUESTION.into()));
+        }
+        Ok(())
+    }
+
     pub(super) async fn record_tool_call(
         &self,
         id: ObjectId,
@@ -74,17 +93,18 @@ impl Inner {
                 "a tool call needs the agent's reference, or a replay adds it again".into(),
             ));
         }
+        self.report_may_land(id).await?;
         let _writes = self.writes.lock().await;
         let mut message = self.load_note(id).await?;
-        let (stored, changed) = apply(&mut message, agent_ref, call);
-        let size = message.body_text.len() + serde_json::to_string(&message.tool_calls)?.len();
+        // Checked again under the lock: nothing lands beside a person's question.
+        if holds_engine_call(&message) {
+            return Err(Error::GuardRefused(BESIDE_QUESTION.into()));
+        }
         let limit = self.config.max_message_bytes;
-        if changed && size > limit {
-            return Err(Error::TooLarge { size, limit });
-        }
-        if changed {
-            self.put(message_to(&message)?).await?;
-        }
-        Ok(stored)
+        let reports = vec![(agent_ref.to_string(), call)];
+        let mut stored = self
+            .land_reports(&mut message, reports, Landing::Existing { limit })
+            .await?;
+        Ok(stored.remove(0))
     }
 }

@@ -7,17 +7,20 @@
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex as Mutex2, PoisonError, RwLock};
+use std::sync::{Arc, Mutex as Mutex2, OnceLock, PoisonError, RwLock};
 
 use fs_store::{ObjectId, Query, Store, StoredObject, TursoStore};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, broadcast};
 
 use super::consts::IDX_ARRIVAL_DESC;
+use super::guard_port::Wiring;
 use super::keys::arrival_of_desc_key;
 use super::store_check;
 use crate::error::{Error, Result};
+use crate::model::Event;
 use crate::provider::Provider;
 
+const ANNOUNCEMENTS: usize = 64;
 const DEFAULT_PAGE_SIZE: usize = 50;
 const DEFAULT_MAX_MESSAGE_BYTES: usize = 25 * 1024 * 1024;
 
@@ -61,6 +64,10 @@ pub(super) struct Inner {
     arrival: AtomicU64,
     _handle: StoreHandle,
     providers: RwLock<HashMap<ObjectId, Arc<dyn Provider>>>,
+    /// Set once, by `install_guard`.
+    pub(super) wiring: OnceLock<Wiring>,
+    /// Events that come from no store write: a refused decision changes nothing.
+    pub(super) announcements: broadcast::Sender<Event>,
 }
 
 impl MessengerRepo {
@@ -96,8 +103,15 @@ impl MessengerRepo {
                 arrival,
                 _handle: handle,
                 providers: RwLock::new(HashMap::new()),
+                wiring: OnceLock::new(),
+                announcements: broadcast::channel(ANNOUNCEMENTS).0,
             }),
         })
+    }
+
+    /// Which store this is, for comparing: the guard refuses to share one.
+    pub fn store_address(&self) -> usize {
+        Arc::as_ptr(&self.inner.store).cast::<()>() as usize
     }
 
     /// Use `provider` for `account`, replacing any earlier one.
@@ -163,6 +177,16 @@ impl Inner {
             .unwrap_or_else(PoisonError::into_inner)
             .get(&account)
             .cloned()
+    }
+
+    /// All providers, with their accounts.
+    pub(super) fn all_providers(&self) -> Vec<(ObjectId, Arc<dyn Provider>)> {
+        self.providers
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .map(|(id, p)| (*id, p.clone()))
+            .collect()
     }
 
     pub(super) fn unregister(&self, account: ObjectId) {

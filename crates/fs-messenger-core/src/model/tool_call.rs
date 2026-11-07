@@ -1,8 +1,8 @@
 //! One action of an agent, shown in a message (ADR 0054). Stored data only in this version.
 //!
-//! Pattern: Value objects with fail-safe defaults: unset `risk` is `unknown`, unset `choice` is
-//! `refuse`, also for old records and for values a newer program wrote. The guard that acts on them
-//! (release, brake, emergency stop) follows; see `DESIGN.md`.
+//! Pattern: none, allowed by section 2 (plain data). Fail-safe defaults: unset `risk` is
+//! `unknown`, unset `choice` is `refuse`, also for old records and for values a newer program wrote. What acts on them (release,
+//! brake, emergency stop) is the crate `fs-messenger-guard`.
 
 use serde::{Deserialize, Serialize};
 
@@ -139,7 +139,7 @@ pub struct ToolCall {
     pub revision: u64,
 }
 
-/// The answer to a question. Part of the contract; this version refuses it, the guard follows.
+/// The answer to a question. Only an installed guard handles it; without one it is `Unsupported`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ToolCallDecision {
@@ -153,4 +153,6 @@ pub struct ToolCallDecision {
     pub proof: Vec<u8>,
     /// Actor IRI of the person who signed.
     pub signer: String,
+    /// Revision of the call as shown; 0 never matches. Contract draft 0.4.
+    pub revision: u64,
 }

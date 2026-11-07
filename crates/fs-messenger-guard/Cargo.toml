@@ -1,0 +1,28 @@
+[package]
+name = "fs-messenger-guard"
+description = "AI guard of FreeSynergy.Messenger: invitation, release, brake and emergency stop, in the engine (ADR 0054, 0056)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+fs-messenger-core = { path = "../fs-messenger-core" }
+fs-store = { git = "https://github.com/FreeSynergy/fs-store", tag = "v0.3.0" }
+fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.27.0" }
+# Ed25519 in pure Rust, MIT. Not ed25519-dalek: that and curve25519-dalek are BSD-3-Clause.
+ed25519-compact = { version = "2.6", default-features = false, features = ["std"] }
+# MIT OR Apache-2.0. Digests and single-use keys.
+sha2 = "0.10"
+# MIT OR Apache-2.0. The engine's identity.
+getrandom = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+thiserror = "2"
+async-trait = "0.1"
+tokio = { version = "1", features = ["sync", "rt", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+tempfile = "3"

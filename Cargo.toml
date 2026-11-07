@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["crates/fs-messenger-core", "crates/fs-messenger-mail", "crates/fs-messenger-matrix"]
+members = ["crates/fs-messenger-core", "crates/fs-messenger-guard", "crates/fs-messenger-mail", "crates/fs-messenger-matrix"]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.85"

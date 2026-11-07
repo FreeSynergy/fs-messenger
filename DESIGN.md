@@ -1,12 +1,12 @@
 # fs-messenger – Design
 
 `fs-messenger` is one program for mail, chat and agents (ADR 0018, 0054). This repo holds the **program core**
-(`crates/fs-messenger-core`: no GUI, no RPC, no real connectors). A message is an AS2 **`Note`** envelope + content + immutable
+(`crates/fs-messenger-core`: no GUI, no RPC, no real connectors) and the **AI guard** (`crates/fs-messenger-guard`, its own `DESIGN.md`). A message is an AS2 **`Note`** envelope + content + immutable
 original (ADR 0020, 0030), stored through `fs-store`. Frontends never see protocols; connectors plug in as `Provider`s (ADR 0045).
 
 ## State
 
-Version 0.1.0. Mirrors the `messenger.capnp` contract, version 0.3 (`CONTRACT_VERSION`), with the dependency on `fs-interfaces` v0.27.0 (consumers: 0 of 2). Generated types are not in the public API.
+Version 0.2.0 (was 0.1.1: `EngineGuard` and `SenderLookup` got new methods for the guard crate). Mirrors the `messenger.capnp` contract, version 0.3 (`CONTRACT_VERSION`), with the dependency on `fs-interfaces` v0.27.0 (consumers: 0 of 2). Generated types are not in the public API.
 
 | Area | State |
 |---|---|
@@ -25,12 +25,14 @@ Version 0.1.0. Mirrors the `messenger.capnp` contract, version 0.3 (`CONTRACT_VE
 | Encrypted only, incoming: stored and marked with what the provider says; `none`, `transport-only` and `unknown` are never end-to-end; no quarantine | done |
 | Encrypted only, at rest: see "Encryption at rest" | done |
 | Tool calls as stored data: store, update in place, read; engine id and revision; `settled` final; an outside question is `working` | done |
+| Hooks of the guard: `EngineGuard`, `SenderLookup`, `install_guard` (once) and its `GuardPort`, `Provider::stop_turns`, `ToolCallDecision.revision`, `Error::DecisionRefused`, `Error::GuardRefused`, `DecisionProblem`, index `open_call`, announcements beside the store feed. Accounts are transports only (`mail`, `matrix`, `mimi`); there is no account kind `agent`: an AI is a participant on a normal account, and `SenderLookup` says who | done, see `crates/fs-messenger-guard/DESIGN.md` |
 | What a connector found: `RawMessage.undecrypted` and `signature` (`SignatureCheck`, unset is `notVerified`, and always `notVerified` without a sender or readable content), kept on `MessageSummary` as typed fields, not in the text, mirroring the contract. The fingerprint of a good signature stays with the provider | done |
 | Mail threading: `RawMessage.references`, sender-chosen, newest 64 kept, only link. `Outgoing::references` gives the parent's chain, and a sent message continues it | done |
 | Size limits at ingest and in `record_tool_call`: see "Limits". Over the limit a stub stays (`Ingested::TooLarge`, `MessageSummary.too_large`, 0 = it is not), so the mail is visible, not gone (ADR 0030): aliases, links, sender, date, subject, size, no content. A connector that only holds a cut-off start says so with `RawMessage.too_large`: the core stubs it whatever the limit and never stores those bytes as the original | done, provisional |
 | Large bodies: over 64 KiB in a store object of their own, see "What a large body costs" | done, with a limit named there |
 | An undecrypted message: no ciphertext in preview, name or search; it cannot be forwarded; delivered again under a provider-issued id in readable form it is replaced under the same id, keeping what the person did | done |
 | Tests | 167 against real `TursoStore` (in memory, or temp files where encryption matters); the `Provider` doubles only feed core logic |
+| Guard tests | see `crates/fs-messenger-guard/DESIGN.md` |
 
 ### Local only: says so here, and claims nothing more
 
@@ -41,17 +43,17 @@ Flag, read and unread state, pin, folder and delete are this device's own state:
 | What | How it shows |
 |---|---|
 | Edit and react | `Unsupported("message.edit" / "message.react")`, nothing changes: `Provider` has no method to carry them, and a local success would be a claim that nothing reached the other side. Answering them needs a provider method first. Taking a reaction back cannot log AS2 `Undo` with `fs-store` as it is: `Undo` is state-changing, and it refuses that as a log entry |
-| AI guard: release, brake, emergency stop. `MessageAction::Decide` | `Unsupported("toolcall.decide")`; the guard follows, handled by the engine, never by a provider |
-| `Conversation.stop` | `Unsupported("turn.stop")` |
+| `MessageAction::Decide` and `Conversation.stop` without an installed guard | `Unsupported("toolcall.decide")`, `Unsupported("turn.stop")`, which is the safe default. With `fs-messenger-guard` installed they go there |
 | Live text (`Event::Text`, `TextChunk`) | the type exists, nothing emits it; `text.stream` reported unsupported |
 | Rules (Sieve) | `Unsupported("rule.read" / "rule.write")` |
 | Scheduled send | a future `at` is `Unsupported("message.schedule")`; the draft is saved, nothing left |
 | Account secrets | a non-empty secret is `Unsupported("account.secret")`, because there is no key vault (ADR 0024); the core stores none |
 | `bodyHtml` | always empty: there is no sanitiser and the field promises sanitised HTML; the raw form stays in `original` |
-| `senderKind` from the sender's card | not built: always `unknown`, and `RawMessage` has no such field, so no remote can claim `person` |
+| `senderKind` from the sender's card | `SenderLookup` is the hook; the guard answers `ai` for the invited. Without it always `unknown`, and `RawMessage` has no such field, so no remote can claim `person` |
 | Reactions of others | no path in |
 | Key discovery, key verification, devices, groups, presence, notifications, import/export, Cap'n Proto server, MCP, GUI, real connectors, Telegram, own mail server, ratings | not in this step |
 | Link to the library guide for unencrypted mail (ADR 0031) | a frontend's job; the core gives the mark |
+| AIs in conversations (ADR 0054, section "KIs in Unterhaltungen") | **not built**: a notice before an AI joins; all members must agree, else it stays out; a later member accepts it or stays out; consent withdrawn means the AI must leave; no history from before it joined; no exception for local AIs. Nothing here checks it yet |
 
 ## Structure and pattern map (ADR 0043)
 
@@ -62,6 +64,10 @@ Public contract: `Messenger`, `Draft`, `Provider`, `Ingest`, `Listener`, small v
 | `messenger.rs` | Repository (interface) + Null Object | the program's contract; every method exists, the default says `Unsupported` |
 | `draft.rs`, `repo/draft_handle.rs` | State | open until sent or discarded; a refused send leaves it open |
 | `provider/traits.rs` | Strategy | one trait for mail, Matrix, MIMI, agents (ADR 0045) |
+| `guard_hook.rs` | Strategy | traits `EngineGuard` (incl. `open_for_reports`) and `SenderLookup`: the core knows these, not the guard crate |
+| `repo/guard_port.rs`, `repo/guard_turns.rs` | Facade | the one port back into the messenger, handed out once; `stop_turns` is a method of it with no trait of provided methods, so no Template method |
+| `repo/guard_note.rs` | Adapter | an engine call becomes a local `Note` |
+| `provider/turn.rs` | none | a plain data type; guard `DESIGN.md` open point 0 |
 | `provider/outgoing.rs` | Newtype as proof | `Outgoing` can only be built after the check, so no caller can hand a provider anything else |
 | `gate.rs` | Specification | the rule of ADR 0018 in one place, as pure functions |
 | `ingest.rs`, `repo/ingest.rs` | Template method | fixed flow, store-backed steps |
@@ -69,7 +75,8 @@ Public contract: `Messenger`, `Draft`, `Provider`, `Ingest`, `Listener`, small v
 | `repo/feed.rs` | Adapter | store activity to contract events |
 | `repo/handle.rs` | Facade + Registry | one entry; providers per account |
 | `repo/store_check.rs` | Specification over a real write | the store cannot be asked, so its behaviour is tested |
-| `repo/{message,conversation}_codec.rs`, `repo/message_index.rs`, `repo/draft_data.rs`, `repo/ingest_store.rs`, `repo/tool_calls.rs` | Adapter | model to envelope + content + index |
+| `repo/{message,conversation}_codec.rs`, `repo/message_index.rs`, `repo/draft_data.rs`, `repo/ingest_store.rs` | Adapter | model to envelope + content + index |
+| `repo/tool_calls.rs` | Adapter, Strategy | an agent's report mapped onto `ToolCall`; while the guard (`EngineGuard::open_for_reports`) says shut, a report from an `ai` or `unknown` sender is kept `cancelled` |
 | `repo/preserve.rs` | Memento | keeps what this version could not read through a rewrite |
 | `repo/ingest_upgrade.rs` | State | undecrypted to readable, one way |
 | `ingest_rules.rs` | Specification | what a delivered message must be, as pure rules |
@@ -86,7 +93,7 @@ Public contract: `Messenger`, `Draft`, `Provider`, `Ingest`, `Listener`, small v
 
 Types: `Note`, `Tombstone`, `Document` (attachment), `Collection` (conversation), `freesynergy.net:Draft`, `freesynergy.net:Account`, `freesynergy.net:StoreCheck`. Content type `application/activity+json`; `content` = body text, `mediaType` = its type.
 
-`fs-store` has no tables of ours, so the alias table of `data/messages/technical.md` is three index fields, `alias` (provider-issued), `link` (sender-chosen) and `receipt` (from sending), each `<kind>:<normalised address>|<scheme>|<external id>`. Other index fields: `arrival`, `arrival_desc`, `desc`, `unread`, `flagged`, `attachment`, `blob`, `from`, `text`, `encryption`, `kind`, `job`, `task`, `account`; conversations: `sort`, `unread`, `folder`, `conv_alias`.
+`fs-store` has no tables of ours, so the alias table of `data/messages/technical.md` is three index fields, `alias` (provider-issued), `link` (sender-chosen) and `receipt` (from sending), each `<kind>:<normalised address>|<scheme>|<external id>`. Other index fields: `arrival`, `arrival_desc`, `desc`, `unread`, `flagged`, `open_call`, `attachment`, `blob`, `from`, `text`, `encryption`, `kind`, `job`, `task`, `account`; conversations: `sort`, `unread`, `folder`, `conv_alias`.
 
 ## Encryption at rest (ADR 0018, 0024, 0029)
 
@@ -188,6 +195,7 @@ Contract, for the owner:
 
 Code:
 
+0. The patterns of the guard's core files that are not in coding.md section 2 are listed in `crates/fs-messenger-guard/DESIGN.md`, open point 0. Other modules named `Specification`, `Memento`, `Null Object` or `Command` in the map above were not reviewed in this round.
 1. **Send is not exactly-once.** A store failure right after a provider accepted answers an error and keeps the draft open, so a retry can send twice. A failed send stays visible, and its retry is a second message.
 2. **Echo race.** A copy fetched while a send is under way, before the receipt is stored, is not recognised and is stored as a second message. Needs a provider-side client id.
 3. **Delete takes two store steps;** a crash in between lets a replay revive it. The store's log keeps the old image, content included, until compaction; the program must call `compact()`, which only removes entries acknowledged by the hub. Since messages do not sync through the hub, nothing acknowledges them yet.

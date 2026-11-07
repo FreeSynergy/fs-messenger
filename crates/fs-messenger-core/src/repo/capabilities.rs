@@ -1,10 +1,12 @@
 //! What the store-backed program reports.
 //!
-//! Pattern: Builder (the report of the provider rule, ADR 0045): what is missing says so, with why.
+//! Pattern: none, allowed by section 2 (a single function that fills a `Capabilities` report; there is no `build()`, so no
+//! Builder of coding.md section 2). The report of the provider rule (ADR 0045):
+//! what is missing says so, with why.
 
 use fs_interfaces::provider::Capabilities;
 
-pub(super) fn report() -> Capabilities {
+pub(super) fn report(guard_installed: bool) -> Capabilities {
     let mut caps = Capabilities::new("fs-messenger");
     for id in [
         "account.list",
@@ -39,8 +41,6 @@ pub(super) fn report() -> Capabilities {
     for (id, why) in [
         ("message.edit", "no provider can carry it yet"),
         ("message.react", "no provider can carry it yet"),
-        ("toolcall.decide", "the guard follows"),
-        ("turn.stop", "the guard follows"),
         ("text.stream", "nothing streams yet"),
         ("message.schedule", "nothing runs a scheduled send yet"),
         ("account.secret", "no key vault yet (ADR 0024)"),
@@ -48,6 +48,13 @@ pub(super) fn report() -> Capabilities {
         ("rule.write", "rules are not built"),
     ] {
         caps.unsupported(id, why);
+    }
+    for id in ["toolcall.decide", "turn.stop"] {
+        if guard_installed {
+            caps.supported(id);
+        } else {
+            caps.unsupported(id, "no guard is installed");
+        }
     }
     caps
 }

@@ -1,12 +1,12 @@
 //! The contract traits over the store-backed parts.
 //!
-//! Pattern: Facade: only wiring; each method hands over to the part that does the work. `stop`,
-//! `rules` and `set_rules` stay at their explicit `Unsupported` defaults.
+//! Pattern: Facade: only wiring; each method hands over to the part that does the work. `rules` and
+//! `set_rules` stay at their explicit `Unsupported` defaults, and so does `stop` without a guard.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use fs_interfaces::provider::Capabilities;
+use fs_interfaces::provider::{Capabilities, Unsupported};
 use fs_store::{Blob, ObjectId, Query};
 
 use super::capabilities::report;
@@ -29,7 +29,7 @@ use crate::provider::RawMessage;
 #[async_trait]
 impl Messenger for MessengerRepo {
     fn capabilities(&self) -> Capabilities {
-        report()
+        report(self.inner.guard().is_some())
     }
     async fn accounts(&self) -> Result<Vec<Account>> {
         self.inner.list_accounts().await
@@ -77,6 +77,12 @@ impl Messenger for MessengerRepo {
     }
     async fn act(&self, conversation: ObjectId, id: ObjectId, action: MessageAction) -> Result<()> {
         self.inner.act(conversation, id, action).await
+    }
+    async fn stop(&self, conversation: ObjectId) -> Result<()> {
+        match self.inner.guard() {
+            Some(guard) => guard.stop_conversation(conversation).await,
+            None => Err(Unsupported::new("turn.stop", "no guard is installed").into()),
+        }
     }
     async fn usage(&self, conversation: ObjectId) -> Result<Usage> {
         self.inner.usage(conversation).await
@@ -138,6 +144,7 @@ impl Messenger for MessengerRepo {
     ) -> Result<Subscription> {
         Ok(subscription::start(
             self.inner.store.clone(),
+            self.inner.announcements.subscribe(),
             filter,
             listener,
         ))

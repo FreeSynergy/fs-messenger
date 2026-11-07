@@ -22,6 +22,6 @@ pub enum MessageAction {
     Forward(Vec<String>),
     /// New text of my own message. Not possible yet: nothing carries it.
     Edit(String),
-    /// Answers a question of an agent. Not possible yet: the guard follows.
+    /// Answers a question of an agent. Handled by the installed guard only; without one, `Unsupported`.
     Decide(ToolCallDecision),
 }

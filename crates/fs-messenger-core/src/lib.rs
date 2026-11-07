@@ -19,6 +19,7 @@
 mod draft;
 mod error;
 mod gate;
+mod guard_hook;
 mod ingest;
 mod ingest_rules;
 mod listener;
@@ -29,12 +30,15 @@ mod repo;
 
 pub use draft::{Draft, DraftInfo};
 pub use error::{Error, Result};
+pub use guard_hook::{DecisionProblem, EngineGuard, SenderLookup};
 pub use ingest::{Ingest, Ingested, SyncReport};
 pub use listener::{Listener, Subscription};
 pub use messenger::{CONTRACT_VERSION, Messenger};
 pub use model::*;
 pub use provider::{
     FetchBatch, Outgoing, OutgoingAttachment, Provider, ProviderCursor, RawAttachment, RawMessage,
-    RawToolCall, SendReceipt,
+    RawToolCall, SendReceipt, TurnScope,
 };
-pub use repo::{MessengerConfig, MessengerRepo};
+pub use repo::{
+    GuardPort, MessengerConfig, MessengerRepo, PlacedCall, SettledCalls, TurnStop, TurnStopOutcome,
+};

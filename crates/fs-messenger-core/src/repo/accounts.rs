@@ -15,6 +15,16 @@ use crate::error::{Error, Result};
 use crate::model::{Account, AccountSetup};
 use crate::provider::ProviderCursor;
 
+/// The kinds of account there are: transports only, a closed set. An account belongs to a person; an
+/// AI is a participant, not a kind of account. A new transport adds its name here.
+const KINDS: [&str; 3] = ["mail", "matrix", "mimi"];
+
+/// The one spelling of a kind: without surrounding space, and in lower case.
+fn known_kind(kind: &str) -> Option<&'static str> {
+    let plain = kind.trim().to_lowercase();
+    KINDS.into_iter().find(|k| *k == plain)
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub(super) struct AccountContent {
@@ -79,9 +89,19 @@ impl Inner {
                 "an account needs an address and a kind".into(),
             ));
         }
-        if setup.address.contains('|') || setup.kind.contains('|') {
+        if setup.address.contains('|') {
             return Err(Error::Invalid("an account cannot contain `|`".into()));
         }
+        let Some(kind) = known_kind(&setup.kind) else {
+            return Err(Error::Invalid(format!(
+                "not a kind of account: {:?}; one of {KINDS:?}",
+                setup.kind
+            )));
+        };
+        let setup = AccountSetup {
+            kind: kind.to_string(),
+            ..setup
+        };
         let _writes = self.writes.lock().await;
         let same = Query::new()
             .of_type(ACCOUNT)

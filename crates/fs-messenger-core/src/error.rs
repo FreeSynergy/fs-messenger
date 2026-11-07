@@ -1,10 +1,11 @@
 //! Error type of the messenger core.
 //!
-//! Pattern: none (plain error enum via `thiserror`): one `Error` for every public operation. The
+//! Pattern: none, allowed by section 2 (error list via `thiserror`): one `Error` for every public operation. The
 //! refusal to send is a named variant, so no caller can mistake it for a transport problem.
 
 use fs_store::ObjectId;
 
+use crate::guard_hook::DecisionProblem;
 use crate::model::Encryption;
 
 /// Result of every fallible operation of this crate.
@@ -74,4 +75,18 @@ pub enum Error {
     /// A provider failed.
     #[error("provider: {0}")]
     Provider(String),
+    /// A decision was refused. Nothing changed; `problem` is what a machine goes by.
+    #[error("decision refused: {detail}")]
+    DecisionRefused {
+        /// Which of the contract's named problems this is.
+        problem: DecisionProblem,
+        /// What a person reads.
+        detail: String,
+    },
+    /// The guard could not answer: try again. A sync stops here with its cursor where it was.
+    #[error("the guard cannot answer now: {0}")]
+    GuardUnavailable(String),
+    /// The guard refused it (ADR 0054). Nothing changed, unless the text says otherwise.
+    #[error("guard: {0}")]
+    GuardRefused(String),
 }

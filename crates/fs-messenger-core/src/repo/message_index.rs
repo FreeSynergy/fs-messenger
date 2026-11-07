@@ -1,18 +1,18 @@
 //! The index fields of a message.
 //!
-//! Pattern: Strategy (pure function): what can be searched and sorted, derived in one place. An
+//! Pattern: none – verstößt gegen die none-Regel, an Strategie gemeldet, DESIGN.md Open point 0 (two functions, one of which changes the object it is given, so neither a single pure function nor a Specification; no pattern fits): what can be searched and sorted, derived in one place. An
 //! undecrypted message or a stub has no text here: no ciphertext in search.
 
 use fs_store::StoredObject;
 
 use super::consts::{
     IDX_ACCOUNT, IDX_ALIAS, IDX_ARRIVAL, IDX_ARRIVAL_DESC, IDX_BLOB, IDX_DESC, IDX_ENCRYPTION,
-    IDX_FLAGGED, IDX_FROM, IDX_HAS_ATTACHMENT, IDX_JOB, IDX_KIND, IDX_LINK, IDX_RECEIPT,
-    IDX_REPLY_ALIAS, IDX_TASK, IDX_TEXT, IDX_UNREAD, YES,
+    IDX_FLAGGED, IDX_FROM, IDX_HAS_ATTACHMENT, IDX_JOB, IDX_KIND, IDX_LINK, IDX_OPEN_CALL,
+    IDX_RECEIPT, IDX_REPLY_ALIAS, IDX_TASK, IDX_TEXT, IDX_UNREAD, YES,
 };
 use super::keys::{alias_key, arrival_desc_key, arrival_key, desc_key};
 use super::text::indexable;
-use crate::model::Message;
+use crate::model::{Message, ToolCallState};
 
 fn searchable(m: &Message) -> String {
     if m.summary.undecrypted || m.summary.too_large > 0 {
@@ -46,6 +46,8 @@ pub(super) fn add_index(o: &mut StoredObject, m: &Message) {
     let flag = |on: bool| if on { YES.to_string() } else { String::new() };
     add(IDX_UNREAD, flag(s.unread));
     add(IDX_FLAGGED, flag(s.flagged));
+    let open = |c: &crate::model::ToolCall| c.state != ToolCallState::Settled;
+    add(IDX_OPEN_CALL, flag(m.tool_calls.iter().any(open)));
     add(IDX_HAS_ATTACHMENT, flag(!m.attachments.is_empty()));
     for a in &m.attachments {
         add(IDX_BLOB, a.blob.to_string());

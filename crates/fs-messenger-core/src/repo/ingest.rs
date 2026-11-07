@@ -16,13 +16,18 @@ use super::message_codec::{message_from, message_to};
 use crate::error::{Error, Result};
 use crate::ingest::{IngestSteps, Ingested, Known, SyncReport};
 use crate::ingest_rules::stub_of;
-use crate::model::ExternalId;
+use crate::model::{ExternalId, SenderKind};
 use crate::provider::{ProviderCursor, RawMessage};
 
 #[async_trait]
 impl IngestSteps for Inner {
     fn max_message_bytes(&self) -> usize {
         self.config.max_message_bytes
+    }
+
+    async fn admit(&self, account: ObjectId, raw: &RawMessage) -> Result<SenderKind> {
+        self.load_account(account).await?;
+        Ok(self.sender_kind_of(&raw.sender).await)
     }
 
     async fn exclusive(&self) -> OwnedMutexGuard<()> {
@@ -107,13 +112,14 @@ impl IngestSteps for Inner {
         account: ObjectId,
         raw: RawMessage,
         too_large: Option<usize>,
+        sender_kind: SenderKind,
     ) -> Result<ObjectId> {
         match too_large {
             Some(size) => {
-                self.store_raw(account, stub_of(raw), Some(size as u64))
+                self.store_raw(account, stub_of(raw), Some(size as u64), sender_kind)
                     .await
             }
-            None => self.store_raw(account, raw, None).await,
+            None => self.store_raw(account, raw, None, sender_kind).await,
         }
     }
 }
@@ -143,7 +149,8 @@ impl Inner {
                 match self.ingest_flow(account, raw).await {
                     Ok(Ingested::Stored(_)) => report.stored += 1,
                     Ok(Ingested::Duplicate(_)) => report.duplicates += 1,
-                    Ok(Ingested::TooLarge { .. }) | Err(Error::Invalid(_) | Error::Json(_)) => {
+                    Ok(Ingested::TooLarge { .. })
+                    | Err(Error::Invalid(_) | Error::Json(_) | Error::GuardRefused(_)) => {
                         report.rejected += 1;
                     }
                     Err(e) => return Err(e),

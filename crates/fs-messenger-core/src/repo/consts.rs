@@ -1,6 +1,6 @@
 //! Names used in the store: object types and index keys.
 //!
-//! Pattern: none (constants): the store layout in one place, see `DESIGN.md`.
+//! Pattern: none, allowed by section 2 (constants): the store layout in one place, see `DESIGN.md`.
 
 pub(super) const NOTE: &str = "Note";
 pub(super) const TOMBSTONE: &str = "Tombstone";
@@ -44,5 +44,7 @@ pub(super) const IDX_SORT: &str = "sort";
 pub(super) const IDX_FOLDER: &str = "folder";
 pub(super) const IDX_CONV_ALIAS: &str = "conv_alias";
 pub(super) const IDX_ADDRESS: &str = "address";
+/// A message with a tool call that is not settled, so an emergency stop needs no scan.
+pub(super) const IDX_OPEN_CALL: &str = "open_call";
 
 pub(super) const YES: &str = "1";

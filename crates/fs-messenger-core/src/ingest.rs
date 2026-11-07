@@ -10,7 +10,7 @@ use tokio::sync::OwnedMutexGuard;
 
 use crate::error::Result;
 use crate::ingest_rules;
-use crate::model::{ToolCall, Usage};
+use crate::model::{SenderKind, ToolCall, Usage};
 use crate::provider::RawMessage;
 
 /// What became of a delivered message.
@@ -80,6 +80,9 @@ pub(crate) struct Known {
 pub(crate) trait IngestSteps: Send + Sync {
     /// The largest message taken.
     fn max_message_bytes(&self) -> usize;
+    /// What this sender is, and whether it may come in at all; before the lock, and for a known
+    /// message too: a repeat must not get in what a first delivery could not.
+    async fn admit(&self, account: ObjectId, raw: &RawMessage) -> Result<SenderKind>;
     /// Dedupe and store must not interleave with another delivery.
     async fn exclusive(&self) -> OwnedMutexGuard<()>;
     /// The stored message this delivery is, if any.
@@ -94,12 +97,14 @@ pub(crate) trait IngestSteps: Send + Sync {
         account: ObjectId,
         raw: RawMessage,
         too_large: Option<usize>,
+        sender_kind: SenderKind,
     ) -> Result<ObjectId>;
 
     /// The fixed flow.
     async fn ingest_flow(&self, account: ObjectId, raw: RawMessage) -> Result<Ingested> {
         let limit = self.max_message_bytes();
         let (raw, too_large) = ingest_rules::judged(raw, limit)?;
+        let sender_kind = self.admit(account, &raw).await?;
         let _writes = self.exclusive().await;
         if let Some(known) = self.known(account, &raw).await? {
             if known.by_issuer {
@@ -110,7 +115,7 @@ pub(crate) trait IngestSteps: Send + Sync {
             }
             return Ok(Ingested::Duplicate(known.id));
         }
-        let id = self.store_new(account, raw, too_large).await?;
+        let id = self.store_new(account, raw, too_large, sender_kind).await?;
         Ok(match too_large {
             Some(size) => Ingested::TooLarge { id, size, limit },
             None => Ingested::Stored(id),
