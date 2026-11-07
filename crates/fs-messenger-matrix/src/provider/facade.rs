@@ -36,10 +36,14 @@ impl std::fmt::Debug for MatrixProvider {
 
 impl MatrixProvider {
     pub(super) async fn started(account: MatrixAccount, client: Client) -> Result<Self> {
-        client
-            .encryption()
-            .wait_for_e2ee_initialization_tasks()
-            .await;
+        // The SDK's start-up task goes to the network (secret storage in the account data), so it
+        // has the same hard end as every other call. Past it, the provider is not handed out.
+        let encryption = client.encryption();
+        let ready = async {
+            encryption.wait_for_e2ee_initialization_tasks().await;
+            Ok::<(), MatrixError>(())
+        };
+        account.bounded(ready).await?;
         Ok(Self {
             account,
             client,
