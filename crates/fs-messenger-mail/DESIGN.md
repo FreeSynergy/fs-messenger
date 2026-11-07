@@ -4,7 +4,7 @@ The mail provider of FreeSynergy.Messenger: one account's mail behind the core's
 
 ## State
 
-Version 0.1.0, not tagged. Tested against Stalwart 1.0.3 from `scripts/test-servers` only.
+Version 0.2.0 (the workspace version; it carried 0.1.0 here by mistake), not tagged. Tested against Stalwart 1.0.3 from `scripts/test-servers` only.
 
 | Area | State |
 |---|---|

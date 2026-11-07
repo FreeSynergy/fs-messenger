@@ -4,6 +4,8 @@ The AI guard of FreeSynergy.Messenger: invitation, release, brake, emergency sto
 
 ## State
 
+Version 0.2.0, not tagged: a new crate, with new methods on the core's `EngineGuard` and `SenderLookup` (core was 0.1.1 before).
+
 | Area | State |
 |---|---|
 | `Gate::check` (`Allow`, `Ask`, `Refuse`), `revise`, `finished`, `admit_message`, as a pure state machine over a repository | done |
