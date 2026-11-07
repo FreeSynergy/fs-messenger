@@ -145,6 +145,8 @@ impl Guard for GuardEngine {
         let stored = AiGrant {
             profile: key,
             risk: grant.risk,
+            program: String::new(),
+            goes_to: String::new(),
         };
         let arguments: [&[u8]; 2] = [grant.profile.as_bytes(), risk_name(grant.risk).as_bytes()];
         self.signed_change(Method::Release, &arguments, proof, entry, |doc| {
@@ -154,6 +156,16 @@ impl Guard for GuardEngine {
         })
         .await?;
         Ok(())
+    }
+
+    async fn revoke_program(
+        &self,
+        profile: &str,
+        _program: &str,
+        proof: &GuardProof,
+    ) -> Result<(), GuardError> {
+        // Shell: the program is not used yet.
+        self.revoke(profile, proof).await
     }
 
     async fn revoke(&self, profile: &str, proof: &GuardProof) -> Result<(), GuardError> {

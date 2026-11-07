@@ -3,6 +3,7 @@
 
 pub mod device;
 pub mod events;
+pub mod program;
 pub mod rigs;
 
 pub use device::{Device, TestClock};
@@ -175,7 +176,12 @@ impl World {
         self.owner.proof(
             &self.identity,
             Method::Release,
-            &[profile.as_bytes(), risk.as_bytes()],
+            &[
+                profile.as_bytes(),
+                risk.as_bytes(),
+                PROGRAM.as_bytes(),
+                GOES_TO.as_bytes(),
+            ],
         )
     }
 
@@ -183,6 +189,8 @@ impl World {
         let grant = AiGrant {
             profile: profile.to_string(),
             risk,
+            program: PROGRAM.into(),
+            goes_to: GOES_TO.into(),
         };
         self.engine
             .release(&grant, &self.release_proof(profile, name))
@@ -273,6 +281,10 @@ impl World {
         record["mode"].as_str().unwrap()
     }
 }
+
+/// The program and the destination a plain `release` of the helpers names.
+pub const PROGRAM: &str = "message";
+pub const GOES_TO: &str = "this device only";
 
 pub fn args(path: &str) -> Value {
     json!({ "path": path })

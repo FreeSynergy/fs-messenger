@@ -25,9 +25,12 @@ mod error;
 mod identity;
 mod log;
 mod model;
+mod no_marks;
 mod permission;
+mod program;
 mod repo;
 mod risk;
+mod sensitivity;
 mod signed;
 mod state;
 mod table;
@@ -45,8 +48,11 @@ pub use log::GuardLogEntry;
 pub use model::{
     AiGrant, Allowance, Caller, GuardMode, GuardProof, GuardState, Question, StopReport, Verdict,
 };
+pub use no_marks::NoMarks;
 pub use permission::{OwnerOnly, StopPermission};
+pub use program::program_of;
 pub use repo::{GuardRepository, STATE_ID, TursoGuardRepository};
 pub use risk::{can_be_released, offers_allow_class};
+pub use sensitivity::{ObjectRef, Sensitivity, SensitivityLookup};
 pub use signed::{CONTEXT, Method, decide_arguments, signed_bytes};
 pub use table::{CapabilityRule, action_capability, capability_rule, provisional_table};

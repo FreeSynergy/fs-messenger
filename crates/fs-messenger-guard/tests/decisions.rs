@@ -89,7 +89,9 @@ async fn allow_class_releases_this_participant_and_this_class() {
         w.engine.state().await.grants,
         [AiGrant {
             profile: AI.into(),
-            risk: ToolCallRisk::Changes
+            risk: ToolCallRisk::Changes,
+            program: "message".into(),
+            goes_to: "this device only".into(),
         }]
     );
     assert_eq!(

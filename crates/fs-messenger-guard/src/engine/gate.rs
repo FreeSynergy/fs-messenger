@@ -17,6 +17,7 @@ use crate::error::Refusal;
 use crate::identity::id_key;
 use crate::log::GuardLogEntry;
 use crate::model::{Allowance, Caller, GuardMode, Verdict};
+use crate::sensitivity::ObjectRef;
 use crate::state::{CallRecord, CallStage, Evaluation, GuardDoc};
 
 impl GuardEngine {
@@ -136,6 +137,17 @@ impl Gate for GuardEngine {
                     .await
             }
         }
+    }
+
+    async fn check_object(
+        &self,
+        caller: &Caller,
+        capability: &str,
+        arguments: &Arguments,
+        _object: &ObjectRef,
+    ) -> Verdict {
+        // Shell: the object is not looked up yet.
+        self.check(caller, capability, arguments).await
     }
 
     async fn revise(&self, caller: &Caller, call: &str, arguments: &Arguments) -> Verdict {

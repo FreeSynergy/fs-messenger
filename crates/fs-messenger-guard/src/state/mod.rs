@@ -7,7 +7,7 @@ mod doc;
 mod proof;
 mod stage;
 
-pub(crate) use admin::{DeviceChange, StopMark};
+pub(crate) use admin::{DeviceChange, StopMark, usable_name};
 pub(crate) use calls::{Evaluation, Limits, QuestionInput};
 pub(crate) use decide::DecideInput;
 pub(crate) use doc::{CallRecord, GuardDoc};

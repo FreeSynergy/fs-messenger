@@ -163,12 +163,19 @@ async fn identifiers_are_one_whatever_their_case() {
     let grant = AiGrant {
         profile: AI.to_uppercase(),
         risk: ToolCallRisk::ReadsOnly,
+        program: "message".into(),
+        goes_to: "this device only".into(),
     };
     let name = AI.to_uppercase();
     let proof = w.owner.proof(
         &w.identity,
         Method::Release,
-        &[name.as_bytes(), b"readsOnly"],
+        &[
+            name.as_bytes(),
+            b"readsOnly",
+            b"message",
+            b"this device only",
+        ],
     );
     w.engine.release(&grant, &proof).await.unwrap();
     assert!(matches!(

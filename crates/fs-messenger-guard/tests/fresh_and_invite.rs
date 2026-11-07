@@ -97,6 +97,8 @@ async fn invite_and_release_are_refused_while_stopped() {
     let grant = AiGrant {
         profile: AI.into(),
         risk: ToolCallRisk::ReadsOnly,
+        program: "message".into(),
+        goes_to: "this device only".into(),
     };
     let proof = w.release_proof(AI, "readsOnly");
     assert!(matches!(

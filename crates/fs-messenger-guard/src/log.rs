@@ -39,6 +39,10 @@ pub struct GuardLogEntry {
     pub outcome: String,
     /// How many calls it cancelled.
     pub cancelled: usize,
+    /// The program a release or its revoke is about; empty for every program.
+    pub program: String,
+    /// Where the text goes, as the person's device signed it; set on `release`.
+    pub goes_to: String,
 }
 
 impl GuardLogEntry {

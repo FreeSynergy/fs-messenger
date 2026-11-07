@@ -152,6 +152,8 @@ async fn undo_cannot_restore_a_release() {
     let grant = AiGrant {
         profile: AI.into(),
         risk: ToolCallRisk::ReadsOnly,
+        program: "message".into(),
+        goes_to: "this device only".into(),
     };
     assert_eq!(w.engine.state().await.grants, [grant]);
     let proof = w.owner.proof(&w.identity, Method::Revoke, &[AI.as_bytes()]);

@@ -22,6 +22,8 @@ async fn release_refuses_what_can_never_be_granted_and_changes_nothing() {
         let grant = AiGrant {
             profile: AI.into(),
             risk,
+            program: "message".into(),
+            goes_to: "this device only".into(),
         };
         let refused = w.engine.release(&grant, &w.release_proof(AI, name)).await;
         assert!(
@@ -38,6 +40,8 @@ async fn a_release_needs_an_invited_participant() {
     let grant = AiGrant {
         profile: AI.into(),
         risk: R::ReadsOnly,
+        program: "message".into(),
+        goes_to: "this device only".into(),
     };
     let refused = w
         .engine
@@ -93,7 +97,9 @@ async fn revoke_takes_the_releases_of_this_participant_only() {
         state.grants,
         [AiGrant {
             profile: OTHER_AI.into(),
-            risk: R::ReadsOnly
+            risk: R::ReadsOnly,
+            program: "message".into(),
+            goes_to: "this device only".into(),
         }]
     );
     assert_eq!(state.invited.len(), 2, "still invited");
@@ -237,8 +243,14 @@ async fn only_who_invited_it_or_the_owner_can_release_or_revoke() {
     let grant = AiGrant {
         profile: AI.into(),
         risk: R::ReadsOnly,
+        program: "message".into(),
+        goes_to: "this device only".into(),
     };
-    let proof = friend.proof(&w.identity, Method::Release, &[AI.as_bytes(), b"readsOnly"]);
+    let proof = friend.proof(
+        &w.identity,
+        Method::Release,
+        &[AI.as_bytes(), b"readsOnly", b"message", b"this device only"],
+    );
     assert!(matches!(
         w.engine.release(&grant, &proof).await,
         Err(GuardError::Refused(Refusal::NotPermitted))
@@ -266,6 +278,8 @@ async fn only_who_invited_it_or_the_owner_can_release_or_revoke() {
     let grant = AiGrant {
         profile: OTHER_AI.into(),
         risk: R::Changes,
+        program: "message".into(),
+        goes_to: "this device only".into(),
     };
     let proof = friend.proof(
         &w.identity,

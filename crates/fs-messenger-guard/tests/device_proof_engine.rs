@@ -83,10 +83,15 @@ async fn a_nonce_is_single_use_across_methods() {
             proof: w.owner.sign(&bytes),
         }
     };
-    let release = signed(Method::Release, &[AI.as_bytes(), b"readsOnly"]);
+    let release = signed(
+        Method::Release,
+        &[AI.as_bytes(), b"readsOnly", b"message", b"this device only"],
+    );
     let grant = fs_messenger_guard::AiGrant {
         profile: AI.into(),
         risk: fs_messenger_core::ToolCallRisk::ReadsOnly,
+        program: "message".into(),
+        goes_to: "this device only".into(),
     };
     w.engine.release(&grant, &release).await.unwrap();
     let stop = signed(Method::Stop, &[]);

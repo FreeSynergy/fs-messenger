@@ -140,6 +140,8 @@ impl GuardDoc {
                     granted = Some(AiGrant {
                         profile: call.caller.clone(),
                         risk,
+                        program: String::new(),
+                        goes_to: String::new(),
                     });
                 }
             }

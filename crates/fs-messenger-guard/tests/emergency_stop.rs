@@ -151,6 +151,8 @@ async fn a_stop_cannot_lose_a_race_with_decisions_or_a_check() {
     let grant = AiGrant {
         profile: AI.into(),
         risk: ToolCallRisk::ReadsOnly,
+        program: "message".into(),
+        goes_to: "this device only".into(),
     };
     assert!(
         w.engine

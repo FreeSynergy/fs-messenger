@@ -187,10 +187,16 @@ impl Rig {
             .unwrap();
         let invite = owner.proof(&identity, Method::Invite, &[AI.as_bytes()]);
         engine.invite(AI, &invite).await.unwrap();
-        let release = owner.proof(&identity, Method::Release, &[AI.as_bytes(), b"readsOnly"]);
+        let release = owner.proof(
+            &identity,
+            Method::Release,
+            &[AI.as_bytes(), b"readsOnly", b"message", b"this device only"],
+        );
         let grant = AiGrant {
             profile: AI.into(),
             risk: ToolCallRisk::ReadsOnly,
+            program: "message".into(),
+            goes_to: "this device only".into(),
         };
         engine.release(&grant, &release).await.unwrap();
         Self {
