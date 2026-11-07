@@ -4,7 +4,7 @@
 //! what the provider reports is recorded as it is, also on a tombstone, so a copy does not revive a
 //! message deleted on its way out.
 
-use fs_store::{ObjectId, Query};
+use fs_objects::{ObjectId, Query};
 
 use super::consts::{IDX_RECEIPT, NOTE};
 use super::draft_data::DraftData;

@@ -9,7 +9,7 @@ use fs_messenger_core::{Encryption, Provider};
 use fs_messenger_mail::autocrypt::{Decision, KeyLearner, Offer};
 use fs_messenger_mail::keys::{FsKeyStore, KeySource, KeyStore};
 use fs_messenger_mail::openpgp::generate_key;
-use fs_store::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
+use fs_objects::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
 
 const PEER: &str = "peer@example.org";
 

@@ -13,7 +13,7 @@ use fs_messenger_core::{
     Listener, Messenger, MessengerConfig, MessengerRepo, Outgoing, Provider, ProviderCursor,
     RawMessage, Result, SendReceipt,
 };
-use fs_store::{ObjectId, Store, TursoStore};
+use fs_objects::{ObjectId, Store, TursoStore};
 use tokio::sync::mpsc;
 
 pub const ME: &str = "https://local.invalid/users/owner";

@@ -8,7 +8,7 @@ use fs_messenger_mail::fetch::{DEFAULT_IDLE_TIMEOUT, ImapConfig, ImapFetch};
 use fs_messenger_mail::keys::FsKeyStore;
 use fs_messenger_mail::submit::{SmtpConfig, SmtpSubmit};
 use fs_messenger_mail::{Endpoint, MailIdentity, MailProvider, Password, TlsTrust};
-use fs_store::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
+use fs_objects::{Cipher, EncryptionKey, OpenOptions, StaticKeyProvider, TursoStore};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

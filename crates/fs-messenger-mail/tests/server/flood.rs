@@ -31,7 +31,7 @@ async fn a_flood_of_padded_signatures_does_not_grow_the_key_store() {
     let peer = bob.provider.peer(&from).await.unwrap().unwrap();
     assert_eq!(peer.cert, before, "nothing new was learned");
     let log =
-        fs_store::Store::activities(bob.key_store.as_ref(), &fs_store::ActivityFilter::default())
+        fs_objects::Store::activities(bob.key_store.as_ref(), &fs_objects::ActivityFilter::default())
             .await
             .unwrap();
     assert!(

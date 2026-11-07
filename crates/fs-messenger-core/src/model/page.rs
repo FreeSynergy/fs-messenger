@@ -3,7 +3,7 @@
 //! Pattern: Iterator (by hand): each page names where the next one starts. The cursor is the last
 //! sort key, not an offset, so new messages cannot shift a page that is being read.
 
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 use serde::{Deserialize, Serialize};
 
 use super::{ConversationSummary, MessageSummary};

@@ -7,7 +7,7 @@ use fs_messenger_core::{
     DeliveryState, Encryption, Ingest, Ingested, Kind, Messenger, MessengerRepo, SearchFilter,
     ToolCall, ToolCallOutcome, ToolCallState,
 };
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 use serde_json::{from_value, json};
 
 async fn three(repo: &MessengerRepo) -> (ObjectId, Vec<ObjectId>) {

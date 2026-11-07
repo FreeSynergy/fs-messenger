@@ -2,7 +2,7 @@
 //!
 //! Pattern: Observer (data side): what a `Listener` receives.
 
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 use serde::{Deserialize, Serialize};
 
 use super::{DeliveryState, Kind, MessageSummary, ToolCall};

@@ -5,7 +5,7 @@
 //! carry them, so they answer `Unsupported` instead of claiming a success that never left this device.
 
 use fs_interfaces::provider::Unsupported;
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use super::handle::Inner;
 use super::message_codec::message_to;

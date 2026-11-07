@@ -1,6 +1,6 @@
 //! Message <-> stored object: AS2 `Note` envelope + content + index fields + immutable original.
 //!
-//! Pattern: Adapter: maps the [`Message`] view onto what `fs-store` holds (ADR 0020, 0030). Every
+//! Pattern: Adapter: maps the [`Message`] view onto what `fs-objects` holds (ADR 0020, 0030). Every
 //! field of the content has a fail-safe default, so an old record reads as "not known", never as
 //! more, and writing back keeps what this version could not read. What still cannot be read fails
 //! only itself: pages skip and report it.
@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
-use fs_store::{ObjectId, StoredObject};
+use fs_objects::{ObjectId, StoredObject};
 use serde::{Deserialize, Serialize};
 
 use super::consts::{CONTENT_TYPE, IDX_TEXT, SENSITIVE};

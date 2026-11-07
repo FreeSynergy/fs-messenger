@@ -6,7 +6,7 @@ use common::{TestProvider, account, conversation_of, raw, setup, with_provider};
 use fs_messenger_core::{
     DeliveryState, Encryption, Error, Ingest, Ingested, MessageAction, Messenger, Provider,
 };
-use fs_store::{Query, Store};
+use fs_objects::{Query, Store};
 use std::sync::Arc;
 
 async fn notes(store: &Arc<dyn Store>) -> usize {

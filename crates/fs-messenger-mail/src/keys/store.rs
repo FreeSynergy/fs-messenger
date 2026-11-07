@@ -1,4 +1,4 @@
-//! [`FsKeyStore`]: the [`KeyStore`] over `fs-store`.
+//! [`FsKeyStore`]: the [`KeyStore`] over `fs-objects`.
 //!
 //! Pattern: Adapter + Repository, two paths. A SECRET key goes through `UnloggedObjects` only: no
 //! activity, no event, no undo, nothing towards the hub, and so nothing that could hold it in a log or
@@ -15,8 +15,8 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use std::collections::BTreeMap;
 
-use fs_store::traits::UnloggedObjects;
-use fs_store::{Envelope, ObjectId, Query, Store, StoredObject, TursoStore};
+use fs_objects::traits::UnloggedObjects;
+use fs_objects::{Envelope, ObjectId, Query, Store, StoredObject, TursoStore};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use zeroize::Zeroizing;
@@ -61,7 +61,7 @@ impl OwnKeysContent {
     }
 }
 
-/// Keys in a `fs-store`. Sensitive objects: a plain store refuses every write.
+/// Keys in a `fs-objects`. Sensitive objects: a plain store refuses every write.
 pub struct FsKeyStore {
     store: Arc<dyn Store>,
     secrets: Arc<dyn UnloggedObjects>,

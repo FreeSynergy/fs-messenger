@@ -3,7 +3,7 @@
 //! Pattern: Repository over the alias fields. These are claims a sender makes: they can misplace a
 //! reply, never lose a mail, and a link that would close a cycle is given up.
 
-use fs_store::{Cond, ObjectId, Op, Query};
+use fs_objects::{Cond, ObjectId, Op, Query};
 
 use super::consts::{IDX_ALIAS, IDX_ARRIVAL, IDX_LINK, IDX_RECEIPT, IDX_REPLY_ALIAS, NOTE};
 use super::handle::Inner;

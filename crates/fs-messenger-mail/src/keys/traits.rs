@@ -1,6 +1,6 @@
 //! The [`KeyStore`] trait.
 //!
-//! Pattern: Repository (interface): the provider depends on this, never on `fs-store`.
+//! Pattern: Repository (interface): the provider depends on this, never on `fs-objects`.
 
 use async_trait::async_trait;
 

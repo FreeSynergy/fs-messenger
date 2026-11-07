@@ -3,7 +3,7 @@
 //! Pattern: Facade over the send flow: forwarding is sending, so the same check holds and there is
 //! no second way out. The conversation is new; the attachments are shared by reference.
 
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 use super::draft_data::DraftData;
 use super::handle::Inner;

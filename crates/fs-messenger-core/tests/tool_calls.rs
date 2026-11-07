@@ -7,7 +7,7 @@ use fs_messenger_core::{
     Ingest, Ingested, Message, Messenger, MessengerRepo, RawToolCall, ToolCall, ToolCallChoice,
     ToolCallKind, ToolCallOption, ToolCallOutcome, ToolCallRisk, ToolCallState,
 };
-use fs_store::ObjectId;
+use fs_objects::ObjectId;
 
 async fn message(repo: &MessengerRepo) -> (ObjectId, ObjectId) {
     let me = account(repo, "me@example.org").await;

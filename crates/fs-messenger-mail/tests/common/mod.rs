@@ -17,7 +17,7 @@ use fs_messenger_mail::keys::{FsKeyStore, KeyStore, PeerKey};
 use fs_messenger_mail::openpgp::SecretCert;
 use fs_messenger_mail::submit::{MailEnvelope, MailSubmit, SentCopy};
 use fs_messenger_mail::{MailError, MailIdentity, MailProvider};
-use fs_store::{ObjectId, Store, TursoStore};
+use fs_objects::{ObjectId, Store, TursoStore};
 
 /// Mails to deliver, once each, and what was submitted.
 #[derive(Default)]

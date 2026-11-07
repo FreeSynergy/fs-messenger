@@ -4,7 +4,7 @@ mod common;
 
 use common::{account, conversation_of, raw, setup};
 use fs_messenger_core::{Ingest, Ingested, MessageAction, Messenger, SearchFilter};
-use fs_store::Query;
+use fs_objects::Query;
 
 const MIB: usize = 1024 * 1024;
 
