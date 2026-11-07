@@ -8,6 +8,7 @@
 use fs_messenger_core::ProviderCursor;
 use serde::{Deserialize, Serialize};
 
+use super::membership::Known;
 use super::pending::Pending;
 use crate::error::{MatrixError, where_json_failed};
 
@@ -23,6 +24,25 @@ pub(crate) struct Gap {
     /// than were asked for; the rest of that page is then read from the same token in the next fetch.
     #[serde(default, skip_serializing_if = "skip_is_zero")]
     pub(crate) skip: usize,
+    /// Set for a check: not events to read, but the question "is there an own join of ours in
+    /// (`to`, `origin`]?". `from` is where the next page of that question starts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) check: Option<CheckOf>,
+}
+
+/// What a check remembers while its pages are read over several fetches.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct CheckOf {
+    /// The newest end of the stretch asked about: where reading starts once an own join is found.
+    pub(crate) origin: String,
+}
+
+/// A room we have been in, and are not now.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Away {
+    pub(crate) room: String,
+    /// The `since` of the fetch that saw the leave: the point before it. `None` is the room's start.
+    pub(crate) at: Option<String>,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)] // the signature serde wants
@@ -37,6 +57,7 @@ impl Gap {
             from,
             to,
             skip: 0,
+            check: None,
         }
     }
 }
@@ -51,6 +72,9 @@ pub(crate) struct MatrixCursor {
     /// the join, and what was said between the invitation and the join would be lost.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) rooms: Vec<String>,
+    /// Rooms we were in once and are not now, with the point to read back to when we return.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) away: Vec<Away>,
     /// What is still to be read, so that one fetch stays small and a long gap goes on in the next.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) gaps: Vec<Gap>,
@@ -68,6 +92,20 @@ impl MatrixCursor {
                 serde_json::from_str(&c.0).map_err(|e| MatrixError::Cursor(where_json_failed(&e)))
             }
         }
+    }
+
+    /// What this room is to the cursor.
+    #[allow(dead_code)] // a shell until the implementation
+    pub(crate) fn known(&self, room: &str) -> Known {
+        let _ = room;
+        unimplemented!("MatrixCursor::known")
+    }
+
+    #[allow(dead_code)] // a shell until the implementation
+    /// Set what this room is, within the bounds of the cursor.
+    pub(crate) fn become_(&mut self, room: &str, known: Known) {
+        let _ = (room, known);
+        unimplemented!("MatrixCursor::become_")
     }
 
     pub(crate) fn write(&self) -> Result<ProviderCursor, MatrixError> {
