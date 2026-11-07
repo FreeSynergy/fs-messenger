@@ -97,6 +97,10 @@ pub struct RawMessage {
     pub reasoning: String,
     /// The job it is anchored to.
     pub job_ref: String,
+    /// The provider only holds a cut-off start of this message, of about this real size. The core
+    /// keeps a stub, whatever the configured limit, and never stores those bytes as the original
+    /// (ADR 0030: an original is what arrived, whole).
+    pub too_large: Option<u64>,
     /// Whether I wrote it, for example on another device. Only believed if `sender` is the
     /// account's own address.
     pub outgoing: bool,
@@ -136,6 +140,7 @@ impl RawMessage {
             task_refs: vec![],
             reasoning: String::new(),
             job_ref: String::new(),
+            too_large: None,
             outgoing: false,
         }
     }

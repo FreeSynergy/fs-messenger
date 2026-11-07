@@ -1,0 +1,56 @@
+[package]
+name = "fs-messenger-mail"
+description = "Mail provider of FreeSynergy.Messenger: JMAP and IMAP fetch, SMTP and JMAP submission, OpenPGP with Autocrypt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# rPGP 0.21 needs 1.88.
+rust-version = "1.88"
+
+[features]
+# Lets a build trust exactly one given certificate, for the self-signed test server. Off in every
+# normal build, so a program cannot even name the option. Never a general "accept invalid".
+test-trust = []
+
+[dependencies]
+fs-messenger-core = { path = "../fs-messenger-core" }
+fs-store = { git = "https://github.com/FreeSynergy/fs-store", tag = "v0.3.0" }
+fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.27.0" }
+
+# Pinned exactly (ADR 0018): Stalwart moved calcard, jmap-tools and sieve to AGPL in Oct 2026. These
+# two are still "Apache-2.0 OR MIT"; an update must re-check the licence by hand.
+mail-parser = { version = "=1.0.1", default-features = false }
+mail-builder = { version = "=2.0.1", default-features = false }
+
+# OpenPGP: rPGP, never sequoia (LGPL). `bzip2` is off: we neither send nor want compression.
+pgp = { version = "0.21", default-features = false }
+rand = "0.8"
+
+# Transports. rustls with ring everywhere; no OpenSSL, no native-tls.
+lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "tokio1-rustls", "ring", "rustls-native-certs"] }
+async-imap = { version = "0.12", default-features = false, features = ["runtime-tokio"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
+
+async-trait = "0.1"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["net", "rt", "sync", "time"] }
+tracing = "0.1"
+zeroize = "1"
+
+[dev-dependencies]
+# The test-only trust option, for the tests against the self-signed server.
+fs-messenger-mail = { path = ".", features = ["test-trust"] }
+# `MessengerRepo::open` on an in-memory store, for the offline tests.
+fs-messenger-core = { path = "../fs-messenger-core", features = ["test-support"] }
+http = "1"
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring", "pem"] }
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
