@@ -35,6 +35,11 @@ impl MatrixCursor {
         }
     }
 
+    /// Whether the room was accepted once (member or away), as opposed to never seen as ours.
+    pub(crate) fn accepted(&self, room: &str) -> bool {
+        self.rooms.iter().any(|r| r == room) || self.away.iter().any(|a| a.room == room)
+    }
+
     /// Set what this room is. A room is in one list only. The away list is bounded: the oldest go
     /// first and are unknown again, which can only mean reading more later.
     pub(crate) fn become_(&mut self, room: &str, known: Known) {

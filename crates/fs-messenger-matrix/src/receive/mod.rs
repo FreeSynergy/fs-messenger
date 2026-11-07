@@ -2,9 +2,13 @@
 //!
 //! Pattern: none (this file only declares modules and re-exports; no logic, section 3 of the coding
 //! rules). `alias.rs` is the alias (a Value object), `ids.rs` the one encoding of server ids,
-//! `event.rs` reads an event's JSON, `adapter.rs` builds the `RawMessage`, `cursor.rs` is what the
-//! core keeps for this provider (a Memento) and `gaps.rs` plans and merges its open gaps. All pure,
-//! no network.
+//! `event.rs` reads an event's JSON, `adapter.rs` builds the `RawMessage` and `evidence.rs` says
+//! whether an event is the account's own join (a Specification). `membership.rs` is the one decision
+//! table (a State) over a room's state and one answer. `cursor.rs` is what the core keeps for this
+//! provider (a Memento); `gaps.rs`, `away.rs`, `pending.rs` and `given_up.rs` are parts of it, and
+//! `apply.rs` writes an answer into it. No network anywhere; the pure ones are `alias`, `ids`,
+//! `event`, `adapter`, `evidence` and `membership`, while `gaps`, `away`, `given_up`, `pending` and
+//! `apply` change the cursor (their own heads say how).
 
 mod adapter;
 mod alias;

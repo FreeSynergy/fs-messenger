@@ -103,3 +103,55 @@ async fn knock() {
         "a knock is no acceptance"
     );
 }
+
+/// The own member events of `user` in the answer of `/sync` for `room`, in its `leave` part.
+fn own_events(sync: &serde_json::Value, room: &str, user: &str) -> Vec<serde_json::Value> {
+    let part = &sync["rooms"]["leave"][room];
+    let state = part["state"]["events"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let line = part["timeline"]["events"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let member = |e: &&serde_json::Value| e["type"] == "m.room.member" && e["state_key"] == user;
+    state
+        .iter()
+        .chain(line.iter())
+        .filter(member)
+        .cloned()
+        .collect()
+}
+
+#[tokio::test]
+#[ignore = "needs a homeserver; see tests/server/main.rs"]
+async fn a_declined_invitation_leaves_no_join_in_unsigned() {
+    // F4 of the ninth review: the evidence counts an own `leave` whose `unsigned.prev_content` is
+    // `join`. What the real server shows for a room the account only declined (local invitation;
+    // federation is off in the test server, so a foreign `make_leave` template is not tried).
+    let alice = Person::new("alice").await;
+    let carol = Person::new("carol").await;
+    alice.sync().await;
+    let mine = alice.server_view().await;
+    let (room, _view) = invite(&alice, &carol).await;
+    let (_, first) = http::get("/sync?timeout=0", &mine).await;
+    let first: serde_json::Value = serde_json::from_str(&first).unwrap();
+    let since = first["next_batch"].as_str().unwrap().to_owned();
+    http::room_action(&mine, &room, "leave", json!({})).await;
+    let (_, next) = http::get(&format!("/sync?timeout=0&since={since}"), &mine).await;
+    let next: serde_json::Value = serde_json::from_str(&next).unwrap();
+    let own = own_events(&next, &room, &alice.user_id);
+    println!("F4 declined invitation, own member events in `leave`: {own:?}");
+    assert!(
+        !own.is_empty(),
+        "the decline should show under leave: {next}"
+    );
+    for event in &own {
+        let before = &event["unsigned"]["prev_content"]["membership"];
+        assert_ne!(
+            before, "join",
+            "a declined invitation shows a join: {event}"
+        );
+    }
+}

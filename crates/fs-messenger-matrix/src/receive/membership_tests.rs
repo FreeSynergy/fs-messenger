@@ -178,22 +178,10 @@ fn away_and_invited_or_knocked_reads_the_absence_and_stays_away() {
 }
 
 #[test]
-fn a_check_that_finds_a_join_reads_on_from_where_it_began() {
+fn a_check_that_finds_a_join_reads_from_where_it_began_to_the_start_and_is_away() {
     let mut gap = Gap::new(ROOM.into(), "mid".into(), Some("p".into()));
     gap.check = Some(CheckOf { origin: "n".into() });
-    let (read_gap, becomes) = after_check(&Known::Unknown, &gap);
+    let (read_gap, becomes) = after_check(&gap);
     assert_eq!(read_gap, Gap::new(ROOM.into(), "n".into(), None));
     assert_eq!(becomes, away(Some("p")));
-    let (read_gap, becomes) = after_check(&away(Some("a")), &gap);
-    assert_eq!(
-        read_gap,
-        Gap::new(ROOM.into(), "n".into(), Some("a".into()))
-    );
-    assert_eq!(becomes, away(Some("a")));
-    let (read_gap, becomes) = after_check(&Known::Member, &gap);
-    assert_eq!(
-        read_gap,
-        Gap::new(ROOM.into(), "n".into(), Some("p".into()))
-    );
-    assert_eq!(becomes, Known::Member);
 }

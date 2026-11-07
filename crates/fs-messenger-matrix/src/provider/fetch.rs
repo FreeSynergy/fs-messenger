@@ -17,7 +17,7 @@ use matrix_sdk::ruma::{RoomId, UInt};
 use matrix_sdk::store::{StateStoreDataKey, StateStoreDataValue};
 
 use super::MatrixProvider;
-use super::answer::{Answer, from_sdk};
+use super::answer::{Answer, RoomAnswer, from_sdk};
 use crate::error::{MatrixError, Result};
 use crate::receive::{EventAlias, MatrixCursor, RoomContext};
 
@@ -70,15 +70,27 @@ impl MatrixProvider {
         Ok(from_sdk(response, &self.account.user_id, limit))
     }
 
+    /// Whether the SDK holds this room.
+    fn holds(&self, id: &str) -> bool {
+        let id = <&RoomId>::try_from(id).ok();
+        id.is_some_and(|id| self.client.get_room(id).is_some())
+    }
+
     /// A room the SDK does not hold any more (forgotten, or its store was lost) is not remembered
     /// as ours: it is unknown again, which can only mean reading more when it returns.
     fn forget_unheld(&self, cursor: &mut MatrixCursor) {
-        let held = |id: &str| {
-            let id = <&RoomId>::try_from(id).ok();
-            id.is_some_and(|id| self.client.get_room(id).is_some())
-        };
-        cursor.rooms.retain(|r| held(r));
-        cursor.away.retain(|a| held(&a.room));
+        cursor.rooms.retain(|r| self.holds(r));
+        cursor.away.retain(|a| self.holds(&a.room));
+    }
+
+    /// In a replay our own answer reaches past the SDK's position, so a room that the cursor never
+    /// accepted and the SDK does not hold yet is one the SDK has not seen: left out here, it is
+    /// neither planned nor given up, and the ordinary fetch from the SDK's position brings it.
+    fn leave_to_the_sdk(&self, cursor: &MatrixCursor, answer: &mut Answer) {
+        let id = |r: &RoomAnswer| r.id.to_string();
+        answer
+            .rooms
+            .retain(|r| cursor.accepted(&id(r)) || self.holds(&id(r)));
     }
 
     pub(super) async fn fetch_batch(&self, since: Option<&ProviderCursor>) -> Result<FetchBatch> {
@@ -93,6 +105,9 @@ impl MatrixProvider {
             position.clone()
         };
         let mut answer = self.ask(replay, asked.as_deref()).await?;
+        if replay {
+            self.leave_to_the_sdk(&cursor, &mut answer);
+        }
         let next_batch = answer.next_batch.clone();
         let (had_gaps, cut) = (!cursor.gaps.is_empty(), answer.cut());
         let mut events = cursor.apply(&mut answer, asked.as_deref());

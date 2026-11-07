@@ -2,7 +2,8 @@
 //!
 //! Pattern: State: `Known` is the state of a room (never accepted, member, away) and `step` and
 //! `after_check` are the transition functions; one table decides every move, with and without a
-//! replay. Pure: no network, no cursor.
+//! replay. Pure: no network, no cursor. Only a room never accepted is asked about (a check); a room
+//! that was accepted once (member, away) is read, never asked.
 
 use super::cursor::{CheckOf, Gap};
 
@@ -129,26 +130,25 @@ pub(crate) fn step(
             let read = fill(seen, room, next, back.as_deref(), true);
             moves(true, read, None, known.clone())
         }
-        (Known::Away { .. }, _) => moves(false, None, Some(ask(room, since, next)), known.clone()),
+        // Invited, knocked, or left without an own join in a room accepted once: the account agreed
+        // to this room already, so the stretch since the leave is read (a check could not see a
+        // return that the server hides, and the room's words would be lost).
+        (Known::Away { at: back }, _) => {
+            let read = Gap::new(room.into(), next.into(), back.clone());
+            moves(false, Some(read), None, known.clone())
+        }
     }
 }
 
-/// A check found an own join: the gap to read now and the state afterwards. The read starts where
-/// the check began (`origin`) and ends at the start of the room if the room was never known, at the
-/// point of the earlier leave if it was.
-pub(crate) fn after_check(known: &Known, check: &Gap) -> (Gap, Known) {
+/// A check (only a room never accepted is asked about) found an own join: the gap to read now,
+/// from where the check began (`origin`) to the start of the room, and the state afterwards: away at
+/// the point the check ended.
+pub(crate) fn after_check(check: &Gap) -> (Gap, Known) {
     let origin = check.check.as_ref().map_or(&check.from, |c| &c.origin);
-    let (to, becomes) = match known {
-        Known::Unknown => (
-            None,
-            Known::Away {
-                at: check.to.clone(),
-            },
-        ),
-        Known::Away { at } => (at.clone(), known.clone()),
-        Known::Member => (check.to.clone(), Known::Member),
+    let becomes = Known::Away {
+        at: check.to.clone(),
     };
-    (Gap::new(check.room.clone(), origin.clone(), to), becomes)
+    (Gap::new(check.room.clone(), origin.clone(), None), becomes)
 }
 
 #[cfg(test)]

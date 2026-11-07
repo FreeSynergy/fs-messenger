@@ -62,7 +62,7 @@ impl MatrixProvider {
         match self.ask_check(room, &check).await {
             Ok(Checked::Found) => {
                 cursor.gaps.pop();
-                let (read, becomes) = after_check(&cursor.known(&check.room), &check);
+                let (read, becomes) = after_check(&check);
                 cursor.plan_gap(read);
                 cursor.become_(&check.room, becomes);
                 Ok(false)
