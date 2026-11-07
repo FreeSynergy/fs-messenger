@@ -1,6 +1,6 @@
 //! `check` as a pure function: what the state says about one call.
 //!
-//! Pattern: State + Specification: the order of the rules is the guarantee. Stopped first, then what is
+//! Pattern: State (the rules are pure transitions on `CallStage`): the order of the rules is the guarantee. Stopped first, then what is
 //! never for an AI, then the invitation. Then the exact arguments a person approved, then a release,
 //! and only then a question. The risk comes from the table, and no input makes it `unknown`.
 

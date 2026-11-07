@@ -1,6 +1,6 @@
 //! [`Gate`] and [`Guard`]: the two faces of the engine.
 //!
-//! Pattern: Strategy (interface segregation): a tool layer holds a `dyn Gate` and has no way to a
+//! Pattern: Strategy (traits `Gate` and `Guard`): a tool layer holds a `dyn Gate` and has no way to a
 //! `Guard` method. `Guard` is the contract's interface, for a person's device only, and every change
 //! needs a device signature of a person. Neither is reachable from `Messenger` or `Provider`.
 

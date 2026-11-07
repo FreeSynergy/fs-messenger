@@ -1,6 +1,6 @@
 //! Checking a device proof against the state.
 //!
-//! Pattern: Specification (pure). The order matters: nothing is used up until the signature holds, so
+//! Pattern: none (no pattern of coding.md section 2 fits; reported to the strategy, DESIGN.md open point 0). Pure checks on `GuardDoc`. The order matters: nothing is used up until the signature holds, so
 //! nobody can burn a person's nonce with a forged proof. A signer marked as AI is refused before any
 //! key is looked at (ADR 0056). Single use goes by signer and nonce, or for a decision by the signed
 //! bytes, and never by the bytes of the signature, as those can differ for the same message.

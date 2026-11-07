@@ -53,6 +53,7 @@ Flag, read and unread state, pin, folder and delete are this device's own state:
 | Reactions of others | no path in |
 | Key discovery, key verification, devices, groups, presence, notifications, import/export, Cap'n Proto server, MCP, GUI, real connectors, Telegram, own mail server, ratings | not in this step |
 | Link to the library guide for unencrypted mail (ADR 0031) | a frontend's job; the core gives the mark |
+| AIs in conversations (ADR 0054, section "KIs in Unterhaltungen") | **not built**: a notice before an AI joins; all members must agree, else it stays out; a later member accepts it or stays out; consent withdrawn means the AI must leave; no history from before it joined; no exception for local AIs. Nothing here checks it yet |
 
 ## Structure and pattern map (ADR 0043)
 
@@ -63,7 +64,10 @@ Public contract: `Messenger`, `Draft`, `Provider`, `Ingest`, `Listener`, small v
 | `messenger.rs` | Repository (interface) + Null Object | the program's contract; every method exists, the default says `Unsupported` |
 | `draft.rs`, `repo/draft_handle.rs` | State | open until sent or discarded; a refused send leaves it open |
 | `provider/traits.rs` | Strategy | one trait for mail, Matrix, MIMI, agents (ADR 0045) |
-| `guard_hook.rs`, `repo/guard_port.rs`, `repo/guard_note.rs`, `repo/guard_turns.rs` | Strategy, Capability object, Adapter, Template method | what the core asks of a guard; the one port back, handed out once |
+| `guard_hook.rs` | Strategy | traits `EngineGuard` (incl. `open_for_reports`) and `SenderLookup`: the core knows these, not the guard crate |
+| `repo/guard_port.rs`, `repo/guard_turns.rs` | Facade | the one port back into the messenger, handed out once; `stop_turns` is a method of it with no trait of provided methods, so no Template method |
+| `repo/guard_note.rs` | Adapter | an engine call becomes a local `Note` |
+| `provider/turn.rs` | none | a plain data type; guard `DESIGN.md` open point 0 |
 | `provider/outgoing.rs` | Newtype as proof | `Outgoing` can only be built after the check, so no caller can hand a provider anything else |
 | `gate.rs` | Specification | the rule of ADR 0018 in one place, as pure functions |
 | `ingest.rs`, `repo/ingest.rs` | Template method | fixed flow, store-backed steps |
@@ -71,7 +75,8 @@ Public contract: `Messenger`, `Draft`, `Provider`, `Ingest`, `Listener`, small v
 | `repo/feed.rs` | Adapter | store activity to contract events |
 | `repo/handle.rs` | Facade + Registry | one entry; providers per account |
 | `repo/store_check.rs` | Specification over a real write | the store cannot be asked, so its behaviour is tested |
-| `repo/{message,conversation}_codec.rs`, `repo/message_index.rs`, `repo/draft_data.rs`, `repo/ingest_store.rs`, `repo/tool_calls.rs` | Adapter | model to envelope + content + index |
+| `repo/{message,conversation}_codec.rs`, `repo/message_index.rs`, `repo/draft_data.rs`, `repo/ingest_store.rs` | Adapter | model to envelope + content + index |
+| `repo/tool_calls.rs` | Adapter, Strategy | an agent's report mapped onto `ToolCall`; while the guard (`EngineGuard::open_for_reports`) says shut, a report from an `ai` or `unknown` sender is kept `cancelled` |
 | `repo/preserve.rs` | Memento | keeps what this version could not read through a rewrite |
 | `repo/ingest_upgrade.rs` | State | undecrypted to readable, one way |
 | `ingest_rules.rs` | Specification | what a delivered message must be, as pure rules |
@@ -190,6 +195,7 @@ Contract, for the owner:
 
 Code:
 
+0. The patterns of the guard's core files that are not in coding.md section 2 are listed in `crates/fs-messenger-guard/DESIGN.md`, open point 0. Other modules named `Specification`, `Memento`, `Null Object` or `Command` in the map above were not reviewed in this round.
 1. **Send is not exactly-once.** A store failure right after a provider accepted answers an error and keeps the draft open, so a retry can send twice. A failed send stays visible, and its retry is a second message.
 2. **Echo race.** A copy fetched while a send is under way, before the receipt is stored, is not recognised and is stored as a second message. Needs a provider-side client id.
 3. **Delete takes two store steps;** a crash in between lets a replay revive it. The store's log keeps the old image, content included, until compaction; the program must call `compact()`, which only removes entries acknowledged by the hub. Since messages do not sync through the hub, nothing acknowledges them yet.

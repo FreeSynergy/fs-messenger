@@ -4,7 +4,7 @@
 //! who wants to act goes through. [`Guard`] is what a person's device uses. [`GuardEngine`] is both.
 //! Tool layers get a `Gate`, never a `Guard`. See `DESIGN.md`.
 //!
-//! Pattern: Facade: this file only declares modules and re-exports the public API.
+//! Pattern: none (declarations and re-exports only, as coding.md section 3 asks).
 
 #![deny(missing_docs)]
 #![warn(clippy::pedantic)]

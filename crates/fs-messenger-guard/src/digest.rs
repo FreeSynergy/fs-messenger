@@ -1,8 +1,8 @@
 //! The arguments digest: what exactly a decision is about.
 //!
-//! Pattern: Strategy (pure function): SHA-256 over a fixed context, the caller, the conversation of its
-//! turn, the tool name and the canonical arguments, each with its length in front, so nothing can move from one field to another.
-//! No input is hashed as its own explicit value, so `{}` and "no input" differ and later input changes
+//! Pattern: none (no pattern of coding.md section 2 fits; reported to the strategy, DESIGN.md open point 0). Free functions: SHA-256 over a fixed context, the caller, the
+//! conversation of its turn, the tool name and the canonical arguments, each with its length in front,
+//! so nothing can move from one field to another. No input is hashed as its own explicit value, so `{}` and "no input" differ and later input changes
 //! the digest. Keys are not secret, and nothing here is: the digest is shown to the person's device.
 
 use fs_store::ObjectId;

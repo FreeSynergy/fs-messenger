@@ -1,6 +1,6 @@
 //! `MessageAction.decide` as a pure function.
 //!
-//! Pattern: State + Specification: every rule refuses without any change, and only the engine's own
+//! Pattern: State (pure transitions on `CallStage`): every rule refuses without any change, and only the engine's own
 //! record counts: not what a message shows, which an undo could bring back. The proof comes last, so a
 //! wrong click uses up nothing; it covers the message, the call, the option, the digest and the revision
 //! the person saw. A decision has no nonce; its signed bytes are single use.

@@ -1,6 +1,6 @@
 //! Asking providers to end their turns.
 //!
-//! Pattern: Template method over the `Provider` strategy: each provider runs in a task of its own, so
+//! Pattern: Facade (one method of `GuardPort`, no trait with provided methods) over the `Provider` strategy: each provider runs in a task of its own, so
 //! one that hangs or panics cannot hold up the others or the stop. Every answer is reported.
 
 use std::sync::Arc;

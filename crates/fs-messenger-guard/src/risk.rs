@@ -1,6 +1,6 @@
 //! The brake: which risk classes can ever be released (ADR 0054).
 //!
-//! Pattern: Specification: pure rules, one place. Everything else asks these, and a record in the store
+//! Pattern: none (no pattern of coding.md section 2 fits; reported to the strategy, DESIGN.md open point 0). Free functions as pure rules, in one place. Everything else asks these, and a record in the store
 //! has no say: `unknown`, `destroys` and `actsForPerson` ask every time whatever is stored.
 
 use fs_messenger_core::ToolCallRisk;
