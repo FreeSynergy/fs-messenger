@@ -24,7 +24,11 @@ async fn provider(server: &Server) -> MatrixProvider {
 }
 
 fn ids(batch: &FetchBatch) -> Vec<String> {
-    batch.messages.iter().map(|m| m.aliases[0].id.clone()).collect()
+    batch
+        .messages
+        .iter()
+        .map(|m| m.aliases[0].id.clone())
+        .collect()
 }
 
 /// A joins at s1, is left at s2 (the leave timeline is limited, `pl`), B joins at s3.
@@ -61,7 +65,10 @@ async fn a_left_room_is_not_read_from_its_start_after_a_failed_fetch() {
     let provider = provider(&server).await;
     let one = provider.fetch(None).await.unwrap();
     let two = provider.fetch(one.next.as_ref()).await.unwrap();
-    assert!(provider.fetch(two.next.as_ref()).await.is_err(), "fetch 3 fails");
+    assert!(
+        provider.fetch(two.next.as_ref()).await.is_err(),
+        "fetch 3 fails"
+    );
     broken.store(false, Ordering::SeqCst);
     let heard_before = server.heard().len();
 
@@ -74,7 +81,11 @@ async fn a_left_room_is_not_read_from_its_start_after_a_failed_fetch() {
         .filter(|(p, _)| p.contains("/messages") && is_room(p, "a") && !p.contains("to="))
         .map(|(p, _)| p.clone())
         .collect();
-    assert_eq!(from_start, Vec::<String>::new(), "a left room read to its start");
+    assert_eq!(
+        from_start,
+        Vec::<String>::new(),
+        "a left room read to its start"
+    );
 }
 
 #[tokio::test]
@@ -84,8 +95,18 @@ async fn the_messages_before_a_limited_leave_are_read_to_the_old_position() {
     let one = provider.fetch(None).await.unwrap();
     let two = provider.fetch(one.next.as_ref()).await.unwrap();
 
-    assert!(ids(&two).iter().any(|i| i.contains("$a2")), "lost: {:?}", ids(&two));
-    let gap_read = server.heard().into_iter().find(|(p, _)| p.contains("from=pl"));
+    assert!(
+        ids(&two).iter().any(|i| i.contains("$a2")),
+        "lost: {:?}",
+        ids(&two)
+    );
+    let gap_read = server
+        .heard()
+        .into_iter()
+        .find(|(p, _)| p.contains("from=pl"));
     let path = gap_read.expect("the gap was not read").0;
-    assert!(path.contains("to=s1"), "not bounded by the old position: {path}");
+    assert!(
+        path.contains("to=s1"),
+        "not bounded by the old position: {path}"
+    );
 }

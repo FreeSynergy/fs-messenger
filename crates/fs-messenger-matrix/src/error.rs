@@ -16,6 +16,10 @@ pub enum MatrixError {
     /// The SDK or the homeserver failed.
     #[error("matrix: {0}")]
     Sdk(String),
+    /// The homeserver refused with `M_FORBIDDEN`: for a read of one room that does not pass by
+    /// retrying (banned, forgotten, never a member). Kept apart by the error's kind, not its text.
+    #[error("matrix: {0}")]
+    Forbidden(String),
     /// A persistent store of the SDK failed.
     #[error("store: {0}")]
     Store(#[from] StoreFail),
@@ -24,14 +28,29 @@ pub enum MatrixError {
     Cursor(String),
 }
 
+/// `M_FORBIDDEN` with HTTP 403, both: the specification pairs them, and a 5xx that borrows the code
+/// is a server in trouble, not a verdict.
+fn is_forbidden(e: Option<&matrix_sdk::ruma::api::error::Error>) -> bool {
+    use matrix_sdk::ruma::api::error::ErrorKind;
+    e.is_some_and(|e| {
+        e.status_code.as_u16() == 403 && matches!(e.error_kind(), Some(ErrorKind::Forbidden { .. }))
+    })
+}
+
 impl From<matrix_sdk::Error> for MatrixError {
     fn from(e: matrix_sdk::Error) -> Self {
+        if is_forbidden(e.as_client_api_error()) {
+            return Self::Forbidden(e.to_string());
+        }
         Self::Sdk(e.to_string())
     }
 }
 
 impl From<matrix_sdk::HttpError> for MatrixError {
     fn from(e: matrix_sdk::HttpError) -> Self {
+        if is_forbidden(e.as_client_api_error()) {
+            return Self::Forbidden(e.to_string());
+        }
         Self::Sdk(e.to_string())
     }
 }

@@ -11,7 +11,7 @@ use fs_messenger_core::{FetchBatch, Provider};
 use fs_messenger_matrix::{MatrixProvider, Password};
 use review_common::support::server::{Reply, Server};
 use review_common::{
-    account, answer, error, is_room, login, room_id, ordinary, own_membership, page, plain,
+    account, answer, error, is_room, login, ordinary, own_membership, page, plain, room_id,
     support, timeline,
 };
 use serde_json::{Value, json};
@@ -24,7 +24,11 @@ async fn provider(server: &Server) -> MatrixProvider {
 }
 
 fn ids(batch: &FetchBatch) -> Vec<String> {
-    batch.messages.iter().map(|m| m.aliases[0].id.clone()).collect()
+    batch
+        .messages
+        .iter()
+        .map(|m| m.aliases[0].id.clone())
+        .collect()
 }
 
 /// Banned from `!a`, then B joins; B's first reading fails while `broken`.
@@ -58,7 +62,10 @@ async fn a_ban_and_one_failed_fetch_do_not_block_the_account() {
     let provider = provider(&server).await;
     let one = provider.fetch(None).await.unwrap();
     let two = provider.fetch(one.next.as_ref()).await.unwrap();
-    assert!(provider.fetch(two.next.as_ref()).await.is_err(), "fetch 3 fails");
+    assert!(
+        provider.fetch(two.next.as_ref()).await.is_err(),
+        "fetch 3 fails"
+    );
     broken.store(false, Ordering::SeqCst);
 
     let mut cursor = two.next;
@@ -78,15 +85,18 @@ async fn a_ban_and_one_failed_fetch_do_not_block_the_account() {
 }
 
 /// Two joined rooms with limited timelines; `!a` answers `a_status`, `!b` has a message.
-fn two_rooms(a_status: u16) -> impl Fn(&str) -> Reply + Send + Sync + 'static {
+fn two_rooms(a_status: u16, code: &'static str) -> impl Fn(&str) -> Reply + Send + Sync + 'static {
     move |path| match path {
         p if p.ends_with("/login") => login(),
         p if p.contains("since=") => answer("s2", &json!({})),
         p if p.contains("/sync") => {
-            let (a, b) = (timeline(&[], true, Some("pa")), timeline(&[], true, Some("pb")));
+            let (a, b) = (
+                timeline(&[], true, Some("pa")),
+                timeline(&[], true, Some("pb")),
+            );
             answer("s1", &json!({"join": {room_id("a"): a, room_id("b"): b}}))
         }
-        p if p.contains("/messages") && is_room(p, "a") => error(a_status, "M_FORBIDDEN"),
+        p if p.contains("/messages") && is_room(p, "a") => error(a_status, code),
         p if p.contains("/messages") => page(&[plain("$b1", "hi")]),
         p => ordinary(p),
     }
@@ -94,21 +104,44 @@ fn two_rooms(a_status: u16) -> impl Fn(&str) -> Reply + Send + Sync + 'static {
 
 #[tokio::test]
 async fn a_forbidden_room_is_named_and_the_others_arrive() {
-    let server = Server::start(two_rooms(403)).await;
+    let server = Server::start(two_rooms(403, "M_FORBIDDEN")).await;
     let provider = provider(&server).await;
-    let batch = provider.fetch(None).await.expect("forbidden must not fail the fetch");
-    assert!(ids(&batch).iter().any(|i| i.contains("$b1")), "{:?}", ids(&batch));
+    let batch = provider
+        .fetch(None)
+        .await
+        .expect("forbidden must not fail the fetch");
+    assert!(
+        ids(&batch).iter().any(|i| i.contains("$b1")),
+        "{:?}",
+        ids(&batch)
+    );
 
     let cursor: Value = serde_json::from_str(&batch.next.unwrap().0).unwrap();
     assert_eq!(cursor.get("gaps"), None, "{cursor}");
     let named = cursor["given_up"].to_string();
-    assert!(named.contains("!a:x.test") && !named.contains("!b:x.test"), "{named}");
+    assert!(
+        named.contains("!a:x.test") && !named.contains("!b:x.test"),
+        "{named}"
+    );
 }
 
 #[tokio::test]
 async fn an_error_that_may_pass_stays_repeatable() {
-    let server = Server::start(two_rooms(500)).await;
-    let provider = provider(&server).await;
-    assert!(provider.fetch(None).await.is_err(), "a 500 fails the fetch");
-    assert!(provider.fetch(None).await.is_err(), "and fails again, nothing is given up");
+    // A 5xx that borrows the code of a refusal is still a server in trouble.
+    for (status, code) in [
+        (500, "M_UNKNOWN"),
+        (500, "M_FORBIDDEN"),
+        (429, "M_LIMIT_EXCEEDED"),
+    ] {
+        let server = Server::start(two_rooms(status, code)).await;
+        let provider = provider(&server).await;
+        assert!(
+            provider.fetch(None).await.is_err(),
+            "{status} {code} fails the fetch"
+        );
+        assert!(
+            provider.fetch(None).await.is_err(),
+            "{status} {code}: nothing is given up"
+        );
+    }
 }

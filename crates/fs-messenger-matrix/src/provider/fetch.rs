@@ -21,6 +21,19 @@ use super::MatrixProvider;
 use crate::error::{MatrixError, Result};
 use crate::receive::{EventAlias, Gap, MatrixCursor, RoomContext};
 
+/// Whether a room the SDK holds is read again after a lost answer (a pure predicate, a
+/// Specification over state and "the cursor knows it"). A joined room is. A left room is only while
+/// the cursor still knows it, which is until a fetch has gone through with the leave: that fetch took
+/// it out of the list, and what it said up to the leave was read then. Invited, knocked and banned
+/// rooms are not: there is nothing of this account's to read, or the server will not show it.
+fn worth_replaying(state: RoomState, known: bool) -> bool {
+    match state {
+        RoomState::Joined => true,
+        RoomState::Left => known,
+        _ => false,
+    }
+}
+
 impl MatrixProvider {
     fn sync_settings(&self, since: Option<String>) -> SyncSettings {
         let mut filter = FilterDefinition::default();
@@ -130,13 +143,13 @@ impl MatrixProvider {
             return;
         };
         for room in self.client.rooms() {
-            if room.state() == RoomState::Invited {
+            let id = room.room_id().to_string();
+            let known = cursor.rooms.contains(&id);
+            if !worth_replaying(room.state(), known) {
                 continue;
             }
-            let id = room.room_id().to_string();
-            // A room the cursor does not know has not been read from its start: the fetch that
-            // met it may have failed after the SDK took the answer. Its gap goes to the start.
-            let known = cursor.rooms.contains(&id);
+            // A joined room the cursor does not know has not been read from its start: the fetch
+            // that met it may have failed after the SDK took the answer. Its gap goes to the start.
             let to = cursor.since.clone().filter(|_| known);
             cursor.plan_gap(Gap::new(id.clone(), position.to_owned(), to));
             if !known {

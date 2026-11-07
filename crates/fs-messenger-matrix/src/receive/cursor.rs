@@ -78,7 +78,7 @@ pub(crate) struct MatrixCursor {
     /// What is still to be read, so that one fetch stays small and a long gap goes on in the next.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) gaps: Vec<Gap>,
-    /// Gaps nothing can read any more (the room is unknown to the SDK), named so that it is known what
+    /// Gaps nothing can read any more (the room is unknown to the SDK, or the server says `M_FORBIDDEN`), named so that it is known what
     /// was left unread: room and tokens, never content. The newest [`MAX_GIVEN_UP`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) given_up: Vec<Gap>,
@@ -104,9 +104,10 @@ impl MatrixCursor {
         self.pending.iter().map(|p| p.raw.len()).sum()
     }
 
-    /// This gap cannot be read any more: say so, by name, and drop it from the open ones.
-    pub(crate) fn give_up(&mut self, gap: Gap) {
-        tracing::warn!(room = %gap.room, from = %gap.from, "gap given up: the room is not known any more");
+    /// This gap cannot be read any more: say so, by name, and drop it from the open ones. `why` is
+    /// for the log only.
+    pub(crate) fn give_up(&mut self, gap: Gap, why: &'static str) {
+        tracing::warn!(room = %gap.room, from = %gap.from, why, "gap given up");
         self.given_up.push(gap);
         let over = self.given_up.len().saturating_sub(MAX_GIVEN_UP);
         self.given_up.drain(..over);

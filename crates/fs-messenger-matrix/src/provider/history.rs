@@ -46,7 +46,7 @@ impl MatrixProvider {
                 // Nothing can read it: the SDK does not know the room (left and forgotten, or its
                 // store was lost). Not removed in silence.
                 if let Some(gap) = cursor.gaps.pop() {
-                    cursor.give_up(gap);
+                    cursor.give_up(gap, "the room is not known any more");
                 }
                 continue;
             };
@@ -54,7 +54,19 @@ impl MatrixProvider {
             let mut options = MessagesOptions::backward().from(gap.from.as_str());
             options.to = gap.to;
             options.limit = UInt::from(PAGE);
-            let page = self.account.bounded(room.messages(options)).await?;
+            let page = match self.account.bounded(room.messages(options)).await {
+                Ok(page) => page,
+                // The server will not show this room to this account, now or later (banned,
+                // forgotten): named and dropped, so that it never blocks the others. Any other
+                // error may pass and fails the fetch, with the gap kept.
+                Err(MatrixError::Forbidden(_)) => {
+                    if let Some(gap) = cursor.gaps.pop() {
+                        cursor.give_up(gap, "the server answered M_FORBIDDEN");
+                    }
+                    continue;
+                }
+                Err(e) => return Err(e),
+            };
             let seen = page.chunk.len();
             empty += usize::from(seen == 0);
             let skipped = gap.skip.min(seen);
