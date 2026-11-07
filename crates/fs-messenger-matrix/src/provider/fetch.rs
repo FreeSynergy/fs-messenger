@@ -3,7 +3,7 @@
 //! Pattern: Adapter, part of `MatrixProvider` (the type is spread over the files of this folder): `fetch` of the `Provider` trait over the SDK's `/sync`. One
 //! fetch, in order: sync, plan and read gaps, convert, retry what waits for a key, say where we
 //! are. A failure anywhere fails the fetch, so the cursor stays and the next one replays; the core
-//! dedupes. `worth_replaying` is a Specification (a pure predicate) inside this Adapter.
+//! dedupes. Which rooms a replay reads again is decided by the Specification in `replay.rs`.
 
 use std::time::Duration;
 
@@ -18,21 +18,9 @@ use matrix_sdk::ruma::{RoomId, UInt};
 use matrix_sdk::store::{StateStoreDataKey, StateStoreDataValue};
 
 use super::MatrixProvider;
+use super::replay::{reads_to_start, worth_replaying};
 use crate::error::{MatrixError, Result};
 use crate::receive::{EventAlias, Gap, MatrixCursor, RoomContext};
-
-/// Whether a room the SDK holds is read again after a lost answer (a pure predicate, a
-/// Specification over state and "the cursor knows it"). A joined room is. A left room is only while
-/// the cursor still knows it, which is until a fetch has gone through with the leave: that fetch took
-/// it out of the list, and what it said up to the leave was read then. Invited, knocked and banned
-/// rooms are not: there is nothing of this account's to read, or the server will not show it.
-fn worth_replaying(state: RoomState, known: bool) -> bool {
-    match state {
-        RoomState::Joined => true,
-        RoomState::Left => known,
-        _ => false,
-    }
-}
 
 impl MatrixProvider {
     fn sync_settings(&self, since: Option<String>) -> SyncSettings {
@@ -145,12 +133,13 @@ impl MatrixProvider {
         for room in self.client.rooms() {
             let id = room.room_id().to_string();
             let known = cursor.rooms.contains(&id);
-            if !worth_replaying(room.state(), known) {
+            let state = room.state();
+            if !worth_replaying(state, known) {
                 continue;
             }
             // A joined room the cursor does not know has not been read from its start: the fetch
             // that met it may have failed after the SDK took the answer. Its gap goes to the start.
-            let to = cursor.since.clone().filter(|_| known);
+            let to = cursor.since.clone().filter(|_| !reads_to_start(state, known));
             cursor.plan_gap(Gap::new(id.clone(), position.to_owned(), to));
             if !known {
                 cursor.rooms.push(id);

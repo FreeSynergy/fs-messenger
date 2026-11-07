@@ -12,6 +12,7 @@ mod fetch;
 mod history;
 mod matrix_provider;
 mod plan;
+mod replay;
 mod rooms;
 mod send;
 
