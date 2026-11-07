@@ -36,7 +36,10 @@ const ENDS_WITHIN: Duration = Duration::from_secs(20);
 
 fn assert_clean(error: &impl std::fmt::Display) {
     let text = error.to_string();
-    assert!(!text.contains(TOKEN) && !text.contains("pw-needle"), "{text}");
+    assert!(
+        !text.contains(TOKEN) && !text.contains("pw-needle"),
+        "{text}"
+    );
 }
 
 #[tokio::test]
@@ -77,5 +80,7 @@ async fn restore_ends_when_the_startup_task_is_held_up() {
 
     // Nothing half open: once the server is well again the same store restores.
     slow.store(false, Ordering::SeqCst);
-    MatrixProvider::restore(quick(&server), store).await.unwrap();
+    MatrixProvider::restore(quick(&server), store)
+        .await
+        .unwrap();
 }

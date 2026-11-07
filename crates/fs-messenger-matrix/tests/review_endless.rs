@@ -24,7 +24,12 @@ async fn hostile() -> (Server, Arc<AtomicUsize>) {
         p if p.contains("/sync") => {
             let n = syncs.fetch_add(1, Ordering::SeqCst);
             let events: Vec<Value> = (0..3).map(|i| plain(&format!("$s{n}-{i}"), "hi")).collect();
-            sync(&format!("s{}", n + 1), &events, false, Some(&format!("pb{n}")))
+            sync(
+                &format!("s{}", n + 1),
+                &events,
+                false,
+                Some(&format!("pb{n}")),
+            )
         }
         p if p.contains("/messages") => {
             let i = served.fetch_add(1, Ordering::SeqCst);
@@ -61,7 +66,11 @@ async fn many_fetches_keep_the_gaps_and_the_cursor_small() {
         let parsed: Value = serde_json::from_str(&text).unwrap();
         let open = parsed["gaps"].as_array().map_or(0, Vec::len);
         assert!(open <= 8, "fetch {n}: {open} open gaps for {ROOM}");
-        assert!(text.len() < 4000, "fetch {n}: cursor of {} bytes", text.len());
+        assert!(
+            text.len() < 4000,
+            "fetch {n}: cursor of {} bytes",
+            text.len()
+        );
         cursor = batch.next;
     }
 }
@@ -76,6 +85,10 @@ async fn sync_of_the_core_returns() {
     let (repo, id) = core(provider).await;
     for _ in 0..3 {
         let done = tokio::time::timeout(Duration::from_secs(30), repo.sync(id)).await;
-        assert!(done.is_ok(), "sync() did not return; {} pages", pages.load(Ordering::SeqCst));
+        assert!(
+            done.is_ok(),
+            "sync() did not return; {} pages",
+            pages.load(Ordering::SeqCst)
+        );
     }
 }
