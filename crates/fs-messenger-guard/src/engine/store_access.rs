@@ -1,9 +1,10 @@
 //! How the engine reaches its store: within a time limit, and fail-shut.
 //!
 //! Pattern: Facade over the repository, no Decorator (`GuardRepository` is not implemented here). Every
-//! once; no answer in time reads as unreadable, and unreadable reads as stopped. A stop that could
-//! not be written is laid over every read, and a task of its own keeps trying to write it until it
-//! has: nobody has to call anything for that.
+//! call has a time limit and is asked once; no answer in time reads as unreadable, and unreadable
+//! reads as stopped. A stop that could not be written is laid over every read, and a task of its own
+//! keeps trying to write it until it has, each try in a task of its own so that a repository that
+//! panics ends that try only: nobody has to call anything for that.
 
 use std::sync::PoisonError;
 use std::sync::atomic::Ordering;
@@ -174,7 +175,9 @@ impl GuardEngine {
                 let Some(engine) = me.upgrade() else {
                     return;
                 };
-                engine.try_write_stop().await;
+                // A try of its own: a repository that panics ends that try, not the retries.
+                let attempt = engine.clone();
+                let _ = tokio::spawn(async move { attempt.try_write_stop().await }).await;
                 if engine.unsaved_mark().is_none() {
                     engine.retrying.store(false, Ordering::SeqCst);
                     // A stop that came in between has seen `retrying` set.

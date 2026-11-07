@@ -51,6 +51,9 @@ pub struct GuardConfig {
     pub turn_wait: Duration,
     /// How long one step waits for the guard's store; no answer reads as unreadable.
     pub store_wait: Duration,
+    /// How long the judging of a stop's proof (verifier, permission) has; no answer makes the stop
+    /// one by nobody.
+    pub judge_wait: Duration,
     /// How long a message on its way in waits for it; no answer reads as not known.
     pub sender_wait: Duration,
     /// How often a stop that could not be written is tried again.
@@ -74,6 +77,7 @@ impl GuardConfig {
             max_retries: 60,
             turn_wait: Duration::from_secs(5),
             store_wait: Duration::from_secs(2),
+            judge_wait: Duration::from_secs(2),
             sender_wait: Duration::from_millis(250),
             stop_retry: Duration::from_secs(2),
             class_log_every: Duration::from_secs(60),

@@ -1,7 +1,7 @@
 //! The emergency stop.
 //!
 //! Pattern: Facade with a fixed order of steps, which is the guarantee. 1. Latch, before any read: no
-//! store can hold this up. 2. Judge the proof, within a time limit; a proof shown to be bad takes that
+//! store can hold this up. 2. Judge the proof, within a time limit (`judge_wait`; past it the stop is one by nobody); a proof shown to be bad takes that
 //! latch back, and anything else leaves it. 3. Marker file, store, what is shown, the providers and
 //! the log, each as a task of its own: they go on if the caller walks away, and one that hangs or
 //! panics cannot hold up or take down another.
@@ -57,25 +57,39 @@ impl GuardEngine {
                 used: None,
             });
         };
-        let request = ProofRequest {
-            method: Method::Stop,
-            arguments: &[],
-        };
-        let used = doc.check_proof(self.verifier.as_ref(), &request, proof)?;
-        let signer = id_key(&proof.signer);
-        if !self.permission.may_stop(&signer, &self.config.owner) {
-            return Err(Refusal::NotPermitted);
-        }
-        Ok(StopMark {
-            by: signer,
-            at,
-            used: Some(used),
+        // Verifier and permission are plain calls that may block: a thread of their own, so that
+        // the time limit of `judge_surely` can fire whatever they do.
+        let (verifier, permission) = (self.verifier.clone(), self.permission.clone());
+        let (owner, proof) = (self.config.owner.clone(), proof.clone());
+        let judged = tokio::task::spawn_blocking(move || {
+            let request = ProofRequest {
+                method: Method::Stop,
+                arguments: &[],
+            };
+            let used = doc.check_proof(verifier.as_ref(), &request, &proof)?;
+            let signer = id_key(&proof.signer);
+            if !permission.may_stop(&signer, &owner) {
+                return Err(Refusal::NotPermitted);
+            }
+            Ok(StopMark {
+                by: signer,
+                at,
+                used: Some(used),
+            })
+        });
+        // A panic there is a stop by nobody, like no answer in time.
+        judged.await.unwrap_or_else(|_| {
+            Ok(StopMark {
+                by: marker::NOBODY.to_string(),
+                at,
+                used: None,
+            })
         })
     }
 
-    /// `judge` in a task of its own: a foreign verifier or permission that panics must not end this
-    /// stop before its marker is written. What cannot be judged is a stop by nobody: fail-shut, as
-    /// when the state cannot be read.
+    /// `judge` in a task of its own, within `judge_wait`: a foreign verifier or permission that
+    /// panics or never answers must not end this stop, nor hold it up, before its marker is written.
+    /// What cannot be judged in time is a stop by nobody: fail-shut, as when the state cannot be read.
     async fn judge_surely(
         self: &Arc<Self>,
         proof: Option<GuardProof>,
@@ -83,13 +97,15 @@ impl GuardEngine {
         let judge = self.clone();
         let at = self.clock.now();
         let task = tokio::spawn(async move { judge.judge(proof.as_ref()).await });
-        task.await.unwrap_or_else(|_| {
-            Ok(StopMark {
+        match timeout(self.config.judge_wait, task).await {
+            Ok(Ok(judged)) => judged,
+            // Panicked, or no answer in time.
+            _ => Ok(StopMark {
                 by: marker::NOBODY.to_string(),
                 at,
                 used: None,
-            })
-        })
+            }),
+        }
     }
 
     /// With a proof, or without one from the local console: the caller can walk away from this. The

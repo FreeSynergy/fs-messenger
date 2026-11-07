@@ -116,6 +116,7 @@ impl GuardRepository for Faulty {
 pub fn config_in(dir: &std::path::Path) -> GuardConfig {
     let mut config = GuardConfig::new(OWNER, dir.join("guard.stopped"));
     config.store_wait = Duration::from_millis(300);
+    config.judge_wait = Duration::from_millis(300);
     config.sender_wait = Duration::from_millis(100);
     config.stop_retry = Duration::from_millis(50);
     config.turn_wait = Duration::from_millis(500);
