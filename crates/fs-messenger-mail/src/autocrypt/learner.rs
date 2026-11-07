@@ -8,19 +8,67 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
+use super::header::AutocryptHeader;
 use super::rule::{Decision, decide};
 use crate::address::normalise_address;
 use crate::error::MailError;
-use crate::keys::{CandidateKey, KeySource, KeyStore, PeerKey};
-use crate::openpgp::{PublicCert, unix_now};
+use crate::keys::{CandidateKey, KeySource, KeyStore, LegacyKey, PeerKey};
+use crate::openpgp::{PublicCert, unix_now, usable_encryption_key};
 
 /// A key somebody offers for `address`.
 #[derive(Clone, Debug)]
 pub struct Offer {
-    /// The offered certificate.
+    /// The offered certificate: the v6 key if the header carries one, else what `keydata` holds.
     pub cert: PublicCert,
+    /// The v4 certificate the same header carries beside a v6 `cert`.
+    pub companion: Option<PublicCert>,
     /// It came inside an encrypted payload whose signature verified with the known key of `address`.
     pub proven_by_known_key: bool,
+}
+
+impl Offer {
+    /// One key, no companion.
+    pub fn single(cert: PublicCert, proven_by_known_key: bool) -> Self {
+        Self {
+            cert,
+            companion: None,
+            proven_by_known_key,
+        }
+    }
+
+    /// What a parsed header offers. A readable v6 key in `_fs-v6` is the key; `keydata` beside it must
+    /// be a v4 key to count as its companion.
+    pub fn from_header(header: &AutocryptHeader) -> Option<Self> {
+        let main = PublicCert::from_binary(&header.keydata).ok();
+        let v6 = header
+            .v6keydata
+            .as_deref()
+            .and_then(|bytes| PublicCert::from_binary(bytes).ok())
+            .filter(PublicCert::is_v6);
+        match (v6, main) {
+            (Some(v6), Some(v4)) if v4.is_v4() => Some(Self {
+                cert: v6,
+                companion: Some(v4),
+                proven_by_known_key: false,
+            }),
+            (Some(v6), _) => Some(Self::single(v6, false)),
+            (None, Some(main)) => Some(Self::single(main, false)),
+            (None, None) => None,
+        }
+    }
+
+    /// Every certificate in the offer.
+    pub fn certs(&self) -> impl Iterator<Item = &PublicCert> {
+        std::iter::once(&self.cert).chain(&self.companion)
+    }
+}
+
+/// The companion of a first sight or a proven rotation, as it is held.
+fn first_legacy(offer: &Offer, now: u64) -> Result<Option<LegacyKey>, MailError> {
+    offer
+        .companion
+        .as_ref()
+        .map_or(Ok(None), |c| held_legacy(c, now))
 }
 
 /// Learns peers' keys.
@@ -60,12 +108,14 @@ impl KeyLearner {
         };
         match (&decision, known) {
             (Decision::FirstSeen, _) => {
-                let peer = PeerKey::new(&address, &kept, KeySource::AutocryptFirstSeen, now)?;
+                let mut peer = PeerKey::new(&address, &kept, KeySource::AutocryptFirstSeen, now)?;
+                peer.legacy = first_legacy(offer, now)?;
                 self.keys.put_peer(&peer).await?;
             }
             (Decision::Rotate, Some(old)) => {
                 let mut peer = PeerKey::new(&address, &kept, KeySource::AutocryptRotated, now)?;
                 peer.first_seen = old.first_seen;
+                peer.legacy = first_legacy(offer, now)?;
                 self.keys.put_peer(&peer).await?;
             }
             (Decision::SameKey { take_offered }, Some(mut peer)) => {
@@ -73,6 +123,14 @@ impl KeyLearner {
                 {
                     peer.cert = PeerKey::new(&address, &merged, peer.source, now)?.cert;
                 }
+                let proven = offer.proven_by_known_key;
+                peer.legacy = beside(peer.legacy.take(), offer.companion.as_ref(), proven, now)?;
+                peer.last_seen = now;
+                self.keys.put_peer(&peer).await?;
+            }
+            (Decision::Legacy, Some(mut peer)) => {
+                let proven = offer.proven_by_known_key;
+                peer.legacy = beside(peer.legacy.take(), Some(&offer.cert), proven, now)?;
                 peer.last_seen = now;
                 self.keys.put_peer(&peer).await?;
             }
@@ -119,4 +177,43 @@ impl KeyLearner {
         self.keys.put_peer(&peer).await?;
         Ok(true)
     }
+}
+
+/// `cert` as the v4 key held beside a v6 one: compacted, and only if it is v4 and usable.
+fn held_legacy(cert: &PublicCert, now: u64) -> Result<Option<LegacyKey>, MailError> {
+    if !cert.is_v4() || usable_encryption_key(cert, now).is_err() {
+        return Ok(None);
+    }
+    cert.compact().map(|c| LegacyKey::new(&c)).transpose()
+}
+
+/// The v4 key held beside the key in use after an offer of `cert`, given what was held. Without a held
+/// one it comes in only with proof; the held one is refreshed by merging (nothing is taken away) and
+/// replaced only with proof. Anything else leaves it as it is.
+fn beside(
+    held: Option<LegacyKey>,
+    cert: Option<&PublicCert>,
+    proven: bool,
+    now: u64,
+) -> Result<Option<LegacyKey>, MailError> {
+    let Some(cert) = cert else {
+        return Ok(held);
+    };
+    let Some(held) = held else {
+        return if proven {
+            held_legacy(cert, now)
+        } else {
+            Ok(None)
+        };
+    };
+    if held.fingerprint == cert.fingerprint() {
+        return match held.certificate()?.merged_with(cert) {
+            Some(merged) => Ok(Some(LegacyKey::new(&merged)?)),
+            None => Ok(Some(held)),
+        };
+    }
+    if proven {
+        return Ok(held_legacy(cert, now)?.or(Some(held)));
+    }
+    Ok(Some(held))
 }

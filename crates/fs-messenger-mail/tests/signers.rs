@@ -205,6 +205,7 @@ async fn a_form_with_a_subkey_stripped_takes_nothing_away() {
 
     let offer = Offer {
         cert: subkey_revoked(&rpgp, 1, &[0]),
+        companion: None,
         proven_by_known_key: false,
     };
     let decision = learner.learn(ALICE, &offer).await.unwrap();
@@ -232,6 +233,7 @@ async fn a_form_with_a_subkey_stripped_takes_nothing_away() {
             ALICE,
             &Offer {
                 cert: subkey_revoked(&rpgp, 0, &[1]),
+                companion: None,
                 proven_by_known_key: false,
             },
         )

@@ -132,12 +132,32 @@ impl KeyStore for PanickingPeers {
     async fn put_own_key(&self, address: &str, key: &SecretCert) -> Result<(), MailError> {
         self.0.put_own_key(address, key).await
     }
+    async fn own_legacy_key(&self, address: &str) -> Result<Option<SecretCert>, MailError> {
+        self.0.own_legacy_key(address).await
+    }
+    async fn put_own_legacy_key(&self, address: &str, key: &SecretCert) -> Result<(), MailError> {
+        self.0.put_own_legacy_key(address, key).await
+    }
     async fn peer(&self, _address: &str) -> Result<Option<PeerKey>, MailError> {
         panic!("a bug below the reading flow");
     }
     async fn put_peer(&self, peer: &PeerKey) -> Result<(), MailError> {
         self.0.put_peer(peer).await
     }
+}
+
+/// A person whose real keys sit behind a decorator of the test's choice: the keys are made first, on
+/// the real store, so that only what happens afterwards can fail.
+pub async fn person_with_keys(
+    address: &str,
+    wrap: impl FnOnce(Arc<dyn KeyStore>) -> Arc<dyn KeyStore>,
+) -> Offline {
+    let real = real_keys().await;
+    let modern = fs_messenger_mail::openpgp::generate_key(address).unwrap();
+    let older = fs_messenger_mail::openpgp::generate_legacy_key(address).unwrap();
+    real.put_own_key(address, &modern).await.unwrap();
+    real.put_own_legacy_key(address, &older).await.unwrap();
+    person_on(address, wrap(real), None).await
 }
 
 pub async fn person_with_panicking_peers(address: &str) -> Offline {

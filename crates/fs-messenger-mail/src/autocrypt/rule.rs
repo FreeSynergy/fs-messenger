@@ -5,6 +5,12 @@
 //! the known one only with a proof a forger cannot produce: it was offered inside an encrypted payload
 //! whose signature verifies with the known key. An outer `Autocrypt` header proves nothing, whatever
 //! signature the mail carries, because that header is not covered by the signature.
+//!
+//! A peer may hold two keys, v6 in use and a v4 `legacy` beside it, for programs that read nothing newer.
+//! The v4 key is a way to reach the person, and also a way to downgrade her, so it follows the same
+//! discipline: it comes with the first sight of the pair, and afterwards it is added or replaced only
+//! with the same proof as a rotation. A v4 offer without proof, to a peer whose key in use is v6, is
+//! only ever a candidate: it is never encrypted to and never takes the place of the v6 key.
 
 use super::learner::Offer;
 use crate::keys::PeerKey;
@@ -26,6 +32,8 @@ pub enum Decision {
     Rotate,
     /// Somebody offers another key without proof: keep the known one, remember the offer.
     Conflict,
+    /// The v4 key beside a held v6 key: the offer is that key, seen again or proven as its replacement.
+    Legacy,
 }
 
 /// Decide about `offer`, given what is `known`, at `now`.
@@ -38,13 +46,27 @@ pub fn decide(known: Option<&PeerKey>, offer: &Offer, now: u64) -> Decision {
             Decision::Ignore
         };
     };
-    if known.fingerprint == offer.cert.fingerprint() {
+    let fingerprint = offer.cert.fingerprint();
+    if known.fingerprint == fingerprint {
         return same_key(known, offer, now);
     }
     if !usable {
         return Decision::Ignore;
     }
-    if offer.proven_by_known_key && may_prove(known, now) {
+    let proven = offer.proven_by_known_key && may_prove(known, now);
+    let beside_v6 = offer.cert.is_v4() && known.certificate().is_ok_and(|held| held.is_v6());
+    if beside_v6
+        && known
+            .legacy
+            .as_ref()
+            .is_some_and(|l| l.fingerprint == fingerprint)
+    {
+        return Decision::Legacy;
+    }
+    if beside_v6 && proven {
+        return Decision::Legacy;
+    }
+    if proven && !beside_v6 {
         Decision::Rotate
     } else {
         Decision::Conflict

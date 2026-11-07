@@ -3,7 +3,8 @@
 #![allow(dead_code)] // each test file uses a different subset
 
 use fs_messenger_mail::openpgp::{
-    EncryptionTargets, PublicCert, SecretCert, sign_and_encrypt, unix_now, usable_encryption_key,
+    EncryptionTargets, Method, PublicCert, SecretCert, sign_and_encrypt, unix_now,
+    usable_encryption_key,
 };
 use pgp::composed::{
     ArmorOptions, DetachedSignature, EncryptionCaps, KeyType, MessageBuilder,
@@ -102,7 +103,10 @@ pub fn encrypted(head: &str, payload: &[u8], signer: &SecretCert, reader: &Publi
         visible: vec![usable_encryption_key(reader, unix_now()).unwrap()],
         hidden: vec![],
     };
-    wrapper(head, &sign_and_encrypt(payload, signer, &targets).unwrap())
+    wrapper(
+        head,
+        &sign_and_encrypt(payload, signer, &targets, Method::Modern).unwrap(),
+    )
 }
 
 /// `size` zero bytes, compressed and encrypted to `reader`: a small mail that expands.

@@ -15,6 +15,10 @@ pub trait KeyStore: Send + Sync {
     async fn own_key(&self, address: &str) -> Result<Option<SecretCert>, MailError>;
     /// Keep the person's own secret key for `address`, replacing an earlier one.
     async fn put_own_key(&self, address: &str, key: &SecretCert) -> Result<(), MailError>;
+    /// The person's own v4 secret key for `address`, the one older programs can read (`DESIGN.md`).
+    async fn own_legacy_key(&self, address: &str) -> Result<Option<SecretCert>, MailError>;
+    /// Keep the person's own v4 secret key for `address`, replacing an earlier one.
+    async fn put_own_legacy_key(&self, address: &str, key: &SecretCert) -> Result<(), MailError>;
     /// What is known about a peer.
     async fn peer(&self, address: &str) -> Result<Option<PeerKey>, MailError>;
     /// Keep what is known about a peer, replacing the earlier record.

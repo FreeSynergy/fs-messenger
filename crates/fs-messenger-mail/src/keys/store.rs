@@ -35,11 +35,30 @@ const CONTENT_TYPE: &str = "application/json";
 /// Same category as the messages (`fs-messenger-core`), provisional there and here.
 const SENSITIVE: &str = "pd:Communication";
 
-/// By normalised address, the secret key in its binary form, base64.
+/// By normalised address, the secret keys in their binary form, base64: the v6 key, and the v4 key
+/// that goes beside it (`DESIGN.md`, "Older OpenPGP").
 #[derive(Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OwnKeysContent {
     secrets: BTreeMap<String, String>,
+    #[serde(default)]
+    legacy: BTreeMap<String, String>,
+}
+
+/// Which of the two own keys.
+#[derive(Clone, Copy)]
+enum Slot {
+    Modern,
+    Legacy,
+}
+
+impl OwnKeysContent {
+    fn map(&mut self, slot: Slot) -> &mut BTreeMap<String, String> {
+        match slot {
+            Slot::Modern => &mut self.secrets,
+            Slot::Legacy => &mut self.legacy,
+        }
+    }
 }
 
 /// Keys in a `fs-store`. Sensitive objects: a plain store refuses every write.
@@ -111,11 +130,10 @@ impl FsKeyStore {
     }
 }
 
-#[async_trait]
-impl KeyStore for FsKeyStore {
-    async fn own_key(&self, address: &str) -> Result<Option<SecretCert>, MailError> {
-        let content = self.read_secrets().await?;
-        let Some(secret) = content.secrets.get(&normalise_address(address)) else {
+impl FsKeyStore {
+    async fn get_own(&self, slot: Slot, address: &str) -> Result<Option<SecretCert>, MailError> {
+        let mut content = self.read_secrets().await?;
+        let Some(secret) = content.map(slot).get(&normalise_address(address)) else {
             return Ok(None);
         };
         let bytes = Zeroizing::new(
@@ -126,11 +144,11 @@ impl KeyStore for FsKeyStore {
         SecretCert::from_binary(&bytes).map(Some)
     }
 
-    async fn put_own_key(&self, address: &str, key: &SecretCert) -> Result<(), MailError> {
+    async fn set_own(&self, slot: Slot, address: &str, key: &SecretCert) -> Result<(), MailError> {
         let _writes = self.writes.lock().await;
         let mut content = self.read_secrets().await?;
         let bytes = Zeroizing::new(key.to_binary()?);
-        content.secrets.insert(
+        content.map(slot).insert(
             normalise_address(address),
             STANDARD.encode(bytes.as_slice()),
         );
@@ -140,6 +158,25 @@ impl KeyStore for FsKeyStore {
         let object = StoredObject::new(env, CONTENT_TYPE, serde_json::to_value(content)?);
         self.secrets.put_unlogged(object).await?;
         Ok(())
+    }
+}
+
+#[async_trait]
+impl KeyStore for FsKeyStore {
+    async fn own_key(&self, address: &str) -> Result<Option<SecretCert>, MailError> {
+        self.get_own(Slot::Modern, address).await
+    }
+
+    async fn put_own_key(&self, address: &str, key: &SecretCert) -> Result<(), MailError> {
+        self.set_own(Slot::Modern, address, key).await
+    }
+
+    async fn own_legacy_key(&self, address: &str) -> Result<Option<SecretCert>, MailError> {
+        self.get_own(Slot::Legacy, address).await
+    }
+
+    async fn put_own_legacy_key(&self, address: &str, key: &SecretCert) -> Result<(), MailError> {
+        self.set_own(Slot::Legacy, address, key).await
     }
 
     async fn peer(&self, address: &str) -> Result<Option<PeerKey>, MailError> {

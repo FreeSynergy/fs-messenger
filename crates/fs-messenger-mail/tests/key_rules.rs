@@ -79,6 +79,7 @@ async fn first_seen_wins_and_a_forged_key_only_becomes_a_visible_candidate() {
     );
     let offer = |cert: &fs_messenger_mail::openpgp::PublicCert, proven| Offer {
         cert: cert.clone(),
+        companion: None,
         proven_by_known_key: proven,
     };
     assert_eq!(
@@ -135,6 +136,7 @@ async fn a_proof_rotates_and_a_stale_offer_cannot_turn_it_back() {
     );
     let offer = |cert: &fs_messenger_mail::openpgp::PublicCert, proven| Offer {
         cert: cert.clone(),
+        companion: None,
         proven_by_known_key: proven,
     };
     learner.learn(PEER, &offer(&old, false)).await.unwrap();

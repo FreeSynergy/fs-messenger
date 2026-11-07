@@ -4,8 +4,9 @@
 //! every self-signature must verify, the key must not be revoked, expired or of a broken algorithm, and
 //! a live encryption subkey must exist. A subkey with a revocation is skipped; `verify_bindings` has
 //! verified that signature with the rest. Provisional: a key that encrypts only with its primary key is
-//! refused, and a revoked subkey stays revoked even if a later binding says otherwise. A v4 key that does not advertise `SEIPDv2` is refused:
-//! `SEIPDv1` is `Unsupported` outgoing.
+//! refused, and a revoked subkey stays revoked even if a later binding says otherwise. Whether it takes
+//! `SEIPDv2` is [`supports_seipd_v2`]; a key that names a Features subpacket with neither the v1 nor the
+//! v2 bit is refused, one without the subpacket (RNP writes none) is taken as `SEIPDv1`.
 
 use pgp::composed::SignedPublicSubKey;
 use pgp::packet::{Signature, SignatureType};
@@ -32,9 +33,9 @@ pub enum KeyRefusal {
     /// DSA, Elgamal, or RSA under 2048 bits.
     #[error("its algorithm or key size is too weak")]
     Weak,
-    /// A v4 key that does not advertise `SEIPDv2`.
-    #[error("it does not support SEIPDv2")]
-    NoModernEncryption,
+    /// A key whose Features name neither `SEIPDv1` nor `SEIPDv2`: no integrity protection to speak of.
+    #[error("it supports neither SEIPDv1 nor SEIPDv2")]
+    NoIntegrityProtection,
 }
 
 /// Seconds since the epoch.
@@ -170,6 +171,16 @@ fn self_signature(cert: &PublicCert) -> Option<&Signature> {
     direct.or(user)
 }
 
+/// Whether every reader of this key can take a `SEIPDv2` message (RFC 9580 section 13.7): a v6 key
+/// without a Features subpacket, or any key whose Features say so. A v4 key without Features does not.
+pub fn supports_seipd_v2(cert: &PublicCert) -> bool {
+    let features = self_signature(cert).and_then(Signature::features);
+    match features {
+        Some(f) => f.seipd_v2(),
+        None => cert.0.version() == KeyVersion::V6,
+    }
+}
+
 /// The key to encrypt to, or why there is none, at `now`.
 pub fn usable_encryption_key(
     cert: &PublicCert,
@@ -189,10 +200,11 @@ pub fn usable_encryption_key(
     if expired(created, own, now) {
         return Err(KeyRefusal::Expired);
     }
-    if cert.0.version() != KeyVersion::V6
-        && !own.features().is_some_and(pgp::packet::Features::seipd_v2)
+    if own
+        .features()
+        .is_some_and(|f| !f.seipd_v1() && !f.seipd_v2())
     {
-        return Err(KeyRefusal::NoModernEncryption);
+        return Err(KeyRefusal::NoIntegrityProtection);
     }
     let mut saw_expired = false;
     let mut saw_weak = false;
