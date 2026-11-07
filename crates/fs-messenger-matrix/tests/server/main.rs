@@ -19,6 +19,7 @@ mod http;
 
 mod banned;
 mod ciphertext;
+mod kicked;
 mod late_key;
 mod plain;
 mod rejoin;
