@@ -1,6 +1,6 @@
 //! Reading what `/sync` did not bring: a limited timeline, a newly joined room, a replay.
 //!
-//! Pattern: Adapter, part of MatrixProvider (the type is spread over the files of this folder): reading `/messages` for the gaps the cursor holds.
+//! Pattern: Adapter, part of `MatrixProvider` (the type is spread over the files of this folder): reading `/messages` for the gaps the cursor holds.
 //! Reads the pages of `/messages`, resumable: where it stands is in the cursor. One fetch reads a
 //! bounded number of events and says `more`, so a long room does not sit in memory whole.
 

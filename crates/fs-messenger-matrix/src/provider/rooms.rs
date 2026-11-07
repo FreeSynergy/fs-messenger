@@ -1,6 +1,6 @@
 //! Rooms by hand: what is waiting as an invitation, joining, opening an encrypted room, room keys.
 //!
-//! Pattern: Adapter, part of MatrixProvider (the type is spread over the files of this folder): the provider's own room methods (invitations, joining, opening rooms, room keys)
+//! Pattern: Adapter, part of `MatrixProvider` (the type is spread over the files of this folder): the provider's own room methods (invitations, joining, opening rooms, room keys)
 //! over the SDK. The core has no room concept,
 //! so these are the provider's own. An invitation is never accepted on its own: anyone can send one, and joining shows them our devices.
 
