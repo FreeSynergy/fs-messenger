@@ -72,3 +72,42 @@ pub async fn core(provider: MatrixProvider) -> (MessengerRepo, fs_store::ObjectI
     repo.register_provider(account.id, Arc::new(provider));
     (repo, account.id)
 }
+
+/// A `/sync` answer with these rooms: `rooms` is `{"join": {...}, "leave": {...}}`.
+pub fn answer(next: &str, rooms: &Value) -> Reply {
+    Reply::json(200, &json!({"next_batch": next, "rooms": rooms}))
+}
+
+/// A timeline for `answer`.
+pub fn timeline(events: &[Value], limited: bool, prev: Option<&str>) -> Value {
+    let mut t = json!({"events": events, "limited": limited});
+    if let Some(prev) = prev {
+        t["prev_batch"] = json!(prev);
+    }
+    json!({"timeline": t})
+}
+
+/// The account's own membership event, as it comes in a left room's timeline.
+pub fn own_membership(id: &str, membership: &str) -> Value {
+    json!({"type":"m.room.member","event_id":id,"sender":"@carol:x.test","origin_server_ts":900,
+           "state_key":USER,"content":{"membership":membership}})
+}
+
+/// The id of room `!<name>:x.test`.
+pub fn room_id(name: &str) -> String {
+    format!("!{name}:x.test")
+}
+
+/// Whether this request is for `/rooms/!<name>:x.test/...` (the id may be percent-encoded).
+pub fn is_room(path: &str, name: &str) -> bool {
+    path.contains(&format!("!{name}:x.test")) || path.contains(&format!("%21{name}%3Ax.test"))
+}
+
+/// A `/messages` answer with one page and no `end`.
+pub fn page(events: &[Value]) -> Reply {
+    Reply::json(200, &json!({"start":"x","chunk":events}))
+}
+
+pub fn error(status: u16, code: &str) -> Reply {
+    Reply::json(status, &json!({"errcode": code, "error": "no"}))
+}
