@@ -72,7 +72,7 @@ Call (`CallStage`, shown as `ToolCallState`):
 
 ## Pattern map (ADR 0043)
 
-Only patterns of coding.md section 2 as of 2026-11-07 (commit 7c658d2: it now also has Specification, Value object, Null object and Memento). `none` only where section 2 allows it (error lists, plain data, constants, one pure function, thin binary); anything else with `none` is listed in open point 0.
+Only patterns of coding.md section 2 as of 2026-11-07 (commit 7c658d2: it now also has Specification, Value object, Null object and Memento). `none` only where section 2 allows it (error lists, plain data, constants, a single pure function or a small set of them for one concept, thin binary).
 
 | Module | Pattern | Trait / form | Why |
 |---|---|---|---|
@@ -81,10 +81,10 @@ Only patterns of coding.md section 2 as of 2026-11-07 (commit 7c658d2: it now al
 | `risk.rs` | Specification | `can_be_released`, `offers_allow_class`: pure predicates over a risk class, one built from the other | the brake is one place that nothing else may contradict |
 | `state/proof.rs` | Specification | `signature_holds`, `check_proof`: pure validation rules over the state and a proof; they answer with a reason, and for a good proof the single-use key | changes nothing, so nothing is burnt by a forged proof |
 | `engine/marker.rs` | Memento | the file is the snapshot of a stop (`StopMark`); the functions are its caretaker | the latch is restored after a restart without the store |
-| `enrol.rs` | Facade | `LocalEnrolment`: key administration (verifier, save, log in a fixed order) behind a few ways in | that only `open` hands it out has no name in section 2 (open point 0) |
+| `enrol.rs` | Capability object | `LocalEnrolment`: key administration (verifier, save, log in a fixed order) behind a few ways in | only `GuardEngine::open` hands it out, and holding it is the right to enrol keys (section 2: "a local enrolment") |
 | `identity.rs`, `model.rs`, `error.rs`, `lib.rs` | none, allowed by section 2 | one pure function, plain data, error lists, declarations | allowed by section 2 |
-| `log.rs` | none – verstößt gegen die none-Regel | `GuardLogEntry` with `kind` (event name to AS2 kind), `about`, `subject` | behaviour, no pattern fits: open point 0 |
-| `digest.rs`, `signed.rs` | none – verstößt gegen die none-Regel | several pure functions; `Method` enum | **more than section 2 allows for `none`**: open point 0 |
+| `log.rs` | Value object | `GuardLogEntry` with small constructors (`new`, `about`), `kind` (event name to AS2 kind), `subject` | a small data type for one event |
+| `digest.rs`, `signed.rs` | none, allowed by section 2 | a small set of pure functions for one concept each; `Method` enum | section 2: "a small set of them for one concept" |
 | `repo/traits.rs`, `repo/turso.rs` | Repository, Adapter | trait `GuardRepository`; `TursoGuardRepository` over `TursoStore` | one opaque record, one log; whatever comes back is checked |
 | `engine/*` (`core`, `gate`, `decide`, `questions`, `stop*`, `admin`) | Facade | `GuardEngine`, its `impl` blocks split by concept | fixed order of each operation, which is the guarantee; no trait with provided methods, so no Template method |
 | `engine/store_access.rs` | Facade, RAII / Guard | time limits and fail-shut around `GuardRepository`; `RetryRunning` clears the retry flag on `Drop` | not a Decorator: the trait is not implemented again; the flag must not outlive a task lost with its runtime |
@@ -93,11 +93,12 @@ Only patterns of coding.md section 2 as of 2026-11-07 (commit 7c658d2: it now al
 | `arguments.rs` | Newtype | `Arguments` | exists only canonical, unique and within the limit |
 | `device.rs`, `permission.rs`, `clock.rs` | Strategy | `DeviceVerifier`, `StopPermission`, `Clock` | key type, who may pull it, and time can change |
 | core: `guard_hook.rs` | Strategy | `EngineGuard`, `SenderLookup` | who is an AI is the strategy `SenderLookup`; `open_for_reports` is how the core learns that the program is shut |
-| core: `repo/guard_port.rs`, `repo/guard_turns.rs` | Facade | `GuardPort` | one port, handed out once; providers asked in tasks of their own |
+| core: `repo/guard_port.rs` | Capability object | `GuardPort` | one port, handed out once by `install_guard`; holding it is the right to write what the engine says (section 2: "the port of a guard") |
+| core: `repo/guard_turns.rs` | Facade | providers asked in tasks of their own | one fixed order |
 | core: `repo/guard_note.rs`, `repo/tool_calls.rs` | Adapter | engine call to `Note`; agent report to `ToolCall` | a report can claim nothing |
 | core: `repo/report_landing.rs` | Facade, doubtful (and Strategy through `EngineGuard::open_for_reports`) | `land_reports`: ask, apply, write, ask again | one place for every way of storing an agent's call; shut guard means `cancelled` |
 | core: `provider/turn.rs`, `model/tool_call.rs`, `repo/capabilities.rs`, `repo/consts.rs`, `error.rs` | none, allowed by section 2 | plain data; one function filling a report; constants; error list | allowed by section 2 |
-| core: `repo/message_index.rs` | none – verstößt gegen die none-Regel | two functions, one changes the object it is given | not a single pure function: open point 0 |
+| core: `repo/message_index.rs` | none, allowed by section 2 | two functions for one concept (the index fields) | section 2: "a small set of them for one concept" |
 
 ## Decisions
 
@@ -155,7 +156,7 @@ Also: `Verdict::Allow` is a snapshot. What has started is not called back, excep
 
 ## Open points
 
-0. **Patterns against coding.md section 2 (to the strategy).** Checked again on 2026-11-07 against the section as of commit 7c658d2, which has Specification, Value object, Null object and Memento. The earlier text said these were missing; they are not (a Capability object is, and is not in the table). Now: `risk.rs` and `state/proof.rs` are Specifications (pure predicates or validation rules; `check_proof` answers with a reason and a key rather than a bool, which is a stretch of "predicate"). `engine/marker.rs` is a Memento (snapshot of the stop, restored at open; whether a readable JSON file counts as "opaque" is a stretch). `enrol.rs` is a Facade over the key administration; **a type that only one function may hand out, once, is a capability and has no name in section 2.** Value object does not fit `model.rs`, `core provider/turn.rs` or `core model/tool_call.rs`: they are plain data with public fields, valid on no construction, so `none` stays (allowed for plain data). Newtype fits only `arguments.rs`. **Still `none` against the rule:** `log.rs` (`GuardLogEntry::kind` maps event names onto AS2 kinds, `about` fills a field and returns the entry, `subject` parses the fixed id: behaviour, not plain data and not one function; not a Value object, because an entry is not valid on construction), `digest.rs` (SHA-256 digest, single-use key, hex and unhex: several pure functions), `signed.rs` (the `Method` enum and `signed_bytes`, `decide_arguments`: several functions, and not a Builder because there is no `XBuilder::build`), and in the core `repo/message_index.rs` (two functions, one changes the object it is given). Section 2 allows `none` for a single pure function only; these are reported. Also in the core `repo/guard_port.rs`: that only one port exists is a convention without a section 2 name; the type itself is a Facade. Doubtful, left as the nearest: core `repo/report_landing.rs` as Facade (section 2 says one small type that hides a subsystem; `land_reports` is a method on `Inner`, not a type of its own), `engine/*` as Facade (one `GuardEngine` split into files; `signed_change` in `admin.rs` is a helper function with a closure), `state/doc.rs` as State (a record with a mode), `table.rs` as Registry (looked up by capability id, but the entry is a rule as data, not behaviour).
+0. **Patterns against coding.md section 2 (closed except these doubts, to the strategy).** Checked on 2026-11-07 against the section with Specification, Value object, Memento, Null object and Capability object. `risk.rs`, `state/proof.rs` Specification (`check_proof` answers with a reason and a key rather than a bool: a stretch of "predicate"). `engine/marker.rs` Memento (whether a readable JSON file is "opaque" is a stretch). `enrol.rs` and core `guard_port.rs` Capability object. `log.rs` Value object (the fields are public and mutable, so "immutable" is a stretch). `digest.rs`, `signed.rs`, core `message_index.rs`: `none`. Doubtful, left as the nearest: core `repo/report_landing.rs` as Facade (`land_reports` is a method on `Inner`, not a type of its own), `engine/*` as Facade (one `GuardEngine` split into files; `signed_change` in `admin.rs` is a helper function with a closure), `state/doc.rs` as State (a record with a mode), `table.rs` as Registry (looked up by capability id, but the entry is a rule as data, not behaviour).
 
 1. The table's form, and its classes, are a proposal for the owner: `account.add` and `rule.write` as `actsForPerson` are my reading.
 2. `CONTRACT_VERSION` stays `0.3` until draft 0.4 is tagged, though `ToolCallDecision.revision` and the problem types already mirror 0.4.

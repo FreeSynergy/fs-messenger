@@ -1,6 +1,6 @@
 //! The index fields of a message.
 //!
-//! Pattern: none – verstößt gegen die none-Regel, an Strategie gemeldet, DESIGN.md Open point 0 (two functions, one of which changes the object it is given, so neither a single pure function nor a Specification; no pattern fits): what can be searched and sorted, derived in one place. An
+//! Pattern: none, allowed by section 2 (a small set of functions for one concept): what can be searched and sorted, derived in one place. An
 //! undecrypted message or a stub has no text here: no ciphertext in search.
 
 use fs_store::StoredObject;

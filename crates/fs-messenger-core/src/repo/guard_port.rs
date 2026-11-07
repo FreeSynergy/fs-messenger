@@ -1,7 +1,7 @@
 //! [`GuardPort`]: the only way to write what the engine itself says about a tool call.
 //!
-//! Pattern: Facade (the one port into the messenger). `install_guard` works once and hands it out;
-//! nothing else can build it (a convention, no pattern of coding.md section 2: open point 0). `Messenger`, `Ingest` and `Provider` have no path to it. The port holds the
+//! Pattern: Capability object (the one port into the messenger). `install_guard` works once and hands it out;
+//! nothing else can build it, and holding it is the right to write what the engine says. `Messenger`, `Ingest` and `Provider` have no path to it. The port holds the
 //! repo weakly: the repo holds the guard, and a cycle would keep the store's claim for ever.
 
 use std::sync::{Arc, Weak};
