@@ -21,30 +21,32 @@ fn is_once(n: &u32) -> bool {
 pub(super) const MAX_GIVEN_UP: usize = 32;
 
 impl MatrixCursor {
-    /// This gap cannot be read any more, for this reason: one entry per room (merged, counted).
-    #[allow(dead_code)] // a shell until the implementation
-    pub(crate) fn give_up_why(&mut self, gap: Gap, why: Why) {
-        let _ = (gap, why);
-        unimplemented!("MatrixCursor::give_up_why")
-    }
-
-    /// This gap cannot be read any more: say so, by name, and drop it from the open ones. `why` is
-    /// for the log only.
-    pub(crate) fn give_up(&mut self, gap: Gap, why: &'static str) {
-        tracing::warn!(room = %gap.room, from = %gap.from, why, "gap given up");
-        self.given_up.push(GivenUp {
-            room: gap.room,
-            from: gap.from,
-            to: gap.to,
-            why: Why::Earlier,
-            times: 1,
-        });
+    /// This gap cannot be read any more, for this reason: say so, by name, and keep one entry per
+    /// room (the first end, the newest start, how often). Only the newest [`MAX_GIVEN_UP`] rooms stay.
+    pub(crate) fn give_up(&mut self, gap: Gap, why: Why) {
+        tracing::warn!(room = %gap.room, from = %gap.from, ?why, "gap given up");
+        let entry = match self.given_up.iter().position(|g| g.room == gap.room) {
+            Some(at) => {
+                let mut old = self.given_up.remove(at);
+                old.from = gap.from;
+                old.why = why;
+                old.times = old.times.saturating_add(1);
+                old
+            }
+            None => GivenUp {
+                room: gap.room,
+                from: gap.from,
+                to: gap.to,
+                why,
+                times: 1,
+            },
+        };
+        self.given_up.push(entry);
         let over = self.given_up.len().saturating_sub(MAX_GIVEN_UP);
         self.given_up.drain(..over);
     }
 }
 
-#[allow(dead_code)] // a shell until the implementation
 /// Why a gap was given up.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -92,9 +94,9 @@ mod tests {
     #[test]
     fn a_room_given_up_again_is_one_entry_with_a_count() {
         let mut c = MatrixCursor::default();
-        c.give_up_why(gap("!r:x", "t5", Some("t1")), Why::Forbidden);
-        c.give_up_why(gap("!r:x", "t9", Some("t3")), Why::Forbidden);
-        c.give_up_why(gap("!r:x", "t12", None), Why::Forbidden);
+        c.give_up(gap("!r:x", "t5", Some("t1")), Why::Forbidden);
+        c.give_up(gap("!r:x", "t9", Some("t3")), Why::Forbidden);
+        c.give_up(gap("!r:x", "t12", None), Why::Forbidden);
         assert_eq!(c.given_up.len(), 1);
         let one = &c.given_up[0];
         assert_eq!(
@@ -108,7 +110,7 @@ mod tests {
     fn at_most_the_newest_rooms_are_named() {
         let mut c = MatrixCursor::default();
         for i in 0..MAX_GIVEN_UP + 8 {
-            c.give_up_why(gap(&format!("!r{i}:x"), "t2", Some("t1")), Why::Overflow);
+            c.give_up(gap(&format!("!r{i}:x"), "t2", Some("t1")), Why::Overflow);
         }
         assert_eq!(c.given_up.len(), MAX_GIVEN_UP);
         assert_eq!(

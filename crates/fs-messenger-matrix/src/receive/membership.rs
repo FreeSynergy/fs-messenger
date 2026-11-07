@@ -59,6 +59,29 @@ pub(crate) struct Step {
     pub(crate) becomes: Known,
 }
 
+/// A read of the timeline's past: from where `/messages` can start (the whole answer was cut: its
+/// end; else the start of the timeline) down to `to`. `always` reads even if the server did not
+/// say `limited`. `None` if there is nowhere to start from.
+fn fill(seen: &Seen<'_>, room: &str, next: &str, to: Option<&str>, always: bool) -> Option<Gap> {
+    let from = if seen.cut {
+        next
+    } else if always || seen.limited {
+        seen.prev_batch?
+    } else {
+        return None;
+    };
+    Some(Gap::new(room.into(), from.into(), to.map(Into::into)))
+}
+
+/// The question "did we ever join in (`since`, `next`]?".
+fn ask(room: &str, since: Option<&str>, next: &str) -> Gap {
+    let mut gap = Gap::new(room.into(), next.into(), since.map(Into::into));
+    gap.check = Some(CheckOf {
+        origin: next.into(),
+    });
+    gap
+}
+
 /// The one decision table. `since` is what the answer was asked from, `next` its `next_batch`.
 pub(crate) fn step(
     known: &Known,
@@ -67,15 +90,65 @@ pub(crate) fn step(
     since: Option<&str>,
     next: &str,
 ) -> Step {
-    let _ = (known, seen, room, since, next);
-    unimplemented!("membership::step")
+    let at = |p: Option<&str>| Known::Away {
+        at: p.map(Into::into),
+    };
+    let moves = |deliver, read, check, becomes| Step {
+        deliver,
+        read,
+        check,
+        becomes,
+    };
+    match (known, seen.section) {
+        (Known::Unknown, Section::Join) => {
+            let read = fill(seen, room, next, None, true);
+            moves(true, read, None, Known::Member)
+        }
+        (Known::Unknown, Section::Leave) if seen.own_join => {
+            let read = fill(seen, room, next, None, true);
+            moves(true, read, None, at(since))
+        }
+        (Known::Unknown, _) => moves(false, None, Some(ask(room, since, next)), Known::Unknown),
+        (Known::Member, Section::Join) => {
+            let read = fill(seen, room, next, since, false);
+            moves(true, read, None, Known::Member)
+        }
+        (Known::Member, Section::Leave) => {
+            let read = fill(seen, room, next, since, false);
+            moves(true, read, None, at(since))
+        }
+        (Known::Member, Section::Invite | Section::Knock) => {
+            let read = Gap::new(room.into(), next.into(), since.map(Into::into));
+            moves(false, Some(read), None, at(since))
+        }
+        (Known::Away { at: back }, Section::Join) => {
+            let read = fill(seen, room, next, back.as_deref(), true);
+            moves(true, read, None, Known::Member)
+        }
+        (Known::Away { at: back }, Section::Leave) if seen.own_join => {
+            let read = fill(seen, room, next, back.as_deref(), true);
+            moves(true, read, None, known.clone())
+        }
+        (Known::Away { .. }, _) => moves(false, None, Some(ask(room, since, next)), known.clone()),
+    }
 }
 
-/// A check found an own join: the gap to read now and the state afterwards.
+/// A check found an own join: the gap to read now and the state afterwards. The read starts where
+/// the check began (`origin`) and ends at the start of the room if the room was never known, at the
+/// point of the earlier leave if it was.
 pub(crate) fn after_check(known: &Known, check: &Gap) -> (Gap, Known) {
-    let _: Option<&CheckOf> = check.check.as_ref();
-    let _ = known;
-    unimplemented!("membership::after_check")
+    let origin = check.check.as_ref().map_or(&check.from, |c| &c.origin);
+    let (to, becomes) = match known {
+        Known::Unknown => (
+            None,
+            Known::Away {
+                at: check.to.clone(),
+            },
+        ),
+        Known::Away { at } => (at.clone(), known.clone()),
+        Known::Member => (check.to.clone(), Known::Member),
+    };
+    (Gap::new(check.room.clone(), origin.clone(), to), becomes)
 }
 
 #[cfg(test)]

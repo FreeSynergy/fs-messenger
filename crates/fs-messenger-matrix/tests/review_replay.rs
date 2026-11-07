@@ -9,8 +9,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use fs_messenger_core::Provider;
 use review_common::support::server::{Reply, Server};
 use review_common::{
-    USER, answer, cursor_json, error, ids, is_room, is_sdk_sync, login, ordinary, own_event, page,
-    plain, provider, room_id, syncs_after, timeline,
+    answer, cursor_json, error, ids, is_room, is_sdk_sync, login, ordinary, own_event, page, plain,
+    provider, room_id, syncs_after, timeline,
 };
 use serde_json::json;
 
@@ -77,12 +77,12 @@ async fn an_unchanged_left_room_is_not_read_by_a_replay() {
     let broken = Arc::new(AtomicBool::new(true));
     let flag = broken.clone();
     let server = Server::start(move |path| {
-        let rooms = |section: &str, event: serde_json::Value| {
+        let rooms = |section: &str, event: serde_json::Value, prev: Option<&str>| {
             let all: serde_json::Map<_, _> = (0..30)
                 .map(|i| {
                     (
                         room_id(&format!("c{i}")),
-                        timeline(&[event.clone()], false, Some("pc")),
+                        timeline(&[event.clone()], false, prev),
                     )
                 })
                 .collect();
@@ -92,23 +92,29 @@ async fn an_unchanged_left_room_is_not_read_by_a_replay() {
             p if p.ends_with("/login") => login(),
             p if p.contains("since=s2") => answer("s3", &json!({})),
             p if p.contains("since=s1") => {
-                let mut rooms = rooms("leave", own_event("$out", "leave", Some("join")));
+                let mut rooms = rooms(
+                    "leave",
+                    own_event("$out", "leave", Some("join")),
+                    Some("pc"),
+                );
                 let b = timeline(&[plain("$b1", "hi")], false, Some("pb"));
                 rooms["join"] = json!({room_id("b"): b});
                 answer("s2", &rooms)
             }
-            p if p.contains("/sync") => answer("s1", &rooms("join", plain("$c1", "hi"))),
+            p if p.contains("/sync") => answer("s1", &rooms("join", plain("$c1", "hi"), None)),
             p if p.contains("/messages") && is_room(p, "b") && flag.load(Ordering::SeqCst) => {
                 error(500, "M_UNKNOWN")
             }
             p if p.contains("/messages") && is_room(p, "b") => page(&[plain("$b0", "before")]),
-            p if p.contains("/messages") => error(500, "M_UNKNOWN"),
+            // The first reading of each room (fetch 1) is an ordinary one.
+            p if p.contains("/messages") => page(&[]),
             p => ordinary(p),
         }
     })
     .await;
     let provider = provider(&server).await;
     let one = provider.fetch(None).await.unwrap();
+    let after_first = server.heard().len();
     assert!(
         provider.fetch(one.next.as_ref()).await.is_err(),
         "fetch 2 fails"
@@ -119,6 +125,7 @@ async fn an_unchanged_left_room_is_not_read_by_a_replay() {
     let read: Vec<_> = server
         .heard()
         .into_iter()
+        .skip(after_first)
         .map(|(p, _)| p)
         .filter(|p| p.contains("/messages") && !is_room(p, "b"))
         .collect();

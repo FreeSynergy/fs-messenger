@@ -100,17 +100,35 @@ impl MatrixCursor {
     }
 
     /// What this room is to the cursor.
-    #[allow(dead_code)] // a shell until the implementation
     pub(crate) fn known(&self, room: &str) -> Known {
-        let _ = room;
-        unimplemented!("MatrixCursor::known")
+        if self.rooms.iter().any(|r| r == room) {
+            Known::Member
+        } else if let Some(away) = self.away.iter().find(|a| a.room == room) {
+            Known::Away {
+                at: away.at.clone(),
+            }
+        } else {
+            Known::Unknown
+        }
     }
 
-    #[allow(dead_code)] // a shell until the implementation
-    /// Set what this room is, within the bounds of the cursor.
+    /// Set what this room is. A room is in one list only. The away list is bounded: the oldest go
+    /// first and are unknown again, which can only mean reading more later.
     pub(crate) fn become_(&mut self, room: &str, known: Known) {
-        let _ = (room, known);
-        unimplemented!("MatrixCursor::become_")
+        self.rooms.retain(|r| r != room);
+        self.away.retain(|a| a.room != room);
+        match known {
+            Known::Unknown => {}
+            Known::Member => self.rooms.push(room.to_owned()),
+            Known::Away { at } => {
+                self.away.push(Away {
+                    room: room.to_owned(),
+                    at,
+                });
+                let over = self.away.len().saturating_sub(MAX_AWAY);
+                self.away.drain(..over);
+            }
+        }
     }
 
     pub(crate) fn write(&self) -> Result<ProviderCursor, MatrixError> {

@@ -1,7 +1,8 @@
 //! Seventh review, finding 1: a room the account joined and left within one `/sync` answer, in an
 //! answer the SDK took and the fetch then lost (any failure after the SDK, one or several), must
-//! still bring what it said. And a left room is read down to the cursor's position when replayed,
-//! never from its start at every retry. A raw server, not Matrix.
+//! still bring what it said. The answer shows the own join (without it the room would not count as
+//! accepted, see `review_checks`). After a fetch that went through, the room is not read from its
+//! start again. A raw server, not Matrix.
 
 mod review_common;
 
@@ -12,15 +13,15 @@ use fs_messenger_core::{FetchBatch, Provider, ProviderCursor};
 use fs_messenger_matrix::{MatrixProvider, Password};
 use review_common::support::server::{Reply, Server};
 use review_common::{
-    account, answer, error, is_room, login, ordinary, own_membership, page, plain, room_id,
-    support, timeline,
+    account, answer, error, is_room, login, ordinary, own_event, page, plain, room_id, support,
+    timeline,
 };
 use serde_json::json;
 
 /// Fetch 1 (`s1`) knows nothing. Fetch 2 (`s1` to `s2`) brings `!b` joined, and `!a` only under
 /// `leave`: joined and left in that stretch, `$a1` and the leave in its timeline. While `b_broken`
 /// is set `/messages` of `!b` answers 500 (the SDK retries a 500 by itself, so a flag, not a count);
-/// the same for the replay of `!a` (`from=s2&to=s1`) and `a_broken`.
+/// the same for the reading of `!a` from its start (`from=pa`) and `a_broken`.
 fn server_for(
     b_broken: Arc<AtomicBool>,
     a_broken: Arc<AtomicBool>,
@@ -31,13 +32,20 @@ fn server_for(
         p if p.contains("since=s3") || p.contains("since=s9") => answer("s9", &json!({})),
         p if p.contains("since=s1") => {
             let b = timeline(&[plain("$b1", "hi")], false, Some("pb"));
-            let events = [plain("$a1", "said"), own_membership("$out", "leave")];
+            let events = [
+                own_event("$aj", "join", Some("invite")),
+                plain("$a1", "said"),
+                own_event("$out", "leave", Some("join")),
+            ];
             let a = timeline(&events, false, Some("pa"));
             let rooms = json!({"join": {room_id("b"): b}, "leave": {room_id("a"): a}});
             answer("s2", &rooms)
         }
         p if p.contains("/sync") => answer("s1", &json!({})),
         p if p.contains("/messages") && is_room(p, "a") && p.contains("from=pa") => {
+            if a_broken.load(Ordering::SeqCst) {
+                return error(500, "M_UNKNOWN");
+            }
             page(&[plain("$a0", "before the join")])
         }
         p if p.contains("/messages") && is_room(p, "a") && p.contains("to=s1") => {
@@ -173,23 +181,40 @@ async fn a_failure_while_replaying_the_left_room_itself_loses_nothing() {
 }
 
 #[tokio::test]
-async fn a_left_room_is_met_from_its_start_once_and_never_again_at_a_retry() {
+async fn a_left_room_is_met_from_its_start_only_in_failed_attempts_never_after_a_successful_one() {
     let lost = start().await;
     lost.b.store(true, Ordering::SeqCst);
-    for n in 0..6 {
-        if n == 3 {
-            lost.b.store(false, Ordering::SeqCst);
-        }
+    for _ in 0..3 {
         let _ = lost.provider.fetch(lost.cursor.as_ref()).await;
     }
-    // The fetch that met `!a` plans its start (`from=pa`) once per attempt that got that far; the
-    // replays that follow must bound `!a` by the cursor (`to=s1`) and must not read from its start.
-    let from_start: Vec<_> = lost
-        .server
-        .heard()
-        .into_iter()
-        .filter(|(p, _)| p.contains("/messages") && is_room(p, "a"))
-        .filter(|(p, _)| !p.contains("to=") && !p.contains("from=pa"))
-        .collect();
-    assert!(from_start.is_empty(), "read from the start: {from_start:?}");
+    lost.b.store(false, Ordering::SeqCst);
+    // The attempts that failed each began the room again (`from=pa`): the cursor was never moved.
+    // The first fetch that goes through, with its cursor kept, reads it once more and no later one does.
+    let mut seen = Vec::new();
+    let first = lost.provider.fetch(lost.cursor.as_ref()).await.unwrap();
+    seen.extend(ids(&first));
+    let mut cursor = first.next;
+    let reads = |lost: &Lost| {
+        let heard = lost.server.heard().into_iter().map(|(p, _)| p);
+        let asked =
+            |p: &String| p.contains("/messages") && is_room(p, "a") && p.contains("from=pa");
+        heard.filter(asked).count()
+    };
+    let after_first = reads(&lost);
+    for _ in 0..3 {
+        let batch = lost.provider.fetch(cursor.as_ref()).await.unwrap();
+        seen.extend(ids(&batch));
+        cursor = batch.next;
+    }
+    assert_eq!(
+        reads(&lost),
+        after_first,
+        "read from the start after a fetch that went through"
+    );
+    for want in ["$a1", "$a0"] {
+        assert!(
+            seen.iter().any(|i| i.contains(want)),
+            "{want} lost: {seen:?}"
+        );
+    }
 }

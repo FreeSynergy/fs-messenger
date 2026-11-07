@@ -3,18 +3,42 @@
 //! Pattern: Specification: `is_own_join` is a pure predicate over an event's JSON; `any_own_join`
 //! combines it by "any" over several events. Combining different predicates is not used.
 
-/// Whether this event is the account's own join: `m.room.member`, `membership` `join`, and both
-/// `sender` and `state_key` are the account. A profile change (join to join) counts; an invitation
-/// or a join someone else sent does not.
+use serde_json::Value;
+
+/// Whether this event shows that the account joined the room itself: `m.room.member` whose `sender`
+/// and `state_key` are the account, and either `membership` is `join` (a profile change counts), or it
+/// is a `leave` whose `unsigned.prev_content` says `join` (our own leave proves the join before it; a
+/// homeserver shows an invited-again account that leave, not the join). An invitation, a declined
+/// invitation (`leave` after `invite`), a knock, a kick (sent by someone else) and a join someone
+/// else sent do not count. The `unsigned` part is the account's own homeserver's: the same trust as
+/// the `join` section of its `/sync`.
 pub(crate) fn is_own_join(own: &str, json: &str) -> bool {
-    let _ = (own, json);
-    unimplemented!("evidence::is_own_join")
+    let Ok(event) = serde_json::from_str::<Value>(json) else {
+        return false;
+    };
+    let text = |path: &[&str]| {
+        let mut at = &event;
+        for step in path {
+            at = at.get(step)?;
+        }
+        at.as_str()
+    };
+    if text(&["type"]) != Some("m.room.member")
+        || text(&["sender"]) != Some(own)
+        || text(&["state_key"]) != Some(own)
+    {
+        return false;
+    }
+    match text(&["content", "membership"]) {
+        Some("join") => true,
+        Some("leave") => text(&["unsigned", "prev_content", "membership"]) == Some("join"),
+        _ => false,
+    }
 }
 
 /// Whether any of these events is the account's own join.
 pub(crate) fn any_own_join<'a>(own: &str, jsons: impl IntoIterator<Item = &'a str>) -> bool {
-    let _ = (own, jsons);
-    unimplemented!("evidence::any_own_join")
+    jsons.into_iter().any(|json| is_own_join(own, json))
 }
 
 #[cfg(test)]

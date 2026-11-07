@@ -8,16 +8,13 @@
 
 mod adapter;
 mod alias;
-#[allow(dead_code)] // a shell until the implementation
 mod apply;
 mod cursor;
 mod event;
-#[allow(dead_code)] // a shell until the implementation
 mod evidence;
 mod gaps;
 mod given_up;
 mod ids;
-#[allow(dead_code)] // a shell until the implementation
 mod membership;
 mod pending;
 
@@ -26,7 +23,8 @@ pub use adapter::{SCHEME_ROOM, UNDECRYPTED_MARK};
 pub use alias::{EventAlias, SCHEME_EVENT};
 pub(crate) use cursor::{Gap, MatrixCursor};
 pub(crate) use event::parse;
+pub(crate) use evidence::any_own_join;
+pub(crate) use given_up::Why;
 pub(crate) use ids::{conversation_of, room_of};
-#[allow(unused_imports)] // a shell until the implementation
-pub(crate) use membership::{Known, Section, Seen, Step};
+pub(crate) use membership::{Section, after_check};
 pub(crate) use pending::Pending;

@@ -4,9 +4,7 @@
 //! rules).
 
 mod account;
-#[allow(dead_code)] // a shell until the implementation
 mod answer;
-#[allow(dead_code)] // a shell until the implementation
 mod check;
 mod connect;
 mod convert;
@@ -16,14 +14,11 @@ mod fetch;
 mod history;
 mod matrix_provider;
 mod plan;
-#[allow(dead_code)] // a shell until the implementation
 mod raw_sync;
-mod replay;
 mod rooms;
 mod send;
 
 pub use account::MatrixAccount;
-#[allow(unused_imports)] // a shell until the implementation
-pub(crate) use answer::{Answer, RoomAnswer};
+pub(crate) use answer::Answer;
 pub use matrix_provider::MatrixProvider;
 pub use rooms::Invite;

@@ -8,6 +8,7 @@
 //! This relies on the list holding a room's gaps oldest first, which is the order they are planned in.
 
 use super::cursor::{Gap, MatrixCursor};
+use super::given_up::Why;
 
 /// Checks ("did we ever join?") in all, at most; one per room. A flood of invitations is named, not kept.
 pub(crate) const MAX_CHECKS: usize = 64;
@@ -17,13 +18,19 @@ pub(crate) const MAX_GAPS_PER_ROOM: usize = 8;
 
 impl MatrixCursor {
     /// Read this later, unless that is already planned or an open gap of the room ends where this
-    /// one starts (the two become one).
+    /// one starts (the two become one). A check is kept apart: see `plan_check`.
     pub(crate) fn plan_gap(&mut self, gap: Gap) {
+        if gap.check.is_some() {
+            self.plan_check(gap);
+            return;
+        }
         if self.gaps.contains(&gap) {
             return;
         }
         let touching = gap.to.as_ref().and_then(|to| {
-            let same = |g: &&mut Gap| g.room == gap.room && g.from == *to && g.skip == 0;
+            let same = |g: &&mut Gap| {
+                g.room == gap.room && g.check.is_none() && g.from == *to && g.skip == 0
+            };
             self.gaps.iter_mut().find(same)
         });
         if let Some(old) = touching {
@@ -32,7 +39,7 @@ impl MatrixCursor {
         }
         let room = gap.room.clone();
         self.gaps.push(gap);
-        let of_room = |g: &Gap| g.room == room;
+        let of_room = |g: &Gap| g.room == room && g.check.is_none();
         while self.gaps.iter().filter(|g| of_room(g)).count() > MAX_GAPS_PER_ROOM {
             let mut at = (0..self.gaps.len()).filter(|i| of_room(&self.gaps[*i]));
             let (older, newer) = (at.next().unwrap_or(0), at.next().unwrap_or(0));
@@ -41,6 +48,36 @@ impl MatrixCursor {
             kept.from = newer.from;
             kept.skip = newer.skip;
         }
+    }
+
+    /// Plan this gap if there is one.
+    pub(crate) fn plan_gap_if(&mut self, gap: Option<Gap>) {
+        if let Some(gap) = gap {
+            self.plan_gap(gap);
+        }
+    }
+
+    /// A room has at most one check: it asks about the whole stretch from the newest start to the
+    /// oldest end. At most [`MAX_CHECKS`] in all; past that the oldest is given up by name.
+    fn plan_check(&mut self, gap: Gap) {
+        let open = self
+            .gaps
+            .iter_mut()
+            .find(|g| g.room == gap.room && g.check.is_some());
+        if let Some(old) = open {
+            old.from = gap.from;
+            old.check = gap.check;
+            old.skip = 0;
+            return;
+        }
+        let is_check = |g: &Gap| g.check.is_some();
+        if self.gaps.iter().filter(|g| is_check(g)).count() >= MAX_CHECKS {
+            if let Some(oldest) = self.gaps.iter().position(is_check) {
+                let dropped = self.gaps.remove(oldest);
+                self.give_up(dropped, Why::Overflow);
+            }
+        }
+        self.gaps.push(gap);
     }
 }
 

@@ -112,7 +112,7 @@ async fn the_same_after_a_failed_fetch() {
 }
 
 #[tokio::test]
-async fn the_room_leaves_the_list_so_that_a_join_reads_it_as_new() {
+async fn the_room_moves_from_the_list_to_away_so_that_a_join_reads_it_to_the_leave() {
     let server = server_for("invite", false, said_while_away).await;
     let provider = provider(&server).await;
     let one = provider.fetch(None).await.unwrap();
@@ -127,6 +127,11 @@ async fn the_room_leaves_the_list_so_that_a_join_reads_it_as_new() {
         !cursor["rooms"].to_string().contains("!a:x.test"),
         "{cursor}"
     );
+    assert_eq!(
+        cursor["away"],
+        json!([{"room": "!a:x.test", "at": "s1"}]),
+        "{cursor}"
+    );
 }
 
 #[tokio::test]
@@ -138,18 +143,24 @@ async fn a_room_never_known_is_not_read_for_an_invitation() {
             &json!({"invite": {room_id("c"): {"invite_state": {"events": []}}}}),
         ),
         p if p.contains("/sync") => answer("s1", &json!({})),
+        p if review_common::is_check(p) => page(&[]),
         p => ordinary(p),
     })
     .await;
     let provider = provider(&server).await;
     let one = provider.fetch(None).await.unwrap();
     provider.fetch(one.next.as_ref()).await.unwrap();
-    let asked = server
+    // Only the check (the account's own membership events); nothing of the room is read.
+    let asked: Vec<_> = server
         .heard()
         .into_iter()
-        .filter(|(p, _)| p.contains("/messages"))
-        .count();
-    assert_eq!(asked, 0);
+        .map(|(p, _)| p)
+        .filter(|p| p.contains("/messages"))
+        .collect();
+    assert!(
+        asked.iter().all(|p| review_common::is_check(p)),
+        "{asked:?}"
+    );
 }
 
 #[tokio::test]

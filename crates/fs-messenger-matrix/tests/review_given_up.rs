@@ -32,25 +32,29 @@ async fn a_gap_in_an_unknown_room_is_named_when_it_is_given_up() {
     assert_eq!(after.get("gaps"), None, "nothing is left to read");
     assert_eq!(
         after["given_up"],
-        json!([{"room": "!gone:x.test", "from": "t9", "to": "t1"}]),
+        json!([{"room": "!gone:x.test", "from": "t9", "to": "t1", "why": "unknown_room"}]),
         "{after}"
     );
 }
 
 /// Every sync brings the same limited room (`prev_batch` set) so that a gap is planned again each
 /// fetch; `/messages` of it is refused.
-fn refusing(rooms: usize) -> impl Fn(&str) -> Reply + Send + Sync + 'static {
+fn refusing(rooms: usize, again: bool) -> impl Fn(&str) -> Reply + Send + Sync + 'static {
+    let syncs = std::sync::atomic::AtomicUsize::new(0);
     move |path| match path {
         p if p.ends_with("/login") => login(),
         p if p.contains("/sync") => {
-            let all: serde_json::Map<_, _> = (0..rooms)
+            let n = syncs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            // With `again` every answer brings the rooms (and so their gaps) anew; else only the first.
+            let count = if again || n == 0 { rooms } else { 0 };
+            let all: serde_json::Map<_, _> = (0..count)
                 .map(|i| {
                     let t = review_common::timeline(&[], true, Some("pf"));
                     (review_common::room_id(&format!("f{i}")), t)
                 })
                 .collect();
-            let n = if p.contains("since=") { "s9" } else { "s1" };
-            review_common::answer(n, &json!({"join": all}))
+            // The SDK drops an answer whose `next_batch` it has seen: every answer has its own.
+            review_common::answer(&format!("s{n}"), &json!({"join": all}))
         }
         p if p.contains("/messages") => review_common::error(403, "M_FORBIDDEN"),
         p => ordinary(p),
@@ -59,7 +63,7 @@ fn refusing(rooms: usize) -> impl Fn(&str) -> Reply + Send + Sync + 'static {
 
 #[tokio::test]
 async fn forbidden_is_named_once_per_room() {
-    let server = Server::start(refusing(1)).await;
+    let server = Server::start(refusing(1, true)).await;
     let store = support::fresh_store().await;
     let provider = MatrixProvider::login(account(&server), &Password::new("pw"), store)
         .await
@@ -79,7 +83,7 @@ async fn forbidden_is_named_once_per_room() {
 
 #[tokio::test]
 async fn forty_forbidden_rooms_are_named_up_to_the_bound() {
-    let server = Server::start(refusing(40)).await;
+    let server = Server::start(refusing(40, false)).await;
     let store = support::fresh_store().await;
     let provider = MatrixProvider::login(account(&server), &Password::new("pw"), store)
         .await

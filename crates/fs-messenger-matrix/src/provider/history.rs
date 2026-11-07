@@ -1,4 +1,4 @@
-//! Reading what `/sync` did not bring: a limited timeline, a newly joined room, a replay.
+//! Reading what `/sync` did not bring: a limited timeline, a newly joined room, a replay, a return.
 //!
 //! Pattern: Adapter, part of `MatrixProvider` (the type is spread over the files of this folder): reading `/messages` for the gaps the cursor holds.
 //! Reads the pages of `/messages`, resumable: where it stands is in the cursor. One fetch reads a
@@ -10,7 +10,7 @@ use matrix_sdk::ruma::{OwnedRoomId, RoomId, UInt};
 
 use super::MatrixProvider;
 use crate::error::{MatrixError, Result};
-use crate::receive::MatrixCursor;
+use crate::receive::{MatrixCursor, Why};
 
 /// Events read through `/messages` in one fetch, and pages. Reaching the events limit means real
 /// progress and says `more`; reaching the pages limit first means the pages were small, which is what
@@ -46,11 +46,16 @@ impl MatrixProvider {
                 // Nothing can read it: the SDK does not know the room (left and forgotten, or its
                 // store was lost). Not removed in silence.
                 if let Some(gap) = cursor.gaps.pop() {
-                    cursor.give_up(gap, "the room is not known any more");
+                    cursor.give_up(gap, Why::UnknownRoom);
                 }
                 continue;
             };
             pages += 1;
+            if gap.check.is_some() {
+                // A question, not a read: nothing of it is delivered, and it costs a page.
+                empty += usize::from(self.work_check(cursor, &room, gap).await?);
+                continue;
+            }
             let mut options = MessagesOptions::backward().from(gap.from.as_str());
             options.to = gap.to;
             options.limit = UInt::from(PAGE);
@@ -61,7 +66,7 @@ impl MatrixProvider {
                 // error may pass and fails the fetch, with the gap kept.
                 Err(MatrixError::Forbidden(_)) => {
                     if let Some(gap) = cursor.gaps.pop() {
-                        cursor.give_up(gap, "the server answered M_FORBIDDEN");
+                        cursor.give_up(gap, Why::Forbidden);
                     }
                     continue;
                 }
