@@ -4,10 +4,12 @@
 //! call has a time limit and is asked once; no answer in time reads as unreadable, and unreadable
 //! reads as stopped. A stop that could not be written is laid over every read, and a task of its own
 //! keeps trying to write it until it has, each try in a task of its own so that a repository that
-//! panics ends that try only: nobody has to call anything for that.
+//! panics ends that try only: nobody has to call anything for that. Also RAII / Guard: the flag that says
+//! "a retry task runs" is cleared by `Drop` of a guard the task holds, so a task lost with its runtime
+//! does not leave it set for ever.
 
-use std::sync::PoisonError;
 use std::sync::atomic::Ordering;
+use std::sync::{PoisonError, Weak};
 use std::time::Duration;
 
 use tokio::sync::MutexGuard;
@@ -31,6 +33,18 @@ pub(crate) enum View {
     Corrupt(String),
     /// A state.
     Doc(Box<GuardDoc>),
+}
+
+/// Held by the retry task. Whatever ends the task, also the end of its runtime, clears the flag, so
+/// the next stop or `check` on another runtime starts a new one.
+struct RetryRunning(Weak<GuardEngine>);
+
+impl Drop for RetryRunning {
+    fn drop(&mut self) {
+        if let Some(engine) = self.0.upgrade() {
+            engine.retrying.store(false, Ordering::SeqCst);
+        }
+    }
 }
 
 impl GuardEngine {
@@ -168,6 +182,7 @@ impl GuardEngine {
             return;
         }
         let me = self.me.clone();
+        let running = RetryRunning(self.me.clone());
         let every = self.config.stop_retry;
         handle.spawn(async move {
             loop {
@@ -179,7 +194,7 @@ impl GuardEngine {
                 let attempt = engine.clone();
                 let _ = tokio::spawn(async move { attempt.try_write_stop().await }).await;
                 if engine.unsaved_mark().is_none() {
-                    engine.retrying.store(false, Ordering::SeqCst);
+                    drop(running);
                     // A stop that came in between has seen `retrying` set.
                     engine.ensure_retry();
                     return;
