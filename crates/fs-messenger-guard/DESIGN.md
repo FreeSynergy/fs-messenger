@@ -17,6 +17,7 @@ The AI guard of FreeSynergy.Messenger: invitation, release, brake, emergency sto
 | `StopPermission`: `OwnerOnly`. Per group: `Unsupported` | done for one owner |
 | Activity log without secrets, out of reach of undo | done |
 | `sender_kind`: `SenderLookup` over the guard's invited list | done, **provisional**: `fs-people` pins `fs-store` v0.2.0, this repo v0.3.0, so it cannot be a dependency |
+| Review of 2026-11-07: three races of the stop, each reproduced by a test first and then fixed: (1) a stop behind a slow `reopen` gave up on the lock after 4 s and the `reopen` then cleared marker, latch and mark (`tests/stop_wins_reopen.rs`); (2) between the end of that `reopen` and the stop's write `check` read "Open" and the way in for agents let a message through (same file); (3) `Allow` came after slow steps (log, save, display) with the last look before them, for a class release and for a used approval (`tests/stop_last_look.rs`). Fixed with a stop count, a clear that is atomic with its check, a marker put back by the retry task, and a last look right before `Allow` | done |
 | Ratings, trust levels through third parties, MCP, ACP, RPC, GUI, model providers | **not built**; see below |
 
 ### Not built
@@ -67,7 +68,8 @@ Call (`CallStage`, shown as `ToolCallState`):
 | `api.rs` | Strategy, interface segregation | a tool layer holds `dyn Gate` and has no `Guard` method |
 | `state/*` | State + Specification | all rules as pure functions on a copy; the engine writes the whole result or nothing |
 | `repo/traits.rs`, `repo/turso.rs` | Repository, Adapter | one opaque record, one log; whatever comes back is checked |
-| `engine/*` | Facade, Template method | fixed order of each operation, which is the guarantee |
+| `engine/*` | Facade | fixed order of each operation, which is the guarantee; no trait with default methods, so no Template method |
+| `engine/store_access.rs` | Facade over the repository | time limits and fail-shut around `GuardRepository`; not a Decorator, as the trait is not implemented again |
 | `engine/wiring.rs` | Adapter | the core's hooks over the engine, without a cycle |
 | `table.rs` | Registry | capability to rule; becomes schema annotations |
 | `risk.rs` | Specification | the brake in one place |
@@ -77,7 +79,7 @@ Call (`CallStage`, shown as `ToolCallState`):
 | `enrol.rs` | Capability object | only `open` hands it out |
 | `log.rs` | Adapter | a small event to a log-only activity |
 | core: `guard_hook.rs` | Strategy | the core knows the traits, not this crate |
-| core: `repo/guard_port.rs`, `guard_note.rs`, `guard_turns.rs` | Capability object, Adapter, Template method | one port, once; engine calls; providers in their own tasks |
+| core: `repo/guard_port.rs`, `guard_note.rs`, `guard_turns.rs` | Capability object, Adapter, Facade | one port, once; engine calls; providers in their own tasks |
 
 ## Decisions
 
@@ -88,7 +90,7 @@ field("FreeSynergy.Messenger guard device proof v1") field(engine identity) fiel
 count(arguments) field(argument)... field(nonce)
 ```
 
-`method` is `invite`, `release`, `revoke`, `stop`, `reopen`, `decide`, `addDevice`, `removeDevice`. Arguments: `invite`, `revoke`: profile. `release`: profile, risk by its contract name. `stop`, `reopen`: none. `decide`: message id, tool call id, option id, digest, revision as 8 big-endian bytes, nonce empty: `ToolCallDecision` has no nonce. `addDevice`, `removeDevice`: person, key in lowercase hex. The signer is a field beyond what the contract lists, so that a key shared by two persons cannot be replayed between them. The engine identity is 32 random bytes in the state: `GuardEngine::engine_identity`.
+`method` is `invite`, `release`, `revoke`, `uninvite`, `stop`, `reopen`, `decide`, `addDevice`, `removeDevice`. Arguments: `invite`, `revoke`, `uninvite`: profile. `release`: profile, risk by its contract name. `stop`, `reopen`: none. `decide`: message id, tool call id, option id, digest, revision as 8 big-endian bytes, nonce empty: `ToolCallDecision` has no nonce. `addDevice`, `removeDevice`: person, key in lowercase hex. The signer is a field beyond what the contract lists, so that a key shared by two persons cannot be replayed between them. The engine identity is 32 random bytes in the state: `GuardEngine::engine_identity`.
 
 **Digest.** SHA-256 over length-prefixed (8-byte) fields: fixed context `FreeSynergy.Messenger tool call digest v1`, caller, tool name, then `input` and the canonical form, or the explicit `no input`. Canonical form is ours, not RFC 8785: keys sorted by bytes at every level, no white space, values as `serde_json` writes them. `1` and `1.0` differ, which at worst asks again. Keys are sorted by hand, because `serde_json`'s `preserve_order` can be turned on by any crate in a build. A duplicate key is refused: two programs can read it differently.
 
@@ -106,9 +108,11 @@ count(arguments) field(argument)... field(nonce)
 
 **Retries (provisional numbers).** A bare `input_required` can be retried at once. Per question: not sooner than 2 seconds (`RetryTooSoon`), at most 60 retries (`RetriesExhausted`). Both refuse without writing, and the question stays open for the person; an approved call always goes through. Per participant: at most 16 open questions (`TooManyQuestions`), and the same arguments reuse the same question. The counter is in memory, so a restart starts it afresh. A question lives 10 minutes, an unused `allowOnce` 2 minutes. Arguments over 64 KiB are refused: what is shown is never cut off, so what cannot be shown whole cannot be asked about. Characters that hide or reorder text are shown escaped, and refused in names.
 
-**Who may do what.** `invite`: any enrolled person, and that person is who gets asked. `release`, `revoke`: who invited it, or the owner. `stop`, `reopen`: `StopPermission`; `OwnerOnly` takes the person who owns the program, from `GuardConfig::owner`. Pulling is ADR 0054's permission setting. A signer marked as AI is refused before any key is looked at, and before `StopPermission`, so no implementation can let one through (ADR 0056). `invite` and `release` are refused while stopped. A stop on a state that cannot be read has no key to check against: it needs no proof there, as it can only end work.
+**Who may do what.** `invite`: any enrolled person, and that person is who gets asked. `release`, `revoke`, `uninvite`: who invited it, or the owner. `stop`, `reopen`: `StopPermission`; `OwnerOnly` takes the person who owns the program, from `GuardConfig::owner`. Pulling is ADR 0054's permission setting. A signer marked as AI is refused before any key is looked at, and before `StopPermission`, so no implementation can let one through (ADR 0056). `invite` and `release` are refused while stopped. A stop on a state that cannot be read has no key to check against: it needs no proof there, as it can only end work.
 
 **First key (provisional).** `GuardEngine::open` hands back `LocalEnrolment` and nothing else can make one. The program keeps it with its local console. Whoever holds it at the first start puts in the owner's key: trust on first use, on the local machine. After that a key needs a proof by a key of the owner. An invited AI gets no key, and a person with a key cannot be invited. `recover_damaged` only works on a state that was read and is not one; never because the store did not answer.
+
+**A stop beats a reopen that began earlier.** `reopen` takes a stop count when it is asked for. Latch, mark and marker go only if no stop came in since, checked and cleared in one step under the mark's lock; otherwise nothing is cleared, the marker is put back, and `reopen` answers `Stopped`. A stop that waits for the lock never gives up silently: the retry task writes marker and store as soon as the lock is free. The latch is never down between a stop's arrival and its write.
 
 **Order of a stop.** Who pulls it, latch, write, settle what is shown, providers, log. `check` sees the latch without a lock. Providers run in tasks of their own with 5 seconds together; one that hangs or panics reports `NoAnswer`. The latch is set again under the lock, so a `reopen` that began first cannot swallow the stop.
 
@@ -123,6 +127,8 @@ That is why ADR 0056 requires **agents in their own sandbox under their own syst
 Also: `Verdict::Allow` is a snapshot. What has started is not called back, except through the provider's `stop_turns`. A write that fails during a stop is lost if the program dies before a later write works, and the report says so. The clock comes from the system: set back, it keeps a question alive for longer.
 
 ## Open points
+
+0. The pattern of `engine/*`: no pattern of coding.md section 2 describes it better than Facade, and the `signed_change` helper in `engine/admin.rs` is none of them (a plain function with a closure). No new pattern is invented; the owner may name one.
 
 1. The table's form, and its classes, are a proposal for the owner: `account.add` and `rule.write` as `actsForPerson` are my reading.
 2. `CONTRACT_VERSION` stays `0.3` until draft 0.4 is tagged, though `ToolCallDecision.revision` and the problem types already mirror 0.4.
