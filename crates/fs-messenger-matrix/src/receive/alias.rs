@@ -1,8 +1,8 @@
 //! [`EventAlias`]: the id under which the core knows a Matrix event.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). A
-//! plain value with two public fields and no invariant to keep, so no Newtype. An event id alone is
-//! not enough: the core replaces a placeholder by alias without comparing conversation or sender,
+//! Pattern: Value object: small, immutable (private fields), compared and hashed by value, and written
+//! to and read from one text without loss (`id`, `parse`). Any pair is valid, so there is nothing to
+//! refuse on construction. An event id alone is not enough: the core replaces a placeholder by alias without comparing conversation or sender,
 //! and a hostile homeserver can send into room B an event carrying the id of a placeholder from room
 //! A. So the alias holds the room as well, and every place that builds, reads or looks up an alias
 //! goes through this type.
@@ -21,10 +21,8 @@ const SEPARATOR: char = '/';
 /// in an id, and the core, which refuses `|` and control characters in an id, keeps the alias.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EventAlias {
-    /// The room the event was sent into.
-    pub room: String,
-    /// The event's id.
-    pub event: String,
+    room: String,
+    event: String,
 }
 
 fn escape(part: &str) -> String {
@@ -67,6 +65,18 @@ impl EventAlias {
             room: room.into(),
             event: event.into(),
         }
+    }
+
+    /// The room the event was sent into.
+    #[must_use]
+    pub fn room(&self) -> &str {
+        &self.room
+    }
+
+    /// The event's id.
+    #[must_use]
+    pub fn event(&self) -> &str {
+        &self.event
     }
 
     /// The text part of the alias, without the scheme.

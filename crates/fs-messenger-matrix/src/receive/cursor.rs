@@ -1,8 +1,8 @@
 //! [`MatrixCursor`]: what the core keeps for this provider.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). A
-//! plain value: the `/sync` token, and the events still waiting for a key. Being one value, the
-//! waiting list moves with the batch: the core stores both, or neither, and a crash replays.
+//! Pattern: Memento: a snapshot of where this provider stands (the `/sync` token, the rooms read, the
+//! open gaps, the events waiting for a key). The core keeps it as opaque text (`ProviderCursor`) and
+//! hands it back to be read from. Being one value, the waiting list moves with the batch: the core stores both, or neither, and a crash replays.
 
 use fs_messenger_core::ProviderCursor;
 use serde::{Deserialize, Serialize};

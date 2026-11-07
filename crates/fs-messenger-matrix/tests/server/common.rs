@@ -183,5 +183,6 @@ pub fn event_id_of(m: &Message) -> String {
     known
         .find_map(EventAlias::from_external)
         .expect("an event alias")
-        .event
+        .event()
+        .to_owned()
 }

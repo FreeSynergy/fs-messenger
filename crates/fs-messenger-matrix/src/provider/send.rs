@@ -33,8 +33,8 @@ fn sdk(e: impl Into<MatrixError>) -> CoreError {
 fn parent_of(message: &Outgoing, room: &Room) -> Option<OwnedEventId> {
     let ids = message.in_reply_to().iter();
     ids.filter_map(|a: &ExternalId| EventAlias::from_external(a))
-        .filter(|alias| alias.room == room.room_id().as_str())
-        .find_map(|alias| alias.event.as_str().try_into().ok())
+        .filter(|alias| alias.room() == room.room_id().as_str())
+        .find_map(|alias| alias.event().try_into().ok())
 }
 
 impl MatrixProvider {

@@ -1,6 +1,7 @@
 //! [`MatrixAccount`]: where an account lives, and what may be refused before anything connects.
 //!
-//! Pattern: none (no pattern of the coding rules, section 2, fits; see DESIGN.md, open points). A
+//! Pattern: Specification, for `check_homeserver`: a pure predicate over the account's URL, whose
+//! refusals (scheme, user info, backslash, loopback) all have to hold. A
 //! token over plain HTTP is readable on the way, so `http://` passes only for loopback: the local
 //! test server, or a tunnel. The URL may hold a password (user info), so it is named in no error and
 //! `Debug` shows only its origin.
