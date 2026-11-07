@@ -33,7 +33,7 @@ pub enum MatrixError {
 fn is_forbidden(e: Option<&matrix_sdk::ruma::api::error::Error>) -> bool {
     use matrix_sdk::ruma::api::error::ErrorKind;
     e.is_some_and(|e| {
-        e.status_code.as_u16() == 403 && matches!(e.error_kind(), Some(ErrorKind::Forbidden { .. }))
+        e.status_code.as_u16() == 403 && matches!(e.error_kind(), Some(ErrorKind::Forbidden))
     })
 }
 

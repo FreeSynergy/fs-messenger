@@ -4,7 +4,7 @@ The Matrix provider of FreeSynergy.Messenger: one account behind the core's `Pro
 
 ## State
 
-Version 0.4.0 (the workspace's), not tagged (v0.3.0 is the core's tag on main; matrix has none). Tested against the pinned tuwunel 1.9.4 only; see "Not verified".
+Version 0.4.0 (the workspace's) is not tagged (main is at v0.3.0). Tested against the pinned tuwunel 1.9.4 only; see "Not verified".
 
 | Area | State |
 |---|---|
