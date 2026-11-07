@@ -96,13 +96,17 @@ impl MailProvider {
         }
     }
 
-    /// Our own key: the stored one, or a new one, stored at once.
+    /// Our own keys: the stored v6 key, or a new one, stored at once; the v4 key beside it likewise
+    /// (`DESIGN.md`, "Older OpenPGP"). Answers the v6 key.
     pub async fn ensure_own_key(&self) -> Result<SecretCert, MailError> {
-        if let Some(key) = self.keys.own_key(&self.identity.address).await? {
-            return Ok(key);
-        }
-        let key = generate_key(&self.identity.address)?;
-        self.keys.put_own_key(&self.identity.address, &key).await?;
+        let key = if let Some(key) = self.keys.own_key(&self.identity.address).await? {
+            key
+        } else {
+            let key = generate_key(&self.identity.address)?;
+            self.keys.put_own_key(&self.identity.address, &key).await?;
+            key
+        };
+        self.own_legacy(&self.identity.address).await?;
         Ok(key)
     }
 
@@ -110,6 +114,16 @@ impl MailProvider {
     /// person should see. The core has no field for it (`DESIGN.md`).
     pub async fn peer(&self, address: &str) -> Result<Option<PeerKey>, MailError> {
         self.keys.peer(address).await
+    }
+
+    /// How a stored original was encrypted, read from its packets alone: `Method::Older` is what a
+    /// frontend shows as "older method". `None` for a mail that is not an OpenPGP message of one of
+    /// the two legal kinds. Bridge until the core has a field for it (`DESIGN.md`, "Wanted from core").
+    pub fn method_of_original(original: &[u8]) -> Option<crate::openpgp::Method> {
+        match crate::mime::classify(original) {
+            crate::mime::Shape::Encrypted { armored } => crate::openpgp::method_of(&armored),
+            _ => None,
+        }
     }
 
     /// A person brought the key of `address` herself, out of band. Replaces what was held. The first

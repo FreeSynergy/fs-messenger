@@ -133,6 +133,7 @@ fn a_revoked_held_key_proves_no_rotation() {
     let next = generate_key("a@x").unwrap().public();
     let proof = Offer {
         cert: next,
+        companion: None,
         proven_by_known_key: true,
     };
     assert_eq!(

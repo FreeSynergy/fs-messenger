@@ -61,20 +61,20 @@ impl ReadMail {
     }
 }
 
-pub(super) fn offer_of(values: &[Vec<u8>], sender: &str) -> Option<PublicCert> {
+pub(super) fn offer_of(values: &[Vec<u8>], sender: &str) -> Option<Offer> {
     let header = offered_for(values.iter().map(Vec::as_slice), sender)?;
-    PublicCert::from_binary(&header.keydata).ok()
+    Offer::from_header(&header)
 }
 
 pub(super) fn offering(
     sender: &str,
-    cert: Option<PublicCert>,
+    offer: Option<Offer>,
     proven: bool,
 ) -> Option<(String, Offer)> {
-    cert.map(|cert| {
+    offer.map(|offer| {
         let offer = Offer {
-            cert,
             proven_by_known_key: proven,
+            ..offer
         };
         (sender.to_string(), offer)
     })
@@ -118,24 +118,39 @@ struct Reader {
 
 impl Reader {
     /// A held key that may not vouch any more (revoked, broken) counts as known and verifies nothing.
-    fn signers(&self, sender: &str, offers: &[Option<PublicCert>]) -> Result<Signers> {
+    fn signers(&self, sender: &str, offers: &[Option<Offer>]) -> Result<Signers> {
         let sender = normalise_address(sender);
         if sender == self.address {
-            let own = self.runtime.block_on(self.keys.own_key(&sender))?;
-            let certs = own.iter().map(SecretCert::public).collect();
+            let certs = self.own_keys()?.iter().map(SecretCert::public).collect();
             return Ok(Signers { certs, known: true });
         }
         if let Some(peer) = self.runtime.block_on(self.keys.peer(&sender))? {
-            let cert = peer
-                .certificate()
-                .map_err(|e| MailError::Keys(e.to_string()))?;
-            let certs = Some(cert).filter(may_vouch).into_iter().collect();
+            // Either of her two keys may have signed: she signs with the one she encrypted with.
+            let keys_err = |e: MailError| MailError::Keys(e.to_string());
+            let mut certs = vec![peer.certificate().map_err(keys_err)?];
+            if let Some(legacy) = &peer.legacy {
+                certs.push(legacy.certificate().map_err(keys_err)?);
+            }
+            certs.retain(may_vouch);
             return Ok(Signers { certs, known: true });
         }
         Ok(Signers {
-            certs: offers.iter().flatten().cloned().collect(),
+            certs: offers
+                .iter()
+                .flatten()
+                .flat_map(Offer::certs)
+                .cloned()
+                .collect(),
             known: false,
         })
+    }
+
+    /// Our own secret keys: the v6 key and the v4 key beside it.
+    fn own_keys(&self) -> Result<Vec<SecretCert>> {
+        let keys = &self.keys;
+        let modern = self.runtime.block_on(keys.own_key(&self.address))?;
+        let legacy = self.runtime.block_on(keys.own_legacy_key(&self.address))?;
+        Ok(modern.into_iter().chain(legacy).collect())
     }
 
     fn read(&self, raw: &[u8], outer: MailFields) -> Result<ReadMail> {
@@ -166,11 +181,7 @@ impl Reader {
     }
 
     fn read_encrypted(&self, outer: MailFields, armored: &[u8]) -> Result<ReadMail> {
-        let own: Vec<SecretCert> = self
-            .runtime
-            .block_on(self.keys.own_key(&self.address))?
-            .into_iter()
-            .collect();
+        let own = self.own_keys()?;
         let mut seen = None;
         let opened = decrypt_selecting(armored, &own, self.limit, |payload| {
             let covered = Covered::of(payload);

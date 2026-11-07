@@ -81,6 +81,7 @@ async fn a_real_revocation_in_a_padded_form_is_taken_without_the_padding() {
     // The padding is on the very signature that is new, and on another one.
     let offer = Offer {
         cert: padded_subkey_signature(&padded(&revoked, "real", 40_000), 0, 40_000),
+        companion: None,
         proven_by_known_key: false,
     };
     let decision = learner.learn(ALICE, &offer).await.unwrap();
@@ -158,6 +159,7 @@ async fn a_revocation_keeps_no_padding_of_an_embedded_signature() {
     let learner = KeyLearner::new(bob.keys.clone());
     let offer = Offer {
         cert: form,
+        companion: None,
         proven_by_known_key: false,
     };
     learner.learn(ALICE, &offer).await.unwrap();
