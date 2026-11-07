@@ -111,3 +111,70 @@ pub fn page(events: &[Value]) -> Reply {
 pub fn error(status: u16, code: &str) -> Reply {
     Reply::json(status, &json!({"errcode": code, "error": "no"}))
 }
+
+/// The account's own membership event, sent by the account itself. `previous` is the membership it
+/// replaced (`unsigned.prev_content`), as a homeserver adds it.
+pub fn own_event(id: &str, membership: &str, previous: Option<&str>) -> Value {
+    let mut event = json!({"type":"m.room.member","event_id":id,"sender":USER,"origin_server_ts":900,
+           "state_key":USER,"content":{"membership":membership}});
+    if let Some(previous) = previous {
+        event["unsigned"] = json!({"prev_content": {"membership": previous}});
+    }
+    event
+}
+
+/// Whether this request is a check: `/messages` filtered to member events.
+pub fn is_check(path: &str) -> bool {
+    path.contains("/messages") && path.contains("m.room.member")
+}
+
+/// A provider logged in at this server, on a store of its own.
+pub async fn provider(server: &Server) -> MatrixProvider {
+    let store = support::fresh_store().await;
+    MatrixProvider::login(
+        account(server),
+        &fs_messenger_matrix::Password::new("pw"),
+        store,
+    )
+    .await
+    .unwrap()
+}
+
+/// The event ids of a batch.
+pub fn ids(batch: &fs_messenger_core::FetchBatch) -> Vec<String> {
+    batch
+        .messages
+        .iter()
+        .map(|m| m.aliases[0].id.clone())
+        .collect()
+}
+
+/// The cursor of a batch as JSON.
+pub fn cursor_json(batch: &fs_messenger_core::FetchBatch) -> Value {
+    serde_json::from_str(&batch.next.as_ref().unwrap().0).unwrap()
+}
+
+/// The paths of the `/messages` requests the server heard for room `!<name>:x.test`, checks and reads.
+pub fn messages_for(server: &Server, name: &str) -> Vec<String> {
+    let heard = server.heard().into_iter().map(|(p, _)| p);
+    heard
+        .filter(|p| p.contains("/messages") && is_room(p, name))
+        .collect()
+}
+
+/// Of these, the reads that are not checks and have no end (`to=`): from the start of the room.
+pub fn from_the_start(paths: &[String]) -> Vec<&String> {
+    let open = |p: &&String| !is_check(p) && !p.contains("to=");
+    paths.iter().filter(open).collect()
+}
+
+/// The paths of `/sync` requests heard from the `n`-th request on.
+pub fn syncs_after(server: &Server, skip: usize) -> Vec<String> {
+    let heard = server.heard().into_iter().map(|(p, _)| p);
+    heard.skip(skip).filter(|p| p.contains("/sync")).collect()
+}
+
+/// Whether this `/sync` is the SDK's own (it asks for `use_state_after`); ours does not.
+pub fn is_sdk_sync(path: &str) -> bool {
+    path.contains("use_state_after")
+}

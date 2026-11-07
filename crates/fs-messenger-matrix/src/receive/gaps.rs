@@ -9,6 +9,9 @@
 
 use super::cursor::{Gap, MatrixCursor};
 
+/// Checks ("did we ever join?") in all, at most; one per room. A flood of invitations is named, not kept.
+pub(crate) const MAX_CHECKS: usize = 64;
+
 /// Open gaps per room, at most. Eight is a guess; an honest server needs one or two.
 pub(crate) const MAX_GAPS_PER_ROOM: usize = 8;
 
@@ -89,6 +92,50 @@ mod tests {
             mine[MAX_GAPS_PER_ROOM - 1].from,
             "f49",
             "the newest start stays"
+        );
+    }
+
+    fn check(room: &str, origin: &str, to: Option<&str>) -> Gap {
+        let mut g = gap(room, origin, to);
+        g.check = Some(super::super::cursor::CheckOf {
+            origin: origin.into(),
+        });
+        g
+    }
+
+    #[test]
+    fn a_room_has_one_check_with_the_newest_origin_and_the_oldest_end() {
+        let mut c = MatrixCursor::default();
+        c.plan_gap(check("!r:x", "n1", Some("p1")));
+        c.plan_gap(check("!r:x", "n2", Some("p2")));
+        assert_eq!(c.gaps, [check("!r:x", "n2", Some("p1"))]);
+    }
+
+    #[test]
+    fn a_check_and_a_read_never_join() {
+        let mut c = MatrixCursor::default();
+        c.plan_gap(gap("!r:x", "b", Some("a")));
+        c.plan_gap(check("!r:x", "c", Some("b")));
+        assert_eq!(c.gaps.len(), 2);
+        c.plan_gap(gap("!r:x", "d", Some("c")));
+        assert_eq!(c.gaps.len(), 3, "a read does not join a check either");
+    }
+
+    #[test]
+    fn checks_are_bounded_and_the_overflow_is_named() {
+        let mut c = MatrixCursor::default();
+        for i in 0..MAX_CHECKS + 10 {
+            c.plan_gap(check(&format!("!r{i}:x"), "n", Some("p")));
+        }
+        assert_eq!(
+            c.gaps.iter().filter(|g| g.check.is_some()).count(),
+            MAX_CHECKS
+        );
+        assert_eq!(c.given_up.len(), 10, "{:?}", c.given_up);
+        assert!(
+            c.given_up
+                .iter()
+                .all(|g| g.why == super::super::given_up::Why::Overflow)
         );
     }
 }

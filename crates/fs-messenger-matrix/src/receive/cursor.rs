@@ -8,9 +8,14 @@
 use fs_messenger_core::ProviderCursor;
 use serde::{Deserialize, Serialize};
 
+use super::given_up::GivenUp;
 use super::membership::Known;
 use super::pending::Pending;
 use crate::error::{MatrixError, where_json_failed};
+
+/// Rooms we were in once and are not now, at most; the oldest go first and become unknown again,
+/// which can only mean reading more later, never losing.
+pub(crate) const MAX_AWAY: usize = 256;
 
 /// Events still to be read through `/messages`, newest first.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,7 +86,7 @@ pub(crate) struct MatrixCursor {
     /// Gaps nothing can read any more (the room is unknown to the SDK, or the server says `M_FORBIDDEN`), named so that it is known what
     /// was left unread: room and tokens, never content. The newest [`MAX_GIVEN_UP`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) given_up: Vec<Gap>,
+    pub(crate) given_up: Vec<GivenUp>,
 }
 
 impl MatrixCursor {
@@ -142,5 +147,52 @@ mod tests {
     #[test]
     fn a_foreign_cursor_is_an_error_not_a_new_start() {
         assert!(MatrixCursor::read(Some(&ProviderCursor("nonsense".into()))).is_err());
+    }
+
+    #[test]
+    fn a_cursor_of_the_earlier_format_still_reads_and_writes_the_same() {
+        let old = r#"{"since":"s1","pending":[{"room":"!r:x","event":"$a","raw":"{}"}],"rooms":["!r:x"],"gaps":[{"room":"!r:x","from":"t2","to":"t1","skip":3}],"given_up":[{"room":"!g:x","from":"t9","to":"t1"}]}"#;
+        let c = MatrixCursor::read(Some(&ProviderCursor(old.into()))).unwrap();
+        assert!(c.away.is_empty());
+        assert_eq!(c.gaps[0].check, None);
+        assert_eq!(c.given_up[0].times, 1);
+        let again = serde_json::to_string(&c).unwrap();
+        let (a, b): (serde_json::Value, serde_json::Value) = (
+            serde_json::from_str(old).unwrap(),
+            serde_json::from_str(&again).unwrap(),
+        );
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn a_room_is_member_away_or_unknown_and_the_away_list_is_bounded() {
+        let mut c = MatrixCursor::default();
+        assert_eq!(c.known("!r:x"), Known::Unknown);
+        c.become_("!r:x", Known::Member);
+        assert_eq!(c.known("!r:x"), Known::Member);
+        c.become_(
+            "!r:x",
+            Known::Away {
+                at: Some("p".into()),
+            },
+        );
+        assert_eq!(
+            c.known("!r:x"),
+            Known::Away {
+                at: Some("p".into())
+            }
+        );
+        assert!(c.rooms.is_empty(), "a room is in one list only");
+        for i in 0..2 * MAX_AWAY {
+            c.become_(&format!("!a{i}:x"), Known::Away { at: None });
+        }
+        assert_eq!(c.away.len(), MAX_AWAY);
+        assert_eq!(c.known("!r:x"), Known::Unknown, "the oldest went first");
+        assert_eq!(
+            c.known(&format!("!a{}:x", 2 * MAX_AWAY - 1)),
+            Known::Away { at: None }
+        );
+        c.become_("!a499:x", Known::Unknown);
+        assert_eq!(c.known("!a499:x"), Known::Unknown);
     }
 }

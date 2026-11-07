@@ -77,3 +77,7 @@ pub(crate) fn after_check(known: &Known, check: &Gap) -> (Gap, Known) {
     let _ = known;
     unimplemented!("membership::after_check")
 }
+
+#[cfg(test)]
+#[path = "membership_tests.rs"]
+mod tests;

@@ -21,6 +21,7 @@ mod banned;
 mod ciphertext;
 mod kicked;
 mod late_key;
+mod membership;
 mod plain;
 mod rejoin;
 mod replay;

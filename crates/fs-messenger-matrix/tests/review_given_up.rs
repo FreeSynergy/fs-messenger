@@ -36,3 +36,63 @@ async fn a_gap_in_an_unknown_room_is_named_when_it_is_given_up() {
         "{after}"
     );
 }
+
+/// Every sync brings the same limited room (`prev_batch` set) so that a gap is planned again each
+/// fetch; `/messages` of it is refused.
+fn refusing(rooms: usize) -> impl Fn(&str) -> Reply + Send + Sync + 'static {
+    move |path| match path {
+        p if p.ends_with("/login") => login(),
+        p if p.contains("/sync") => {
+            let all: serde_json::Map<_, _> = (0..rooms)
+                .map(|i| {
+                    let t = review_common::timeline(&[], true, Some("pf"));
+                    (review_common::room_id(&format!("f{i}")), t)
+                })
+                .collect();
+            let n = if p.contains("since=") { "s9" } else { "s1" };
+            review_common::answer(n, &json!({"join": all}))
+        }
+        p if p.contains("/messages") => review_common::error(403, "M_FORBIDDEN"),
+        p => ordinary(p),
+    }
+}
+
+#[tokio::test]
+async fn forbidden_is_named_once_per_room() {
+    let server = Server::start(refusing(1)).await;
+    let store = support::fresh_store().await;
+    let provider = MatrixProvider::login(account(&server), &Password::new("pw"), store)
+        .await
+        .unwrap();
+    let mut cursor = None;
+    let mut last = Value::Null;
+    for _ in 0..5 {
+        let batch = provider.fetch(cursor.as_ref()).await.unwrap();
+        last = serde_json::from_str(&batch.next.as_ref().unwrap().0).unwrap();
+        cursor = batch.next;
+    }
+    let named = last["given_up"].as_array().unwrap();
+    assert_eq!(named.len(), 1, "{last}");
+    assert_eq!(named[0]["why"], "forbidden");
+    assert_eq!(named[0]["times"], 5, "{last}");
+}
+
+#[tokio::test]
+async fn forty_forbidden_rooms_are_named_up_to_the_bound() {
+    let server = Server::start(refusing(40)).await;
+    let store = support::fresh_store().await;
+    let provider = MatrixProvider::login(account(&server), &Password::new("pw"), store)
+        .await
+        .unwrap();
+    let mut cursor = None;
+    let mut last = Value::Null;
+    for _ in 0..4 {
+        let batch = provider.fetch(cursor.as_ref()).await.unwrap();
+        last = serde_json::from_str(&batch.next.as_ref().unwrap().0).unwrap();
+        cursor = batch.next;
+    }
+    let named = last["given_up"].as_array().unwrap();
+    assert_eq!(named.len(), 32, "{} named", named.len());
+    let rooms: std::collections::HashSet<_> = named.iter().map(|g| g["room"].to_string()).collect();
+    assert_eq!(rooms.len(), 32, "one entry per room");
+}
