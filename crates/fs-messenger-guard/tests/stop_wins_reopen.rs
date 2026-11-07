@@ -78,6 +78,7 @@ async fn nothing_gets_in_between_the_end_of_a_reopen_and_the_stop_that_came_duri
     r.faulty.go.notify_one();
     r.faulty.entered.notified().await;
     let way_in = r.engine.admit_message(AI).await;
+    let verdict = r.read_check().await;
     r.faulty.go.notify_one();
     let _ = reopening.await.unwrap();
     stopping.await.unwrap().unwrap();
@@ -85,5 +86,9 @@ async fn nothing_gets_in_between_the_end_of_a_reopen_and_the_stop_that_came_duri
         way_in,
         Err(Refusal::Stopped),
         "a participant's way in is shut once a stop has arrived"
+    );
+    assert!(
+        !matches!(verdict, Verdict::Allow(_)),
+        "a check between the end of the reopen and the write of the stop: {verdict:?}"
     );
 }
