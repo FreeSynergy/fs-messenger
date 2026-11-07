@@ -1,6 +1,6 @@
 //! One spelling of an identifier, for comparing.
 //!
-//! Pattern: none (no pattern of coding.md section 2 fits; reported to the strategy, DESIGN.md open point 0). One free function: `HTTPS://x/Ai` and `https://x/ai` must not be two participants:
+//! Pattern: none, allowed by section 2 (a single pure function): `HTTPS://x/Ai` and `https://x/ai` must not be two participants:
 //! one could be invited and the other sign. So everything the guard stores and compares goes through
 //! this: no surrounding space, lower case. It can only make two names one, which at worst refuses.
 

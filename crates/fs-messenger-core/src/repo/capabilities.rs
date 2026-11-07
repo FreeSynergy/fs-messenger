@@ -1,7 +1,7 @@
 //! What the store-backed program reports.
 //!
-//! Pattern: none (one function that fills a `Capabilities` report; there is no `build()`, so no
-//! Builder of coding.md section 2; DESIGN.md open point 0). The report of the provider rule (ADR 0045):
+//! Pattern: none, allowed by section 2 (a single function that fills a `Capabilities` report; there is no `build()`, so no
+//! Builder of coding.md section 2). The report of the provider rule (ADR 0045):
 //! what is missing says so, with why.
 
 use fs_interfaces::provider::Capabilities;

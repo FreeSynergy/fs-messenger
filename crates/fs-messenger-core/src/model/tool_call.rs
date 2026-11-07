@@ -1,6 +1,6 @@
 //! One action of an agent, shown in a message (ADR 0054). Stored data only in this version.
 //!
-//! Pattern: none (plain data types; DESIGN.md open point 0). Fail-safe defaults: unset `risk` is
+//! Pattern: none, allowed by section 2 (plain data). Fail-safe defaults: unset `risk` is
 //! `unknown`, unset `choice` is `refuse`, also for old records and for values a newer program wrote. What acts on them (release,
 //! brake, emergency stop) is the crate `fs-messenger-guard`.
 

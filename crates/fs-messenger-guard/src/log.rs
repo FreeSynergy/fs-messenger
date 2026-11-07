@@ -1,6 +1,6 @@
 //! What goes into the activity log, and how it reads back.
 //!
-//! Pattern: none (no pattern of coding.md section 2 fits; reported to the strategy, DESIGN.md open point 0). A plain data type for one small event, written as a log-only activity by `repo/turso.rs`. Log-only activities cannot be undone (the
+//! Pattern: none – verstößt gegen die none-Regel, an Strategie gemeldet, DESIGN.md Open point 0 (a data type for one small event, but with behaviour: `kind` maps event names onto AS2 kinds, `about` fills a field and returns the entry, `subject` parses the fixed id; not plain data, not one pure function, and not a Value object, which must be valid on construction). It is written as a log-only activity by `repo/turso.rs`. Log-only activities cannot be undone (the
 //! store's rule), and they sit on an id of their own, which holds no object. No secrets: no proof, no
 //! nonce, no key, no arguments, no digest. Refused attempts are not logged: a refusal changes nothing,
 //! and a caller could otherwise fill the log. Use of a class release is logged at most once a minute

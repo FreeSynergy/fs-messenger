@@ -1,7 +1,7 @@
 //! What a device signs. The encoding is fixed here and in `DESIGN.md`.
 //!
-//! Pattern: none (a method enum and several pure functions, more than section 2 allows for `none`; no
-//! pattern fits; reported to the strategy, DESIGN.md open point 0). Free functions (no `XBuilder::build`): one way to get from a request to bytes. Every field is written as
+//! Pattern: none – verstößt gegen die none-Regel, an Strategie gemeldet, DESIGN.md Open point 0 (a method enum and several pure functions, more than section 2 allows for `none`; no
+//! pattern fits). Free functions (no `XBuilder::build`): one way to get from a request to bytes. Every field is written as
 //! a 4-byte big-endian length and then its bytes, and the arguments have their count in front, so a
 //! byte cannot move from one field to the next, and `("ab", "c")` differs from `("a", "bc")`. The
 //! layout is: context, engine identity, method, signer, count, arguments ..., nonce.

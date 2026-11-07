@@ -1,6 +1,6 @@
 //! The contract's guard types, and what `check` answers. Names mirror `messenger.capnp` draft 0.4.
 //!
-//! Pattern: none (no pattern of coding.md section 2 fits; reported to the strategy, DESIGN.md open point 0). Plain data types. `GuardMode` reads as `Stopped` when unset or unrecognised, as the contract
+//! Pattern: none, allowed by section 2 (plain data; the two `Caller` constructors only fill fields). `GuardMode` reads as `Stopped` when unset or unrecognised, as the contract
 //! says. `Caller` and `Verdict` are not in the contract: they are the engine's inner entry.
 
 use std::time::Duration;

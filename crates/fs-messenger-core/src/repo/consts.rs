@@ -1,6 +1,6 @@
 //! Names used in the store: object types and index keys.
 //!
-//! Pattern: none (constants): the store layout in one place, see `DESIGN.md`.
+//! Pattern: none, allowed by section 2 (constants): the store layout in one place, see `DESIGN.md`.
 
 pub(super) const NOTE: &str = "Note";
 pub(super) const TOMBSTONE: &str = "Tombstone";

@@ -1,6 +1,6 @@
 //! [`TurnScope`]: which running agent turns a provider is asked to end.
 //!
-//! Pattern: none (a plain data type, DESIGN.md open point 0): what the guard hands a provider for `stop_turns`. It carries only what the
+//! Pattern: none, allowed by section 2 (plain data): what the guard hands a provider for `stop_turns`. It carries only what the
 //! provider issued itself, and gives no way back into the engine.
 
 use crate::model::ExternalId;

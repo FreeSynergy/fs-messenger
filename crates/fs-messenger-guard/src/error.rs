@@ -1,6 +1,6 @@
 //! Refusals and errors.
 //!
-//! Pattern: none (plain enums via `thiserror`; DESIGN.md open point 0). A [`Refusal`] means nothing changed, and names the rule.
+//! Pattern: none, allowed by section 2 (error lists via `thiserror`; `decision_problem` and `From` only rename a variant). A [`Refusal`] means nothing changed, and names the rule.
 //! A [`GuardError`] is about the rest: what is not built, and what the store did.
 
 use fs_interfaces::provider::Unsupported;

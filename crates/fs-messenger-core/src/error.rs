@@ -1,6 +1,6 @@
 //! Error type of the messenger core.
 //!
-//! Pattern: none (plain error enum via `thiserror`): one `Error` for every public operation. The
+//! Pattern: none, allowed by section 2 (error list via `thiserror`): one `Error` for every public operation. The
 //! refusal to send is a named variant, so no caller can mistake it for a transport problem.
 
 use fs_store::ObjectId;

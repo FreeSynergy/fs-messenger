@@ -4,7 +4,7 @@
 //! who wants to act goes through. [`Guard`] is what a person's device uses. [`GuardEngine`] is both.
 //! Tool layers get a `Gate`, never a `Guard`. See `DESIGN.md`.
 //!
-//! Pattern: none (declarations and re-exports only, as coding.md section 3 asks).
+//! Pattern: none, allowed by section 2 (declarations and re-exports only, as coding.md section 3 asks).
 
 #![deny(missing_docs)]
 #![warn(clippy::pedantic)]

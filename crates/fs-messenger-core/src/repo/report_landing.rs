@@ -1,7 +1,7 @@
 //! The one place where an agent's tool call is stored: a message that arrives with calls in it
 //! (`ingest_store.rs`) and a report on a stored message (`tool_calls.rs`) both go through here.
 //!
-//! Pattern: Facade: one entry that fixes the order "ask the guard, apply, write, ask again", so that no
+//! Pattern: Facade, doubtful (section 2: "one small type that hides a subsystem"; `land_reports` is a method on `Inner`, not a type of its own; DESIGN.md open point 0): one entry that fixes the order "ask the guard, apply, write, ask again", so that no
 //! way of storing a call can leave out a step. Also Strategy, through `EngineGuard::open_for_reports`:
 //! a report from a sender who is not known to be a person or plain software is kept as `cancelled`
 //! while the guard says it is not open (stopped, or cannot say). The core knows the trait, not the
