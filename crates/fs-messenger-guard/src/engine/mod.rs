@@ -8,6 +8,7 @@ mod marker;
 mod questions;
 mod stop;
 mod stop_conversation;
+mod stop_judge;
 mod store_access;
 mod wiring;
 

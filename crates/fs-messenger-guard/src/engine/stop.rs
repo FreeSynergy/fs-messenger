@@ -1,10 +1,11 @@
 //! The emergency stop.
 //!
 //! Pattern: Facade with a fixed order of steps, which is the guarantee. 1. Latch, before any read: no
-//! store can hold this up. 2. Judge the proof, within a time limit (`judge_wait`; past it the stop is one by nobody); a proof shown to be bad takes that
-//! latch back, and anything else leaves it. 3. Marker file, store, what is shown, the providers and
-//! the log, each as a task of its own: they go on if the caller walks away, and one that hangs or
-//! panics cannot hold up or take down another.
+//! store can hold this up. 2. Judge the proof (`stop_judge.rs`), within a time limit (`judge_wait`);
+//! past it the stop is one by nobody. A proof shown to be bad takes that latch back, and anything
+//! else leaves it. 3. Marker file, store, what is shown, the providers and the log, each as a task of
+//! its own: they go on if the caller walks away, and one that hangs or panics cannot hold up or take
+//! down another.
 //!
 //! A state that cannot be read holds no keys to check a proof against. It reads as stopped already, so
 //! such a pull goes on without a proof, and can do nothing but end work.
@@ -20,15 +21,11 @@ use super::core::GuardEngine;
 use super::marker;
 use super::store_access::View;
 use crate::error::{GuardError, Refusal};
-use crate::identity::id_key;
 use crate::log::GuardLogEntry;
 use crate::model::{GuardProof, StopReport};
-use crate::signed::Method;
-use crate::state::{ProofRequest, StopMark};
+use crate::state::StopMark;
 
 const ENGINE: &str = "urn:freesynergy:messenger:guard";
-/// Who a stop from the local console is by.
-pub(crate) const LOCAL_CONSOLE: &str = "urn:freesynergy:messenger:local-console";
 
 /// Wait for a task for so long. It goes on either way; the answer says what is known.
 async fn await_task<T>(task: JoinHandle<T>, wait: Duration) -> Result<T, String> {
@@ -40,74 +37,6 @@ async fn await_task<T>(task: JoinHandle<T>, wait: Duration) -> Result<T, String>
 }
 
 impl GuardEngine {
-    /// Who may pull it. Answers the mark, or why not. With no readable state there is no way to ask.
-    async fn judge(&self, proof: Option<&GuardProof>) -> Result<StopMark, Refusal> {
-        let at = self.clock.now();
-        let Some(proof) = proof else {
-            return Ok(StopMark {
-                by: LOCAL_CONSOLE.to_string(),
-                at,
-                used: None,
-            });
-        };
-        let View::Doc(doc) = self.view().await else {
-            return Ok(StopMark {
-                by: marker::NOBODY.to_string(),
-                at,
-                used: None,
-            });
-        };
-        // Verifier and permission are plain calls that may block: a thread of their own, so that
-        // the time limit of `judge_surely` can fire whatever they do.
-        let (verifier, permission) = (self.verifier.clone(), self.permission.clone());
-        let (owner, proof) = (self.config.owner.clone(), proof.clone());
-        let judged = tokio::task::spawn_blocking(move || {
-            let request = ProofRequest {
-                method: Method::Stop,
-                arguments: &[],
-            };
-            let used = doc.check_proof(verifier.as_ref(), &request, &proof)?;
-            let signer = id_key(&proof.signer);
-            if !permission.may_stop(&signer, &owner) {
-                return Err(Refusal::NotPermitted);
-            }
-            Ok(StopMark {
-                by: signer,
-                at,
-                used: Some(used),
-            })
-        });
-        // A panic there is a stop by nobody, like no answer in time.
-        judged.await.unwrap_or_else(|_| {
-            Ok(StopMark {
-                by: marker::NOBODY.to_string(),
-                at,
-                used: None,
-            })
-        })
-    }
-
-    /// `judge` in a task of its own, within `judge_wait`: a foreign verifier or permission that
-    /// panics or never answers must not end this stop, nor hold it up, before its marker is written.
-    /// What cannot be judged in time is a stop by nobody: fail-shut, as when the state cannot be read.
-    async fn judge_surely(
-        self: &Arc<Self>,
-        proof: Option<GuardProof>,
-    ) -> Result<StopMark, Refusal> {
-        let judge = self.clone();
-        let at = self.clock.now();
-        let task = tokio::spawn(async move { judge.judge(proof.as_ref()).await });
-        match timeout(self.config.judge_wait, task).await {
-            Ok(Ok(judged)) => judged,
-            // Panicked, or no answer in time.
-            _ => Ok(StopMark {
-                by: marker::NOBODY.to_string(),
-                at,
-                used: None,
-            }),
-        }
-    }
-
     /// With a proof, or without one from the local console: the caller can walk away from this. The
     /// latch is up before this awaits anything.
     pub(crate) async fn pull_stop(
