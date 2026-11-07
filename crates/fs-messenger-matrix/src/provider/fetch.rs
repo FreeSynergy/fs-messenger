@@ -139,7 +139,10 @@ impl MatrixProvider {
             }
             // A joined room the cursor does not know has not been read from its start: the fetch
             // that met it may have failed after the SDK took the answer. Its gap goes to the start.
-            let to = cursor.since.clone().filter(|_| !reads_to_start(state, known));
+            let to = cursor
+                .since
+                .clone()
+                .filter(|_| !reads_to_start(state, known));
             cursor.plan_gap(Gap::new(id.clone(), position.to_owned(), to));
             if !known {
                 cursor.rooms.push(id);

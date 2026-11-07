@@ -1,0 +1,195 @@
+//! Seventh review, finding 1: a room the account joined and left within one `/sync` answer, in an
+//! answer the SDK took and the fetch then lost (any failure after the SDK, one or several), must
+//! still bring what it said. And a left room is read down to the cursor's position when replayed,
+//! never from its start at every retry. A raw server, not Matrix.
+
+mod review_common;
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use fs_messenger_core::{FetchBatch, Provider, ProviderCursor};
+use fs_messenger_matrix::{MatrixProvider, Password};
+use review_common::support::server::{Reply, Server};
+use review_common::{
+    account, answer, error, is_room, login, ordinary, own_membership, page, plain, room_id,
+    support, timeline,
+};
+use serde_json::json;
+
+/// Fetch 1 (`s1`) knows nothing. Fetch 2 (`s1` to `s2`) brings `!b` joined, and `!a` only under
+/// `leave`: joined and left in that stretch, `$a1` and the leave in its timeline. While `b_broken`
+/// is set `/messages` of `!b` answers 500 (the SDK retries a 500 by itself, so a flag, not a count);
+/// the same for the replay of `!a` (`from=s2&to=s1`) and `a_broken`.
+fn server_for(
+    b_broken: Arc<AtomicBool>,
+    a_broken: Arc<AtomicBool>,
+) -> impl Fn(&str) -> Reply + Send + Sync + 'static {
+    move |path| match path {
+        p if p.ends_with("/login") => login(),
+        p if p.contains("since=s2") => answer("s3", &json!({})),
+        p if p.contains("since=s3") || p.contains("since=s9") => answer("s9", &json!({})),
+        p if p.contains("since=s1") => {
+            let b = timeline(&[plain("$b1", "hi")], false, Some("pb"));
+            let events = [plain("$a1", "said"), own_membership("$out", "leave")];
+            let a = timeline(&events, false, Some("pa"));
+            let rooms = json!({"join": {room_id("b"): b}, "leave": {room_id("a"): a}});
+            answer("s2", &rooms)
+        }
+        p if p.contains("/sync") => answer("s1", &json!({})),
+        p if p.contains("/messages") && is_room(p, "a") && p.contains("from=pa") => {
+            page(&[plain("$a0", "before the join")])
+        }
+        p if p.contains("/messages") && is_room(p, "a") && p.contains("to=s1") => {
+            if a_broken.load(Ordering::SeqCst) {
+                return error(500, "M_UNKNOWN");
+            }
+            page(&[plain("$a1", "said")])
+        }
+        p if p.contains("/messages") && is_room(p, "a") => page(&[plain("$a0", "from the start")]),
+        p if p.contains("/messages") && b_broken.load(Ordering::SeqCst) => error(500, "M_UNKNOWN"),
+        p if p.contains("/messages") => page(&[plain("$b1", "hi")]),
+        p => ordinary(p),
+    }
+}
+
+struct Lost {
+    server: Server,
+    provider: MatrixProvider,
+    b: Arc<AtomicBool>,
+    a: Arc<AtomicBool>,
+    cursor: Option<ProviderCursor>,
+}
+
+/// Fetch 1 is done; both flags are off.
+async fn start() -> Lost {
+    let (b, a) = (
+        Arc::new(AtomicBool::new(false)),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let server = Server::start(server_for(b.clone(), a.clone())).await;
+    let provider = provider(&server).await;
+    let cursor = provider.fetch(None).await.unwrap().next;
+    Lost {
+        server,
+        provider,
+        b,
+        a,
+        cursor,
+    }
+}
+
+impl Lost {
+    async fn fails(&self) {
+        let result = self.provider.fetch(self.cursor.as_ref()).await;
+        assert!(result.is_err(), "this fetch was to fail");
+    }
+}
+
+async fn provider(server: &Server) -> MatrixProvider {
+    let store = support::fresh_store().await;
+    MatrixProvider::login(account(server), &Password::new("pw"), store)
+        .await
+        .unwrap()
+}
+
+fn ids(batch: &FetchBatch) -> Vec<String> {
+    batch
+        .messages
+        .iter()
+        .map(|m| m.aliases[0].id.clone())
+        .collect()
+}
+
+/// Fetch until `$a1` has come, at most 6 times. Failing fetches are counted, not unwrapped.
+async fn until_a1(
+    provider: &MatrixProvider,
+    mut cursor: Option<ProviderCursor>,
+) -> (Vec<String>, usize) {
+    let (mut seen, mut failed) = (Vec::new(), 0);
+    for _ in 0..6 {
+        match provider.fetch(cursor.as_ref()).await {
+            Ok(batch) => {
+                seen.extend(ids(&batch));
+                cursor = batch.next;
+            }
+            Err(_) => failed += 1,
+        }
+        if seen.iter().any(|i| i.contains("$a1")) {
+            break;
+        }
+    }
+    (seen, failed)
+}
+
+#[tokio::test]
+async fn joined_and_left_in_one_answer_then_one_failed_fetch_loses_nothing() {
+    let lost = start().await;
+    lost.b.store(true, Ordering::SeqCst);
+    lost.fails().await;
+    lost.b.store(false, Ordering::SeqCst);
+    let (seen, _) = until_a1(&lost.provider, lost.cursor.clone()).await;
+    assert!(seen.iter().any(|i| i.contains("$a1")), "lost: {seen:?}");
+}
+
+#[tokio::test]
+async fn two_or_three_failed_fetches_in_a_row_lose_nothing() {
+    for failures in [2, 3] {
+        let lost = start().await;
+        lost.b.store(true, Ordering::SeqCst);
+        for _ in 0..failures {
+            lost.fails().await;
+        }
+        lost.b.store(false, Ordering::SeqCst);
+        let (seen, _) = until_a1(&lost.provider, lost.cursor.clone()).await;
+        assert!(
+            seen.iter().any(|i| i.contains("$a1")),
+            "{failures} failures, lost: {seen:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_cursor_the_core_did_not_keep_loses_nothing() {
+    // No failure at all: fetch 2 works, but its batch and cursor never reach the core's store.
+    let lost = start().await;
+    let _dropped = lost.provider.fetch(lost.cursor.as_ref()).await.unwrap();
+    let (seen, _) = until_a1(&lost.provider, lost.cursor.clone()).await;
+    assert!(seen.iter().any(|i| i.contains("$a1")), "lost: {seen:?}");
+}
+
+#[tokio::test]
+async fn a_failure_while_replaying_the_left_room_itself_loses_nothing() {
+    // `!b` fails once; then the replay of `!a` fails once; then all goes through.
+    let lost = start().await;
+    lost.b.store(true, Ordering::SeqCst);
+    lost.fails().await;
+    lost.b.store(false, Ordering::SeqCst);
+    lost.a.store(true, Ordering::SeqCst);
+    lost.fails().await;
+    lost.a.store(false, Ordering::SeqCst);
+    let (seen, _) = until_a1(&lost.provider, lost.cursor.clone()).await;
+    assert!(seen.iter().any(|i| i.contains("$a1")), "lost: {seen:?}");
+}
+
+#[tokio::test]
+async fn a_left_room_is_met_from_its_start_once_and_never_again_at_a_retry() {
+    let lost = start().await;
+    lost.b.store(true, Ordering::SeqCst);
+    for n in 0..6 {
+        if n == 3 {
+            lost.b.store(false, Ordering::SeqCst);
+        }
+        let _ = lost.provider.fetch(lost.cursor.as_ref()).await;
+    }
+    // The fetch that met `!a` plans its start (`from=pa`) once per attempt that got that far; the
+    // replays that follow must bound `!a` by the cursor (`to=s1`) and must not read from its start.
+    let from_start: Vec<_> = lost
+        .server
+        .heard()
+        .into_iter()
+        .filter(|(p, _)| p.contains("/messages") && is_room(p, "a"))
+        .filter(|(p, _)| !p.contains("to=") && !p.contains("from=pa"))
+        .collect();
+    assert!(from_start.is_empty(), "read from the start: {from_start:?}");
+}
