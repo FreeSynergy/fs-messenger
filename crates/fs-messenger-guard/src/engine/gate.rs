@@ -158,7 +158,7 @@ impl GuardEngine {
         };
         match doc.evaluate(&judged, now, &limits) {
             Evaluation::Refuse(refusal) => Verdict::Refuse(refusal),
-            Evaluation::AllowClass(risk) => {
+            Evaluation::AllowByRelease(risk) => {
                 // The log is slow, so the last look comes after it, right before `Allow`.
                 self.log_class_use(&profile, capability, risk).await;
                 if self.is_latched() {

@@ -32,7 +32,7 @@ pub(crate) struct Limits {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Evaluation {
     Refuse(Refusal),
-    AllowClass(ToolCallRisk),
+    AllowByRelease(ToolCallRisk),
     /// This call was approved for exactly these arguments: use it up.
     UseApproval(usize),
     /// A question for exactly these arguments stands.
@@ -105,7 +105,7 @@ impl GuardDoc {
         let sensitive = counts_as_marked(capability, sensitive);
         match self.standing(caller, capability, arguments.has_input(), sensitive) {
             Standing::Refused(refusal) => return Evaluation::Refuse(refusal),
-            Standing::Released(risk) => return Evaluation::AllowClass(risk),
+            Standing::Released(risk) => return Evaluation::AllowByRelease(risk),
             Standing::AsksEachTime => {}
         }
         if let Some(at) = held {
