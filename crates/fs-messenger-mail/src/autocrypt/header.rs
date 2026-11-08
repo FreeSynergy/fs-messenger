@@ -40,6 +40,10 @@ impl AutocryptHeader {
         let (mut address, mut keydata, mut prefers_mutual) = (None, None, false);
         let mut v6keydata = None;
         for attribute in text.split(';') {
+            // A trailing or doubled `;` (added by a relay) is not a broken attribute.
+            if attribute.trim().is_empty() {
+                continue;
+            }
             let (name, value) = attribute.split_once('=')?;
             match name.trim() {
                 "addr" => address = Some(normalise_address(value)),

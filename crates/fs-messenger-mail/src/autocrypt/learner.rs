@@ -109,7 +109,9 @@ impl KeyLearner {
         match (&decision, known) {
             (Decision::FirstSeen, _) => {
                 let mut peer = PeerKey::new(&address, &kept, KeySource::AutocryptFirstSeen, now)?;
-                peer.legacy = first_legacy(offer, now)?;
+                // No companion at first sight: nothing binds the v4 key to the v6 key, so a forger could
+                // pair a real v6 key with his own v4 key. It is learned from a later mail that the held
+                // key signed (`beside` with proof).
                 self.keys.put_peer(&peer).await?;
             }
             (Decision::Rotate, Some(old)) => {

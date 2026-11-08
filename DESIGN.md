@@ -211,3 +211,6 @@ Code:
 Feature `test-support`: `MessengerRepo::open`, off unless a build asks for it.
 
 `fs-objects` (git tag v0.3.0), `fs-interfaces` (git tag v0.27.0): `Capabilities`, `Unsupported`. `serde`, `serde_json`, `chrono`, `thiserror`, `async-trait`, `tokio`; dev: `tempfile`. No network crates in this crate. `scripts/test-servers` belongs to the connector work, not to this crate.
+
+## v4 beside v6: review of 3fabd82 (Thread M, 2026-11-08)
+Fixed: (1) a signature of the legacy v4 key verifies a mail but is no proof for an offer; only the held key in use proves (`Signers::proving`, `opened_mail`). (2) A first sight keeps the v6 key only; the v4 companion comes in later, with proof (`beside`). (5) A trailing `;` in an Autocrypt header is ignored. Open: (3) a peer who only sends `Older` mail is never learned as v6 and its legacy key never comes in with proof; (4) one v4-only reader puts the whole group on SEIPDv1, not yet shown to the person; (6) the real-GnuPG test (`interop_gnupg.rs`, deleted by this branch) is to be rewritten: import of our `keydata`, `gpg --decrypt` of an `Older` mail, signature check, a mixed group; and the Interoperability section above is out of date (it still says GnuPG cannot read our mail). No test yet for (1) by a forged mail signed with the legacy key.

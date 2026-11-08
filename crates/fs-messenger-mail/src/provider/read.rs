@@ -106,6 +106,10 @@ struct Signers {
     certs: Vec<PublicCert>,
     /// They were known before this mail. Otherwise it offered them itself, which proves nothing.
     known: bool,
+    /// The fingerprint of the held key in use (the v6 key): only a signature by it proves an offer. The
+    /// legacy v4 key beside it may sign, but must never vouch for a key (a weaker key must not rotate
+    /// the stronger one).
+    proving: Option<String>,
 }
 
 /// What the blocking part needs. Key lookups run on the runtime it was started from.
@@ -122,7 +126,11 @@ impl Reader {
         let sender = normalise_address(sender);
         if sender == self.address {
             let certs = self.own_keys()?.iter().map(SecretCert::public).collect();
-            return Ok(Signers { certs, known: true });
+            return Ok(Signers {
+                certs,
+                known: true,
+                proving: None,
+            });
         }
         if let Some(peer) = self.runtime.block_on(self.keys.peer(&sender))? {
             // Either of her two keys may have signed: she signs with the one she encrypted with.
@@ -132,7 +140,11 @@ impl Reader {
                 certs.push(legacy.certificate().map_err(keys_err)?);
             }
             certs.retain(may_vouch);
-            return Ok(Signers { certs, known: true });
+            return Ok(Signers {
+                certs,
+                known: true,
+                proving: Some(peer.fingerprint.clone()),
+            });
         }
         Ok(Signers {
             certs: offers
@@ -142,6 +154,7 @@ impl Reader {
                 .cloned()
                 .collect(),
             known: false,
+            proving: None,
         })
     }
 
@@ -210,7 +223,12 @@ impl Reader {
             (SignatureState::Valid { .. }, _) | (_, None) => combined,
             (_, Some((content, signature))) => verify_detached(signature, content, &signers.certs),
         };
-        Ok(opened_mail(outer, covered.fields, &state, signers.known))
+        Ok(opened_mail(
+            outer,
+            covered.fields,
+            &state,
+            (signers.known, signers.proving.as_deref()),
+        ))
     }
 }
 
