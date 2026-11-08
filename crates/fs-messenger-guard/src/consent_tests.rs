@@ -1,4 +1,6 @@
 //! Tests of the consent rule (ADR 0054, 4c).
+//!
+//! Pattern: none, tests only (they exercise the State machine of `consent.rs`).
 
 use super::*;
 
