@@ -4,7 +4,7 @@ mod support;
 
 use fs_messenger_matrix::store::{FsJournal, Journal, Op};
 use fs_objects::Query;
-use fs_objects::traits::ObjectQuery;
+use fs_objects::traits::UnloggedObjects;
 
 #[tokio::test]
 async fn a_long_journal_folds_and_loses_nothing() {

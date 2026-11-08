@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use fs_messenger_matrix::{MatrixAccount, MatrixProvider, Password};
 use fs_objects::ActivityFilter;
-use fs_objects::traits::{ActivityLog, ObjectQuery};
+use fs_objects::traits::{ActivityLog, UnloggedObjects};
 use matrix_sdk_crypto::decrypt_room_key_export;
 
 use crate::capture::captured;
