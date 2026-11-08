@@ -2,6 +2,8 @@
 //! for a header it does not cover, and a new key cannot vouch for itself.
 
 mod common;
+#[path = "common/older.rs"]
+mod older;
 
 use common::{Offline, person};
 use fs_messenger_core::{Encryption, Provider};
@@ -103,4 +105,24 @@ async fn the_known_key_vouching_inside_rotates() {
     let held = bob.provider.peer(ALICE).await.unwrap().unwrap();
     assert_eq!(held.fingerprint, next.fingerprint());
     assert!(held.candidate.is_none());
+}
+
+/// The key beside the key in use (v4) is held and may sign, but it cannot vouch for a new key: a weaker
+/// key must not rotate the stronger one. Twin of the test above, with the legacy key as the signer.
+#[tokio::test]
+async fn the_legacy_key_cannot_rotate_the_key_in_use() {
+    let (bob, alice, own, next) = setup().await;
+    let (legacy, _) = older::legacy(ALICE, true, false);
+    let mut peer = bob.keys.peer(ALICE).await.unwrap().unwrap();
+    peer.legacy = Some(fs_messenger_mail::keys::LegacyKey::new(&legacy.public()).unwrap());
+    bob.keys.put_peer(&peer).await.unwrap();
+    let header = format_header(ALICE, &next.public()).unwrap();
+    deliver(&bob, mail(&legacy, &own, &header, "")).await;
+    let held = bob.provider.peer(ALICE).await.unwrap().unwrap();
+    assert_eq!(
+        held.fingerprint,
+        alice.fingerprint(),
+        "the key in use stays"
+    );
+    assert_eq!(held.candidate.unwrap().fingerprint, next.fingerprint());
 }
