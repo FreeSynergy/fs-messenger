@@ -194,11 +194,19 @@ async fn a_peer_with_both_keys_gets_the_v4_one_in_an_older_message() {
     let me = person(US).await;
     let (a6, a4) = (generate_key(A).unwrap(), legacy(A, true, false).0);
     let b = legacy(B, true, false).0;
-    // First sight of the pair, in one header.
+    // First sight of the pair, in one header: only the v6 key is kept.
     let header = format_header_with(A, &a4.public(), Some(&a6.public())).unwrap();
     let wire =
         format!("From: {A}\r\nTo: {US}\r\nSubject: x\r\nAutocrypt: {header}\r\n\r\nplain\r\n");
     deliver(&me, wire.as_bytes()).await;
+    let held = me.provider.peer(A).await.unwrap().unwrap();
+    assert_eq!(held.fingerprint, a6.fingerprint());
+    // Nothing binds the v4 key of a first sight to the v6 key beside it: not held yet.
+    assert!(held.legacy.is_none(), "no companion without proof");
+    // It comes in later with proof (a mail the held key signed); here the store is set directly.
+    let mut peer = me.keys.peer(A).await.unwrap().unwrap();
+    peer.legacy = Some(fs_messenger_mail::keys::LegacyKey::new(&a4.public()).unwrap());
+    me.keys.put_peer(&peer).await.unwrap();
     let held = me.provider.peer(A).await.unwrap().unwrap();
     assert_eq!(held.fingerprint, a6.fingerprint());
     assert_eq!(held.legacy.as_ref().unwrap().fingerprint, a4.fingerprint());
