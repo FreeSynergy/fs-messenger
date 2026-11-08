@@ -9,8 +9,8 @@ rust-version = "1.96"
 
 [dependencies]
 fs-messenger-core = { path = "../fs-messenger-core" }
-fs-objects = { git = "https://github.com/FreeSynergy/fs-objects", tag = "v0.5.0" }
-fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.27.0" }
+fs-objects = { git = "https://github.com/FreeSynergy/fs-objects", tag = "v0.0.1" }
+fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.0.1" }
 
 # Pinned exactly: 0.x, and its store traits change with every release. No default features: those
 # bring SQLite (C) and aws-lc (C). TLS is rustls with ring, as in fs-messenger-mail.
