@@ -152,3 +152,22 @@ async fn one_message_that_cannot_go_does_not_hold_the_others_back() {
     // With nothing else to send, the failure is reported.
     assert!(repo.release_due(11).await.is_err());
 }
+
+#[tokio::test]
+async fn a_send_that_came_back_as_a_downgrade_is_listed_as_unsure_and_never_sent_again() {
+    let (repo, _) = setup().await;
+    let (_, provider) = with_provider(&repo, Encryption::Mls, &["bob@example.org"]).await;
+    provider.receipt.lock().unwrap().encryption = Encryption::TransportOnly;
+    let draft = saved_draft(&repo, "weaker than planned").await;
+    let held = repo.hold(draft, 0, Some(1)).await.unwrap();
+    assert!(repo.held_unsure().await.unwrap().is_empty());
+    let got = repo.release_due(10).await;
+    assert!(
+        matches!(got, Ok(_) | Err(Error::EncryptionDowngraded { .. })),
+        "{got:?}"
+    );
+    assert_eq!(repo.held_unsure().await.unwrap(), [held]);
+    assert_eq!(repo.held_stage(held).await.unwrap(), CoolDown::SentUnread);
+    assert!(repo.release_due(99).await.unwrap().is_empty(), "not again");
+    assert_eq!(provider.sent_count(), 1);
+}

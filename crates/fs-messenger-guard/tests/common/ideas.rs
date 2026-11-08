@@ -20,5 +20,6 @@ pub async fn every_idea_path(repo: &MessengerRepo, state: ObjectId) {
     let _ = repo.held_stage(state).await;
     let _ = repo.send_held_now(state, 0).await;
     let _ = repo.recall_held(state).await;
+    let _ = repo.held_unsure().await;
     let _ = repo.release_due(u64::MAX).await;
 }

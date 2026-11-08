@@ -180,4 +180,24 @@ impl Inner {
         }
         Ok(due)
     }
+
+    /// Held messages marked as sent for which no sent message was noted: the process ended between the
+    /// mark and the answer, or the send came back as a downgrade. They may or may not have left, and
+    /// nothing here sends them again; a person looks at the sent folder.
+    pub(super) async fn unsure_held(&self) -> Result<Vec<ObjectId>> {
+        let q = Query::new()
+            .of_type(HELD)
+            .with_index(IDX_STAGE, "sent-unread");
+        Ok(self
+            .store
+            .query(&q)
+            .await?
+            .into_iter()
+            .filter(|o| {
+                serde_json::from_value::<HeldContent>(o.content.clone())
+                    .is_ok_and(|c| c.sent.is_none())
+            })
+            .map(|o| o.envelope.id)
+            .collect())
+    }
 }

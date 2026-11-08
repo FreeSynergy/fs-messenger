@@ -178,7 +178,7 @@ fn this_test_knows_every_method_of_the_traits() {
     let ingest = include_str!("../../fs-messenger-core/src/ingest.rs");
     assert_eq!(
         count(messenger),
-        1 + 32,
+        1 + 33,
         "a new `Messenger` method: add it to `every_messenger_path`"
     );
     assert_eq!(

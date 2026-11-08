@@ -209,6 +209,12 @@ pub trait Messenger: Send + Sync {
     async fn recall_held(&self, _held: ObjectId) -> Result<()> {
         no("message.hold")
     }
+    /// `message.hold`: held messages that were marked as sent but of which no sent message is known
+    /// (the program ended meanwhile, or the send came back as a downgrade). They are never sent again by
+    /// themselves; a person checks whether they left.
+    async fn held_unsure(&self) -> Result<Vec<ObjectId>> {
+        no("message.hold")
+    }
     /// `message.hold`: send what is due at `now`. The host calls this on a timer; answers the held ids that went out.
     async fn release_due(&self, _now: u64) -> Result<Vec<ObjectId>> {
         no("message.hold")

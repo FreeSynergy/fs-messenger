@@ -129,6 +129,9 @@ impl Messenger for MessengerRepo {
         };
         self.finish_held(held, draft, before).await
     }
+    async fn held_unsure(&self) -> Result<Vec<ObjectId>> {
+        self.inner.unsure_held().await
+    }
     async fn recall_held(&self, held: ObjectId) -> Result<()> {
         self.inner.recall_held(held).await
     }
