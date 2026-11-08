@@ -55,6 +55,9 @@ pub enum ToolCallRisk {
     Destroys,
     /// Acts in the person's name; asks every time.
     ActsForPerson,
+    /// Reads something marked sensitive; asks every time. Last in the contract, so older values keep
+    /// their number.
+    ReadsSensitive,
     /// Not known.
     #[default]
     #[serde(other)]

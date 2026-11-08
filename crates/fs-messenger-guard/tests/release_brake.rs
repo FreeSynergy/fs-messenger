@@ -17,6 +17,7 @@ async fn release_refuses_what_can_never_be_granted_and_changes_nothing() {
         (R::Unknown, "unknown"),
         (R::Destroys, "destroys"),
         (R::ActsForPerson, "actsForPerson"),
+        (R::ReadsSensitive, "readsSensitive"),
     ] {
         let before = w.record().await;
         let grant = AiGrant {
@@ -148,7 +149,7 @@ fn only_reads_only_and_changes_can_be_released_and_no_question_offers_the_class(
     for risk in [R::ReadsOnly, R::Changes] {
         assert!(can_be_released(risk));
     }
-    for risk in [R::Unknown, R::Destroys, R::ActsForPerson] {
+    for risk in [R::Unknown, R::Destroys, R::ActsForPerson, R::ReadsSensitive] {
         assert!(!can_be_released(risk));
     }
 }

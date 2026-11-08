@@ -26,6 +26,7 @@ pub(crate) fn risk_name(risk: fs_messenger_core::ToolCallRisk) -> &'static str {
         R::Changes => "changes",
         R::Destroys => "destroys",
         R::ActsForPerson => "actsForPerson",
+        R::ReadsSensitive => "readsSensitive",
         R::Unknown => "unknown",
     }
 }

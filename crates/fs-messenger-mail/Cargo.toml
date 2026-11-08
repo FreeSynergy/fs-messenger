@@ -15,7 +15,7 @@ test-trust = []
 [dependencies]
 fs-messenger-core = { path = "../fs-messenger-core" }
 fs-objects = { git = "https://github.com/FreeSynergy/fs-objects", tag = "v0.5.0" }
-fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.45.0" }
+fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.47.0" }
 
 # Pinned exactly (ADR 0018): Stalwart moved calcard, jmap-tools and sieve to AGPL in Oct 2026. These
 # two are still "Apache-2.0 OR MIT"; an update must re-check the licence by hand.

@@ -18,6 +18,7 @@ pub fn risk_word(risk: ToolCallRisk) -> &'static str {
         ToolCallRisk::Changes => "changes",
         ToolCallRisk::Destroys => "destroys",
         ToolCallRisk::ActsForPerson => "actsForPerson",
+        ToolCallRisk::ReadsSensitive => "readsSensitive",
         _ => "unknown",
     }
 }

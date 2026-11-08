@@ -3,19 +3,19 @@
 //! Pattern: Facade over the pure `GuardDoc::apply_decision`: on a copy, written whole or not
 //! at all. Nothing but a written decision changes anything; a refusal touches neither the state nor
 //! the log. What a message shows is written afterwards and decides nothing. On a stale or settled
-//! refusal listeners hear how the call stands, from memory only.
+//! refusal listeners hear how the call stands, from memory only, with the destination shown as unknown (no lookup under the lock).
 
 use fs_messenger_core::{DecisionProblem, ToolCallDecision};
 use fs_objects::ObjectId;
 
 use super::core::GuardEngine;
-use super::lookup_once::OnceLookup;
 use super::store_access::View;
 use crate::error::{GuardError, Refusal};
 use crate::identity::id_key;
 use crate::log::GuardLogEntry;
 use crate::model::GuardMode;
 use crate::state::{DecideInput, GuardDoc};
+use crate::words::DESTINATION_UNKNOWN;
 
 impl GuardEngine {
     /// Stale and settled are answered with the state as it really is, so a card can show it. Nothing
@@ -25,7 +25,6 @@ impl GuardEngine {
         doc: &GuardDoc,
         decision: &ToolCallDecision,
         refusal: &Refusal,
-        look: &OnceLookup,
     ) {
         if !matches!(
             refusal.decision_problem(),
@@ -35,7 +34,9 @@ impl GuardEngine {
         }
         let call = doc.calls.iter().find(|c| c.id == decision.tool_call);
         if let (Some(call), Some(port)) = (call, self.port.get()) {
-            let shown = self.shown_call(look, call, "").await;
+            // No lookup of the destination: this runs under the engine lock, before the signature is
+            // checked, and a slow source would hold the lock for one wait per refused click.
+            let shown = call.shown("", DESTINATION_UNKNOWN);
             let _ = port
                 .announce_call(call.conversation, call.message, shown)
                 .await;
@@ -68,8 +69,7 @@ impl GuardEngine {
         let decided = match doc.apply_decision(&input, self.verifier.as_ref()) {
             Ok(decided) => decided,
             Err(refusal) => {
-                self.announce_on_refusal(&doc, decision, &refusal, &look)
-                    .await;
+                self.announce_on_refusal(&doc, decision, &refusal).await;
                 return Err(refusal.into());
             }
         };

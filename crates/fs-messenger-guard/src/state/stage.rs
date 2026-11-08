@@ -99,11 +99,10 @@ pub(crate) fn options_for() -> Vec<ToolCallOption> {
 }
 
 impl CallRecord {
-    /// A marked read is `readsSensitive` here, which the contract does not have yet: it shows as
-    /// `unknown`, which asks every time and offers no release.
+    /// A marked read is `readsSensitive` (contract 0.47.0): it asks every time and offers no release.
     pub(crate) fn risk(&self) -> ToolCallRisk {
         if self.sensitive {
-            return ToolCallRisk::Unknown;
+            return ToolCallRisk::ReadsSensitive;
         }
         derived_risk(&self.capability, self.has_input)
     }
