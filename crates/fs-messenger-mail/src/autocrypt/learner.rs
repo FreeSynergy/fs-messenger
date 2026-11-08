@@ -108,7 +108,7 @@ impl KeyLearner {
         };
         match (&decision, known) {
             (Decision::FirstSeen, _) => {
-                let mut peer = PeerKey::new(&address, &kept, KeySource::AutocryptFirstSeen, now)?;
+                let peer = PeerKey::new(&address, &kept, KeySource::AutocryptFirstSeen, now)?;
                 // No companion at first sight: nothing binds the v4 key to the v6 key, so a forger could
                 // pair a real v6 key with his own v4 key. It is learned from a later mail that the held
                 // key signed (`beside` with proof).
