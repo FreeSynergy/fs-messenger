@@ -26,6 +26,13 @@ use crate::model::{
 };
 use crate::provider::RawMessage;
 
+impl MessengerRepo {
+    /// Send a saved draft as it is.
+    async fn send_draft(&self, draft: ObjectId) -> Result<ObjectId> {
+        self.resume_draft(draft).await?.send(None).await
+    }
+}
+
 #[async_trait]
 impl Messenger for MessengerRepo {
     fn capabilities(&self) -> Capabilities {
@@ -77,6 +84,59 @@ impl Messenger for MessengerRepo {
     }
     async fn act(&self, conversation: ObjectId, id: ObjectId, action: MessageAction) -> Result<()> {
         self.inner.act(conversation, id, action).await
+    }
+    async fn receipt_choice(&self) -> Result<crate::ReceiptChoice> {
+        self.inner.receipt_choice().await
+    }
+    async fn set_receipt_choice(&self, choice: crate::ReceiptChoice) -> Result<()> {
+        self.inner.set_receipt_choice(choice).await
+    }
+    async fn hold(&self, draft: ObjectId, now: u64, wait: Option<u64>) -> Result<ObjectId> {
+        self.inner
+            .hold(draft, now, wait.unwrap_or(crate::COOL_DOWN_SECS))
+            .await
+    }
+    async fn held_stage(&self, held: ObjectId) -> Result<crate::CoolDown> {
+        self.inner.held_stage(held).await
+    }
+    async fn send_held_now(&self, held: ObjectId, now: u64) -> Result<ObjectId> {
+        let Some((draft, before)) = self.inner.take_due(held, now, true).await? else {
+            return Err(crate::error::Error::Conflict(
+                "it is not held any more".into(),
+            ));
+        };
+        match self.send_draft(draft).await {
+            Ok(message) => {
+                self.inner.held_sent(held, message).await?;
+                Ok(message)
+            }
+            Err(e) => {
+                self.inner.restore_held(held, before).await?;
+                Err(e)
+            }
+        }
+    }
+    async fn recall_held(&self, held: ObjectId) -> Result<()> {
+        self.inner.recall_held(held).await
+    }
+    async fn release_due(&self, now: u64) -> Result<Vec<ObjectId>> {
+        let mut went = vec![];
+        for held in self.inner.due_held(now).await? {
+            let Some((draft, before)) = self.inner.take_due(held, now, false).await? else {
+                continue;
+            };
+            match self.send_draft(draft).await {
+                Ok(message) => {
+                    self.inner.held_sent(held, message).await?;
+                    went.push(held);
+                }
+                Err(e) => {
+                    self.inner.restore_held(held, before).await?;
+                    return Err(e);
+                }
+            }
+        }
+        Ok(went)
     }
     async fn stop(&self, conversation: ObjectId) -> Result<()> {
         match self.inner.guard() {

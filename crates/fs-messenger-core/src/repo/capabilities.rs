@@ -35,6 +35,11 @@ pub(super) fn report(guard_installed: bool) -> Capabilities {
         "attachment.save",
         "toolcall.show",
         "event.subscribe",
+        // Accepted ideas of requirements.md; not in `messenger.capnp` yet, so these ids are ours.
+        "conversation.export",
+        "conversation.whyPlain",
+        "receipt.choice",
+        "message.hold",
     ] {
         caps.supported(id);
     }

@@ -127,6 +127,89 @@ pub trait Messenger: Send + Sync {
     async fn attachment(&self, _blob: ObjectId) -> Result<Blob> {
         no("attachment.save")
     }
+    /// `conversation.export` (accepted idea 10, ADR 0046): the whole conversation in an open format, JSON
+    /// Lines of AS2 objects, oldest first. Built from `messages` and `message`, so every provider that
+    /// can read a conversation can export it. Messages that cannot be read are named in the error, not left out silently.
+    async fn export_conversation(&self, conversation: ObjectId) -> Result<String> {
+        let mut found: Vec<Message> = vec![];
+        let mut cursor: Option<Cursor> = None;
+        loop {
+            let page = self.messages(conversation, cursor.as_ref()).await?;
+            if let Some(skipped) = page.skipped.first() {
+                return Err(crate::error::Error::Invalid(format!(
+                    "{} messages could not be read; the export would be incomplete (first: {skipped})",
+                    page.skipped.len()
+                )));
+            }
+            for summary in &page.items {
+                found.push(self.message(conversation, summary.envelope.id).await?);
+            }
+            match page.next {
+                Some(next) if Some(&next) != cursor.as_ref() => cursor = Some(next),
+                _ => break,
+            }
+        }
+        found.reverse();
+        crate::export::conversation_jsonl(&found)
+            .map_err(|e| crate::error::Error::Invalid(e.to_string()))
+    }
+    /// `conversation.whyPlain` (accepted idea 9): why this conversation is not end-to-end encrypted and
+    /// what to do about it; `None` if it is. A value, not a sentence: the words are the frontend's (ADR 0057).
+    async fn why_not_encrypted(
+        &self,
+        conversation: ObjectId,
+    ) -> Result<Option<(crate::WhyNot, crate::Remedy)>> {
+        let summary = self.open(conversation).await?;
+        let account_can = self.accounts().await?.iter().any(|a| a.encryption_ready);
+        let other_side_ready = matches!(
+            summary.encryption,
+            crate::model::Encryption::Mls
+                | crate::model::Encryption::Openpgp
+                | crate::model::Encryption::Megolm
+        );
+        Ok(crate::why_not(crate::EncryptionFacts {
+            encryption: summary.encryption,
+            other_side_ready,
+            account_can,
+        }))
+    }
+    /// `receipt.choice` (accepted idea 4): whether this person shows that they read. `Hidden` until they choose.
+    async fn receipt_choice(&self) -> Result<crate::ReceiptChoice> {
+        no("receipt.choice")
+    }
+    /// `receipt.choice`: choose.
+    async fn set_receipt_choice(&self, _choice: crate::ReceiptChoice) -> Result<()> {
+        no("receipt.choice")
+    }
+    /// Whether a read receipt between this person and one who chose `theirs` is sent and shown: only when
+    /// both show. Providers ask this before they send one; a frontend asks it before it shows one.
+    async fn show_receipt(&self, theirs: crate::ReceiptChoice) -> Result<bool> {
+        Ok(crate::receipts_both_ways(
+            self.receipt_choice().await?,
+            theirs,
+        ))
+    }
+    /// `message.hold` (accepted idea 1): keep a saved draft for `wait` seconds (default
+    /// [`crate::COOL_DOWN_SECS`]) before it goes out. Answers the id of the held message.
+    async fn hold(&self, _draft: ObjectId, _now: u64, _wait: Option<u64>) -> Result<ObjectId> {
+        no("message.hold")
+    }
+    /// `message.hold`: where a held message stands.
+    async fn held_stage(&self, _held: ObjectId) -> Result<crate::CoolDown> {
+        no("message.hold")
+    }
+    /// `message.hold`: send it now. Answers the id of the message, or an error if it is not held any more.
+    async fn send_held_now(&self, _held: ObjectId, _now: u64) -> Result<ObjectId> {
+        no("message.hold")
+    }
+    /// `message.hold`: take it back while it is held; it is a draft again and never goes out.
+    async fn recall_held(&self, _held: ObjectId) -> Result<()> {
+        no("message.hold")
+    }
+    /// `message.hold`: send what is due at `now`. The host calls this on a timer; answers the held ids that went out.
+    async fn release_due(&self, _now: u64) -> Result<Vec<ObjectId>> {
+        no("message.hold")
+    }
     /// `rule.read`: the rules as Sieve.
     async fn rules(&self) -> Result<String> {
         no("rule.read")

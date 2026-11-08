@@ -19,6 +19,7 @@ mod guard_note;
 mod guard_port;
 mod guard_turns;
 mod handle;
+mod ideas;
 mod ingest;
 mod ingest_store;
 mod ingest_threads;

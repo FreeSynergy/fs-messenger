@@ -4,7 +4,8 @@
 //! a frontend shows one only if it says yes.
 
 /// What one person chose.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum ReceiptChoice {
     /// Not asked: the safe reading, no receipts.
     #[default]
