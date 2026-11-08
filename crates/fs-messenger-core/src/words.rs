@@ -38,7 +38,7 @@ mod tests {
             WhyNot::OnTheWireOnly,
             WhyNot::NotKnown,
         ] {
-            assert!(!why_not_text(w).is_empty());
+            assert_ne!(why_not_text(w), "");
         }
         for r in [
             Remedy::ExchangeKeys,
@@ -46,7 +46,7 @@ mod tests {
             Remedy::TurnOn,
             Remedy::Wait,
         ] {
-            assert!(!remedy_text(r).is_empty());
+            assert_ne!(remedy_text(r), "");
         }
     }
 }
