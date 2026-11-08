@@ -14,8 +14,8 @@ test-trust = []
 [dependencies]
 fs-messenger-core = { path = "../fs-messenger-core" }
 fs-messenger-guard = { path = "../fs-messenger-guard" }
-fs-objects = { git = "https://github.com/FreeSynergy/fs-objects", tag = "v0.5.0" }
-fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.27.0" }
+fs-objects = { git = "https://github.com/FreeSynergy/fs-objects", tag = "v0.0.1" }
+fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.0.1" }
 
 # rustls with ring, no OpenSSL, no native-tls; no gzip, no cookies, no HTTP/2. As in fs-messenger-mail.
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
