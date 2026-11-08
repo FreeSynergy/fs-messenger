@@ -160,7 +160,8 @@ async fn a_send_that_came_back_as_a_downgrade_is_listed_as_unsure_and_never_sent
     provider.receipt.lock().unwrap().encryption = Encryption::TransportOnly;
     let draft = saved_draft(&repo, "weaker than planned").await;
     let held = repo.hold(draft, 0, Some(1)).await.unwrap();
-    assert!(repo.held_unsure().await.unwrap().is_empty());
+    let none: Vec<fs_objects::ObjectId> = vec![];
+    assert_eq!(repo.held_unsure().await.unwrap(), none);
     let got = repo.release_due(10).await;
     assert!(
         matches!(got, Ok(_) | Err(Error::EncryptionDowngraded { .. })),
