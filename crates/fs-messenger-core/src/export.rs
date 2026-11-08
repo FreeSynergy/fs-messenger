@@ -1,7 +1,7 @@
 //! Take everything with you (accepted idea 10, ADR 0046): export a conversation in an open format.
 //!
 //! Pattern: Strategy-free pure function (a Specification of the file format). **Format chosen:** JSON Lines,
-//! one ActivityStreams 2.0 object per line (W3C Recommendation, `application/activity+json`): our envelope
+//! one `ActivityStreams` 2.0 object per line (W3C Recommendation, `application/activity+json`): our envelope
 //! already is AS2 (ADR 0027), so nothing is invented, any reader of AS2 or plain JSON can use it, and a
 //! line-per-message file can be cut, appended and streamed. For mail the original is also kept byte for
 //! byte in `original` (ADR 0030); mbox (RFC 4155) is the format to ask a mail provider for and is not
