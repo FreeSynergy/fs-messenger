@@ -4,7 +4,11 @@
 #![allow(dead_code)] // each test file uses a different subset
 
 use fs_messenger_core::{Error, Messenger as _};
-use fs_messenger_mail::openpgp::{Method, SecretCert, Shape};
+use fs_messenger_mail::mime::{PayloadInput, build_outer, build_payload};
+use fs_messenger_mail::openpgp::{
+    EncryptionTargets, Method, PublicCert, SecretCert, Shape, sign_and_encrypt, unix_now,
+    usable_encryption_key,
+};
 use pgp::composed::SubkeyParamsBuilder;
 use pgp::composed::{EncryptionCaps, KeyType, SecretKeyParamsBuilder, SignedSecretKey};
 use pgp::crypto::ecc_curve::ECCCurve;
@@ -66,4 +70,37 @@ pub fn legacy(address: &str, seipd_v1: bool, seipd_v2: bool) -> (SecretCert, Sig
         SecretCert::from_binary(&key.to_bytes().unwrap()).unwrap(),
         key,
     )
+}
+
+/// A mail from A@example.org to us@example.org signed by `signer`, with `inner` in the payload and `outer` outside.
+pub fn signed_mail(
+    signer: &SecretCert,
+    reader: &PublicCert,
+    inner: &str,
+    outer: &str,
+    method: Method,
+) -> Vec<u8> {
+    let to = vec!["us@example.org".to_string()];
+    let input = |autocrypt| PayloadInput {
+        from: "a@example.org",
+        to: &to,
+        cc: &[],
+        subject: "s",
+        message_id: "m@example.org",
+        in_reply_to: None,
+        references: &[],
+        date: 1_793_000_000,
+        text: "text",
+        media_type: "text/plain",
+        attachments: &[],
+        autocrypt,
+    };
+    let payload = build_payload(&input(inner)).unwrap();
+    let key = usable_encryption_key(reader, unix_now()).unwrap();
+    let targets = EncryptionTargets {
+        visible: vec![key],
+        hidden: vec![],
+    };
+    let armored = sign_and_encrypt(&payload, signer, &targets, method).unwrap();
+    build_outer(&input(outer), &armored).unwrap()
 }

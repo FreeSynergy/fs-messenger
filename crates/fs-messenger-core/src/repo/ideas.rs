@@ -160,7 +160,7 @@ impl Inner {
         let (o, mut c) = self.load_held(id).await?;
         if !matches!(c.stage, Stage::Held { .. }) {
             return Err(crate::error::Error::Conflict(
-                "it already went out; no provider here can take it back".into(),
+                "it is not held: it went out, or was taken back; no provider here can recall a sent message".into(),
             ));
         }
         c.stage = c.stage.recall();

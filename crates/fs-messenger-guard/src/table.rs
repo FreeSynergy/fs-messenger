@@ -29,6 +29,13 @@ const TABLE: &[(&str, CapabilityRule)] = &[
     ("conversation.open", Risk(R::ReadsOnly)),
     ("conversation.nextUnread", Risk(R::ReadsOnly)),
     ("conversation.usage", Risk(R::ReadsOnly)),
+    // The whole conversation leaves in a file: more than reading one message, and it can be copied away.
+    ("conversation.export", Risk(R::ActsForPerson)),
+    ("conversation.whyPlain", Risk(R::ReadsOnly)),
+    // What this person shows of reading is theirs to say, never an AI's.
+    ("receipt.choice", NeverForAi),
+    // A held message goes out later in the person's name; holding, sending now and recalling all act for them.
+    ("message.hold", Risk(R::ActsForPerson)),
     // A read mark can reach the other side as a receipt.
     ("conversation.markRead", Risk(R::ActsForPerson)),
     ("conversation.sticky", Risk(R::Changes)),

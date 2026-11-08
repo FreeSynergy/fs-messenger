@@ -35,6 +35,17 @@ pub fn message_object(message: &Message) -> Result<Value, serde_json::Error> {
             serde_json::to_value(message.summary.encryption)?,
         );
         map.insert("fsOutgoing".into(), json!(message.outgoing));
+        // The names of the files, not their bytes: a conversation file stays readable and small.
+        if !message.attachments.is_empty() {
+            let files: Vec<Value> = message
+                .attachments
+                .iter()
+                .map(|a| {
+                    json!({"type": "Document", "name": a.name, "mediaType": a.media_type, "size": a.size})
+                })
+                .collect();
+            map.insert("attachment".into(), Value::Array(files));
+        }
     }
     Ok(object)
 }

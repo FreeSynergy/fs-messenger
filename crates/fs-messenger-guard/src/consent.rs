@@ -61,8 +61,13 @@ pub struct Consent {
     entered_at: Option<u64>,
     /// The AI is in a program we cannot bind.
     foreign: bool,
-    /// Someone withdrew after the entry.
+    /// Someone withdrew, or refused, after the entry. Sticky: the AI must go, and only a fresh
+    /// agreement ([`Consent::restart`]) can bring it back.
+    #[serde(default)]
     withdrawn: bool,
+    /// A person came after the entry and has not agreed yet: what is sent meanwhile is not for the AI.
+    #[serde(default)]
+    gap: bool,
 }
 
 impl Consent {
@@ -78,6 +83,7 @@ impl Consent {
             entered_at: None,
             foreign: false,
             withdrawn: false,
+            gap: false,
         }
     }
 
@@ -114,7 +120,46 @@ impl Consent {
     pub fn answer(&mut self, person: &str, says: Say) -> Outcome {
         if let Some(slot) = self.says.get_mut(person) {
             *slot = says;
+            if says == Say::Refuses && self.entered_at.is_some() {
+                self.withdrawn = true;
+            }
         }
+        self.outcome()
+    }
+
+    /// As [`Consent::answer`], at `now`: when the last open answer of a latecomer comes in, the AI reads
+    /// on from `now`, not from its old entry, so nothing sent in the gap is handed to it afterwards.
+    pub fn answer_at(&mut self, person: &str, says: Say, now: u64) -> Outcome {
+        let outcome = self.answer(person, says);
+        if outcome == Outcome::Admitted && self.gap {
+            self.gap = false;
+            self.entered_at = Some(now);
+        }
+        outcome
+    }
+
+    /// Start again after the AI had to leave: everybody present is asked anew, and nothing of the old
+    /// entry counts.
+    pub fn restart(&mut self, present: &[&str]) -> Outcome {
+        self.says = present
+            .iter()
+            .map(|p| ((*p).to_owned(), Say::Open))
+            .collect();
+        self.entered_at = None;
+        self.withdrawn = false;
+        self.gap = false;
+        self.outcome()
+    }
+
+    /// Add people who are present now and not yet asked (they count as open), and take over that the
+    /// AI sits in a foreign program. A later `open` of the same pair changes nothing else.
+    pub fn refresh(&mut self, present: &[&str], foreign: bool) -> Outcome {
+        for p in present {
+            if !self.says.contains_key(*p) {
+                self.arrives(p);
+            }
+        }
+        self.foreign |= foreign;
         self.outcome()
     }
 
@@ -129,9 +174,14 @@ impl Consent {
     /// A person comes later: asked at once, and an open answer counts as no until given. If the AI is in,
     /// it is asked about before the person reads on: the answer decides whether the AI may stay.
     pub fn arrives(&mut self, person: &str) -> Outcome {
-        self.says.entry(person.to_owned()).or_insert(Say::Open);
-        // An open answer of a newcomer does not throw the AI out: only a refusal does. Waiting for the
-        // answer, the newcomer stays out of the conversation, not the AI (rule 3, `holds_out`).
+        if !self.says.contains_key(person) {
+            self.says.insert(person.to_owned(), Say::Open);
+            // From now until the newcomer answers the AI reads nothing (`history` is `None` while the
+            // outcome is `Waiting`), and what is sent meanwhile stays closed to it (`answer_at`).
+            if self.entered_at.is_some() {
+                self.gap = true;
+            }
+        }
         self.outcome()
     }
 
@@ -174,7 +224,8 @@ impl Consent {
 pub enum History {
     /// Nothing: not in, or must go.
     None,
-    /// Messages sent at this second or later.
+    /// Messages sent after this second (the second of the entry itself is left out: with whole seconds
+    /// one cannot tell which side of the entry a message in that second was).
     From(u64),
 }
 
@@ -182,7 +233,7 @@ impl History {
     /// Whether a message sent at `sent_at` is for the AI.
     #[must_use]
     pub fn allows(self, sent_at: u64) -> bool {
-        matches!(self, Self::From(from) if sent_at >= from)
+        matches!(self, Self::From(from) if sent_at > from)
     }
 }
 

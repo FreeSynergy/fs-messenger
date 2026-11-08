@@ -115,9 +115,12 @@ impl ConsentBook {
     ) -> Result<Outcome, GuardError> {
         let _turn = self.turn.lock().await;
         if let Some(found) = self.find(conversation, ai).await? {
-            let consent: Consent = serde_json::from_value(found.content)
+            let mut consent: Consent = serde_json::from_value(found.content.clone())
                 .map_err(|e| GuardError::NotPersisted(e.to_string()))?;
-            return Ok(consent.outcome());
+            // A second call keeps the answers, but people who are present now are asked too.
+            let outcome = consent.refresh(present, foreign);
+            self.save(conversation, ai, &consent, Some(found)).await?;
+            return Ok(outcome);
         }
         let consent = if foreign {
             Consent::foreign(ai, present)
@@ -136,7 +139,18 @@ impl ConsentBook {
         person: &str,
         says: Say,
     ) -> Result<Outcome, GuardError> {
-        self.change(conversation, ai, |c, _| c.answer(person, says))
+        self.change(conversation, ai, |c, now| c.answer_at(person, says, now))
+            .await
+    }
+
+    /// Start again after the AI had to leave (or was refused): everybody present is asked anew.
+    pub async fn restart(
+        &self,
+        conversation: ObjectId,
+        ai: &str,
+        present: &[&str],
+    ) -> Result<Outcome, GuardError> {
+        self.change(conversation, ai, |c, _| c.restart(present))
             .await
     }
 

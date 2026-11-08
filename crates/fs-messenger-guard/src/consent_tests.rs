@@ -40,8 +40,63 @@ fn nothing_sent_before_the_entry_is_for_the_ai() {
     c.enter(100);
     let h = c.history();
     assert!(!h.allows(99), "a message from before");
-    assert!(h.allows(100));
+    assert!(!h.allows(100), "the second of the entry itself is left out");
+    assert!(h.allows(101));
     assert!(h.allows(500));
+}
+
+#[test]
+fn a_refusal_after_the_entry_is_sticky_and_agreeing_again_does_not_bring_the_ai_back() {
+    let mut c = room();
+    c.answer("anna", Say::Agrees);
+    c.answer("ben", Say::Agrees);
+    c.enter(100);
+    assert_eq!(c.answer("ben", Say::Refuses), Outcome::MustLeave);
+    assert_eq!(c.answer("ben", Say::Agrees), Outcome::MustLeave, "sticky");
+    assert_eq!(c.history(), History::None);
+    // Only a fresh agreement of everybody can bring it back, and then from the new entry on.
+    assert_eq!(c.restart(&["anna", "ben"]), Outcome::Waiting);
+    c.answer("anna", Say::Agrees);
+    c.answer("ben", Say::Agrees);
+    c.enter(500);
+    assert!(!c.history().allows(400), "nothing of the time it was out");
+    assert!(c.history().allows(501));
+}
+
+#[test]
+fn what_is_sent_while_a_latecomer_has_not_answered_is_not_for_the_ai() {
+    let mut c = room();
+    c.answer("anna", Say::Agrees);
+    c.answer("ben", Say::Agrees);
+    c.enter(100);
+    assert_eq!(c.arrives("carla"), Outcome::Waiting);
+    assert_eq!(
+        c.history(),
+        History::None,
+        "it reads nothing while she is unanswered"
+    );
+    assert_eq!(c.answer_at("carla", Say::Agrees, 300), Outcome::Admitted);
+    assert!(!c.history().allows(200), "sent in the gap");
+    assert!(c.history().allows(301));
+}
+
+#[test]
+fn people_who_are_present_now_are_asked_and_foreign_is_taken_over() {
+    let mut c = Consent::open(AI, &["anna"]);
+    c.answer("anna", Say::Agrees);
+    assert_eq!(
+        c.refresh(&["anna", "ben"], false),
+        Outcome::Waiting,
+        "ben counts"
+    );
+    assert_eq!(c.refresh(&["anna", "ben"], true), Outcome::WarnOnly);
+}
+
+#[test]
+fn an_old_record_without_the_new_fields_still_reads() {
+    let old = r#"{"ai":"x","says":{"anna":"agrees"},"enteredAt":null,"foreign":false}"#;
+    let c: Consent = serde_json::from_str(old).unwrap();
+    assert_eq!(c.outcome(), Outcome::Admitted);
 }
 
 #[test]

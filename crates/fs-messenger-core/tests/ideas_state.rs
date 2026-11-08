@@ -123,3 +123,31 @@ async fn a_failed_send_keeps_the_message_held_for_the_next_try() {
     assert_eq!(repo.release_due(101).await.unwrap(), [held]);
     assert_eq!(provider.sent_count(), 1);
 }
+
+#[tokio::test]
+async fn one_message_that_cannot_go_does_not_hold_the_others_back() {
+    let (repo, _) = setup().await;
+    let (_, provider) = with_provider(&repo, Encryption::Mls, &["bob@example.org"]).await;
+    let gone = saved_draft(&repo, "its draft will be deleted").await;
+    let held_gone = repo.hold(gone, 0, Some(1)).await.unwrap();
+    repo.resume_draft(gone)
+        .await
+        .unwrap()
+        .discard()
+        .await
+        .unwrap();
+    let fine = saved_draft(&repo, "fine").await;
+    let held_fine = repo.hold(fine, 0, Some(1)).await.unwrap();
+    let went = repo.release_due(10).await.unwrap();
+    assert_eq!(went, [held_fine]);
+    assert_eq!(provider.sent_count(), 1);
+    assert!(
+        matches!(
+            repo.held_stage(held_gone).await.unwrap(),
+            CoolDown::Held { .. }
+        ),
+        "tried again later"
+    );
+    // With nothing else to send, the failure is reported.
+    assert!(repo.release_due(11).await.is_err());
+}

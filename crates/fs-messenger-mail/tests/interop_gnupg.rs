@@ -143,7 +143,8 @@ async fn a_f_our_certificate_and_autocrypt_header() {
         g.run("--import", &parsed.keydata).0,
         "GnuPG imports the v4 key of the header"
     );
-    assert!(!g.opens(&armor_of(&raw)), "C1: mail to a v6 key");
+    // GnuPG holds no secret key of the v6 key's owner here, so it opens nothing: this shows the header and
+    // the v4 import, not that GnuPG could read a v6 message (it cannot; that needs no test).
 }
 
 #[tokio::test]

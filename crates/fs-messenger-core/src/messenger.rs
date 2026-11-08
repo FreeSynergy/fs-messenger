@@ -161,6 +161,9 @@ pub trait Messenger: Send + Sync {
     ) -> Result<Option<(crate::WhyNot, crate::Remedy)>> {
         let summary = self.open(conversation).await?;
         let account_can = self.accounts().await?.iter().any(|a| a.encryption_ready);
+        // `other_side_ready` is true only when the conversation is end-to-end encrypted already, and then
+        // `why_not` answers `None`: so `Wait` and `TurnOn` cannot come out of this default. A provider that
+        // knows more (an unencrypted Matrix room whose members could encrypt) overrides this method.
         let other_side_ready = matches!(
             summary.encryption,
             crate::model::Encryption::Mls

@@ -58,10 +58,10 @@ async fn nobody_is_in_before_everybody_agreed_and_the_entry_starts_the_history()
     clock.0.store(1_500, Ordering::SeqCst);
     assert_eq!(b.enter(room, AI).await.unwrap(), Outcome::Admitted);
     assert!(
-        !b.may_read(room, AI, 1_499).await.unwrap(),
-        "nothing from before the entry"
+        !b.may_read(room, AI, 1_500).await.unwrap(),
+        "nothing from before the entry, nor from its own second"
     );
-    assert!(b.may_read(room, AI, 1_500).await.unwrap());
+    assert!(b.may_read(room, AI, 1_501).await.unwrap());
 }
 
 #[tokio::test]
@@ -95,7 +95,7 @@ async fn withdrawing_after_the_entry_sends_the_ai_out_and_closes_the_history() {
     b.open(room, AI, &["anna"], false).await.unwrap();
     b.answer(room, AI, "anna", Say::Agrees).await.unwrap();
     b.enter(room, AI).await.unwrap();
-    assert!(b.may_read(room, AI, 11).await.unwrap());
+    assert!(b.may_read(room, AI, 12).await.unwrap());
     assert_eq!(
         b.withdraw(room, AI, "anna").await.unwrap(),
         Outcome::MustLeave

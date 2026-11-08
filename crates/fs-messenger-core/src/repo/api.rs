@@ -27,9 +27,31 @@ use crate::model::{
 use crate::provider::RawMessage;
 
 impl MessengerRepo {
-    /// Send a saved draft as it is.
-    async fn send_draft(&self, draft: ObjectId) -> Result<ObjectId> {
-        self.resume_draft(draft).await?.send(None).await
+    /// Send the draft of a held message that was just taken. **A downgrade means the message left**
+    /// (as for `Draft::send`): it stays `SentUnread` and is never sent a second time. Any other
+    /// failure puts it back to held. A failure to record the sent message does not undo the sending.
+    async fn finish_held(
+        &self,
+        held: ObjectId,
+        draft: ObjectId,
+        before: crate::CoolDown,
+    ) -> Result<ObjectId> {
+        let sent = match self.resume_draft(draft).await {
+            Ok(mut d) => d.send(None).await,
+            Err(e) => Err(e),
+        };
+        match sent {
+            Ok(message) => {
+                // The message is out; if the note cannot be written, the stage already says so.
+                let _ = self.inner.held_sent(held, message).await;
+                Ok(message)
+            }
+            Err(e @ crate::error::Error::EncryptionDowngraded { .. }) => Err(e),
+            Err(e) => {
+                self.inner.restore_held(held, before).await?;
+                Err(e)
+            }
+        }
     }
 }
 
@@ -105,38 +127,31 @@ impl Messenger for MessengerRepo {
                 "it is not held any more".into(),
             ));
         };
-        match self.send_draft(draft).await {
-            Ok(message) => {
-                self.inner.held_sent(held, message).await?;
-                Ok(message)
-            }
-            Err(e) => {
-                self.inner.restore_held(held, before).await?;
-                Err(e)
-            }
-        }
+        self.finish_held(held, draft, before).await
     }
     async fn recall_held(&self, held: ObjectId) -> Result<()> {
         self.inner.recall_held(held).await
     }
     async fn release_due(&self, now: u64) -> Result<Vec<ObjectId>> {
         let mut went = vec![];
+        let mut first_error = None;
         for held in self.inner.due_held(now).await? {
             let Some((draft, before)) = self.inner.take_due(held, now, false).await? else {
                 continue;
             };
-            match self.send_draft(draft).await {
-                Ok(message) => {
-                    self.inner.held_sent(held, message).await?;
-                    went.push(held);
-                }
+            // One message that cannot go (its draft is gone, a key is missing) must not hold the others
+            // back; it stays held and is tried again at the next call.
+            match self.finish_held(held, draft, before).await {
+                Ok(_) => went.push(held),
                 Err(e) => {
-                    self.inner.restore_held(held, before).await?;
-                    return Err(e);
+                    first_error.get_or_insert(e);
                 }
             }
         }
-        Ok(went)
+        match first_error {
+            Some(e) if went.is_empty() => Err(e),
+            _ => Ok(went),
+        }
     }
     async fn stop(&self, conversation: ObjectId) -> Result<()> {
         match self.inner.guard() {
