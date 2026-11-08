@@ -12,9 +12,9 @@ rust-version.workspace = true
 test-support = []
 
 [dependencies]
-fs-objects = { git = "https://github.com/FreeSynergy/fs-objects", tag = "v0.5.0" }
+fs-objects = { git = "https://github.com/FreeSynergy/fs-objects", tag = "v0.6.0" }
 # The provider rule (ADR 0045): `Capabilities` and `Unsupported`. No generated types in our public API.
-fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.27.0" }
+fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.47.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }

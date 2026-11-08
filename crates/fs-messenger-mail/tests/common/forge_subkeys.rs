@@ -4,7 +4,8 @@
 #![allow(dead_code)] // each test file uses a different subset
 
 use fs_messenger_mail::openpgp::{
-    EncryptionTargets, PublicCert, SecretCert, sign_and_encrypt, unix_now, usable_encryption_key,
+    EncryptionTargets, Method, PublicCert, SecretCert, sign_and_encrypt, unix_now,
+    usable_encryption_key,
 };
 use pgp::composed::{
     ArmorOptions, DetachedSignature, EncryptionCaps, KeyType, MessageBuilder,
@@ -137,7 +138,7 @@ pub fn unknown_aead(
         visible: vec![usable_encryption_key(reader, unix_now()).unwrap()],
         hidden: vec![],
     };
-    let armored = sign_and_encrypt(payload, signer, &targets).unwrap();
+    let armored = sign_and_encrypt(payload, signer, &targets, Method::Modern).unwrap();
     let body: String = armored
         .lines()
         .filter(|l| {

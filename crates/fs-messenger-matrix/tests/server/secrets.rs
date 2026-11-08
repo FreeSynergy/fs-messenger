@@ -16,7 +16,11 @@ use crate::http;
 /// A journal's record as it stands, through the store's own API.
 async fn record(person: &Person, key: &str) -> serde_json::Value {
     let q = fs_objects::Query::new().of_type("freesynergy.net:MatrixStoreSegment");
-    let segments = person.keys.query(&q).await.unwrap();
+    let segments = person
+        .keys
+        .query_unlogged(&q, &["freesynergy.net:MatrixStoreSegment"])
+        .await
+        .unwrap();
     let mut newest = None;
     let mut segments: Vec<_> = segments.iter().map(|s| &s.content).collect();
     segments.sort_by_key(|c| c["ops"].as_array().map(Vec::len));

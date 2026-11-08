@@ -80,7 +80,7 @@ impl FsJournal {
             .of_type(SEGMENT)
             .with_index(IDX_JOURNAL, self.name.clone())
             .order_by_index(IDX_SEQ);
-        Ok(self.store.query(&q).await?)
+        Ok(self.store.query_unlogged(&q, &[SEGMENT]).await?)
     }
 
     async fn write(&self, seq: u64, segment: &Segment) -> Result<(), StoreFail> {

@@ -6,81 +6,21 @@
 
 use chrono::Utc;
 use fs_messenger_core::{
-    Encryption, EncryptionPlan, Error as CoreError, ExternalId, Outgoing, Result as CoreResult,
-    SendReceipt,
+    Encryption, Error as CoreError, ExternalId, Outgoing, Result as CoreResult, SendReceipt,
 };
 
 use super::facade::MailProvider;
 use super::ids::{encode_id, header_id};
+use super::reach::{Reach, method_for};
 use super::receive::{SCHEME_MESSAGE_ID, SCHEME_THREAD};
-use crate::address::{clean_address, normalise_address};
-use crate::autocrypt::format_header;
-use crate::error::MailError;
+use crate::autocrypt::format_header_with;
 use crate::mime::{PayloadInput, build_outer, build_payload};
 use crate::openpgp::{
-    EncryptionTargets, PublicCert, SecretCert, sign_and_encrypt, unix_now, usable_encryption_key,
+    EncryptionTargets, Method, SecretCert, sign_and_encrypt, unix_now, usable_encryption_key,
 };
 use crate::submit::{MailEnvelope, SentCopy};
 
 impl MailProvider {
-    /// The certificate to use for `address`, if there is a usable one.
-    async fn usable_cert(&self, address: &str, now: u64) -> Result<Option<PublicCert>, MailError> {
-        if !clean_address(address) {
-            return Ok(None);
-        }
-        let address = normalise_address(address);
-        let cert = if address == self.identity.address {
-            self.keys.own_key(&address).await?.map(|k| k.public())
-        } else {
-            match self.keys.peer(&address).await? {
-                Some(peer) => Some(peer.certificate()?),
-                None => None,
-            }
-        };
-        Ok(cert.filter(|c| usable_encryption_key(c, now).is_ok()))
-    }
-
-    /// `openpgp` only if everyone has a usable key, hidden recipients too, and we have our own: every
-    /// mail is encrypted to the sender as well. Otherwise it names exactly who lacks one.
-    pub(super) async fn plan(&self, recipients: &[String]) -> Result<EncryptionPlan, MailError> {
-        let now = unix_now();
-        let own = self.identity.address.clone();
-        let mut missing: Vec<String> = Vec::new();
-        for who in std::iter::once(&own).chain(recipients) {
-            if self.usable_cert(who, now).await?.is_none() && !missing.contains(who) {
-                missing.push(who.clone());
-            }
-        }
-        Ok(EncryptionPlan {
-            encryption: if missing.is_empty() {
-                Encryption::Openpgp
-            } else {
-                Encryption::None
-            },
-            missing_keys: missing,
-        })
-    }
-
-    /// Certificates for `who`; a gap here is the refusal of ADR 0018.
-    async fn certs_of(&self, who: &[String], now: u64) -> CoreResult<Vec<PublicCert>> {
-        let mut certs = Vec::with_capacity(who.len());
-        let mut missing = Vec::new();
-        for address in who {
-            match self.usable_cert(address, now).await? {
-                Some(cert) => certs.push(cert),
-                None => missing.push(address.clone()),
-            }
-        }
-        if missing.is_empty() {
-            Ok(certs)
-        } else {
-            Err(CoreError::EncryptionRefused {
-                encryption: Encryption::None,
-                missing_keys: missing,
-            })
-        }
-    }
-
     /// The whole way of a message.
     pub(super) async fn send_outgoing(&self, message: &Outgoing) -> CoreResult<SendReceipt> {
         if message.encryption() != Encryption::Openpgp {
@@ -99,9 +39,26 @@ impl MailProvider {
                     encryption: Encryption::None,
                     missing_keys: vec![from.clone()],
                 })?;
+        let own_legacy = self
+            .own_legacy(&from)
+            .await?
+            .ok_or_else(|| refused_now(&from)(crate::openpgp::KeyRefusal::CannotEncrypt))?;
         let visible = [message.to(), message.cc()].concat();
-        let certs = self.certs_of(&visible, now).await?;
-        let hidden_certs = self.certs_of(message.bcc(), now).await?;
+        let readers = self.certs_of(&visible, now).await?;
+        let hidden_readers = self.certs_of(message.bcc(), now).await?;
+        let ours = Reach {
+            key: own.public(),
+            legacy: Some(own_legacy.public()),
+        };
+        // Checked again here: a key checked a moment ago may be revoked now.
+        if self.usable_cert(&from, now).await?.is_none() {
+            return Err(refused_now(&from)(crate::openpgp::KeyRefusal::Invalid));
+        }
+        let method = method_for(
+            std::iter::once(&ours)
+                .chain(&readers)
+                .chain(&hidden_readers),
+        );
 
         let domain = from.rsplit_once('@').map_or("localhost", |(_, d)| d);
         let message_id = format!("{}@{domain}", message.id());
@@ -110,8 +67,8 @@ impl MailProvider {
             .or_else(|| parent.clone())
             .unwrap_or_else(|| message_id.clone());
         let references = references_of(message, parent.as_deref(), &root);
-        let own_public = own.public();
-        let autocrypt = format_header(&from, &own_public)?;
+        // The v4 key is the one in `keydata`, as Autocrypt 1.1 asks; the v6 key rides beside it.
+        let autocrypt = format_header_with(&from, &ours.legacy_or_key(), Some(&ours.key))?;
         let input = PayloadInput {
             from: &from,
             to: message.to(),
@@ -128,22 +85,23 @@ impl MailProvider {
         };
         let payload = build_payload(&input)?;
 
-        let own_sub = usable_encryption_key(&own_public, now).map_err(refused_now(&from))?;
+        let sub = |reach| subkey_for(reach, method, now, &from);
         let mut targets = EncryptionTargets {
-            visible: vec![own_sub],
-            hidden: Vec::with_capacity(hidden_certs.len()),
+            visible: vec![sub(&ours)?],
+            hidden: Vec::with_capacity(hidden_readers.len()),
         };
-        for cert in &certs {
-            targets
-                .visible
-                .push(usable_encryption_key(cert, now).map_err(refused_now(&from))?);
+        for reach in &readers {
+            targets.visible.push(sub(reach)?);
         }
-        for cert in &hidden_certs {
-            targets
-                .hidden
-                .push(usable_encryption_key(cert, now).map_err(refused_now(&from))?);
+        for reach in &hidden_readers {
+            targets.hidden.push(sub(reach)?);
         }
-        let armored = sign_and_encrypt(&payload, &own, &targets)?;
+        // The signature is made by the key of the method: a v4 key for a message the older programs read.
+        let signer = match method {
+            Method::Modern => &own,
+            Method::Older => &own_legacy,
+        };
+        let armored = sign_and_encrypt(&payload, signer, &targets, method)?;
         let raw = build_outer(&input, &armored)?;
 
         let envelope = MailEnvelope {
@@ -188,6 +146,16 @@ fn references_of(message: &Outgoing, parent: Option<&str>, root: &str) -> Vec<St
     }
     chain.push(parent.to_string());
     chain
+}
+
+/// The subkey of `reach` that `method` encrypts to.
+fn subkey_for<'a>(
+    reach: &'a Reach,
+    method: Method,
+    now: u64,
+    from: &str,
+) -> CoreResult<&'a pgp::composed::SignedPublicSubKey> {
+    usable_encryption_key(reach.for_method(method), now).map_err(refused_now(from))
 }
 
 /// A key checked a moment ago failed now. Refuse rather than send to fewer people.

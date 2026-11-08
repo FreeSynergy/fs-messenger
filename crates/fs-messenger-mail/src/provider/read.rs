@@ -61,20 +61,20 @@ impl ReadMail {
     }
 }
 
-pub(super) fn offer_of(values: &[Vec<u8>], sender: &str) -> Option<PublicCert> {
+pub(super) fn offer_of(values: &[Vec<u8>], sender: &str) -> Option<Offer> {
     let header = offered_for(values.iter().map(Vec::as_slice), sender)?;
-    PublicCert::from_binary(&header.keydata).ok()
+    Offer::from_header(&header)
 }
 
 pub(super) fn offering(
     sender: &str,
-    cert: Option<PublicCert>,
+    offer: Option<Offer>,
     proven: bool,
 ) -> Option<(String, Offer)> {
-    cert.map(|cert| {
+    offer.map(|offer| {
         let offer = Offer {
-            cert,
             proven_by_known_key: proven,
+            ..offer
         };
         (sender.to_string(), offer)
     })
@@ -106,6 +106,10 @@ struct Signers {
     certs: Vec<PublicCert>,
     /// They were known before this mail. Otherwise it offered them itself, which proves nothing.
     known: bool,
+    /// The fingerprint of the held key in use (the v6 key): only a signature by it proves an offer. The
+    /// legacy v4 key beside it may sign, but must never vouch for a key (a weaker key must not rotate
+    /// the stronger one).
+    proving: Option<String>,
 }
 
 /// What the blocking part needs. Key lookups run on the runtime it was started from.
@@ -118,24 +122,48 @@ struct Reader {
 
 impl Reader {
     /// A held key that may not vouch any more (revoked, broken) counts as known and verifies nothing.
-    fn signers(&self, sender: &str, offers: &[Option<PublicCert>]) -> Result<Signers> {
+    fn signers(&self, sender: &str, offers: &[Option<Offer>]) -> Result<Signers> {
         let sender = normalise_address(sender);
         if sender == self.address {
-            let own = self.runtime.block_on(self.keys.own_key(&sender))?;
-            let certs = own.iter().map(SecretCert::public).collect();
-            return Ok(Signers { certs, known: true });
+            let certs = self.own_keys()?.iter().map(SecretCert::public).collect();
+            return Ok(Signers {
+                certs,
+                known: true,
+                proving: None,
+            });
         }
         if let Some(peer) = self.runtime.block_on(self.keys.peer(&sender))? {
-            let cert = peer
-                .certificate()
-                .map_err(|e| MailError::Keys(e.to_string()))?;
-            let certs = Some(cert).filter(may_vouch).into_iter().collect();
-            return Ok(Signers { certs, known: true });
+            // Either of her two keys may have signed: she signs with the one she encrypted with.
+            let keys_err = |e: MailError| MailError::Keys(e.to_string());
+            let mut certs = vec![peer.certificate().map_err(keys_err)?];
+            if let Some(legacy) = &peer.legacy {
+                certs.push(legacy.certificate().map_err(keys_err)?);
+            }
+            certs.retain(may_vouch);
+            return Ok(Signers {
+                certs,
+                known: true,
+                proving: Some(peer.fingerprint.clone()),
+            });
         }
         Ok(Signers {
-            certs: offers.iter().flatten().cloned().collect(),
+            certs: offers
+                .iter()
+                .flatten()
+                .flat_map(Offer::certs)
+                .cloned()
+                .collect(),
             known: false,
+            proving: None,
         })
+    }
+
+    /// Our own secret keys: the v6 key and the v4 key beside it.
+    fn own_keys(&self) -> Result<Vec<SecretCert>> {
+        let keys = &self.keys;
+        let modern = self.runtime.block_on(keys.own_key(&self.address))?;
+        let legacy = self.runtime.block_on(keys.own_legacy_key(&self.address))?;
+        Ok(modern.into_iter().chain(legacy).collect())
     }
 
     fn read(&self, raw: &[u8], outer: MailFields) -> Result<ReadMail> {
@@ -166,11 +194,7 @@ impl Reader {
     }
 
     fn read_encrypted(&self, outer: MailFields, armored: &[u8]) -> Result<ReadMail> {
-        let own: Vec<SecretCert> = self
-            .runtime
-            .block_on(self.keys.own_key(&self.address))?
-            .into_iter()
-            .collect();
+        let own = self.own_keys()?;
         let mut seen = None;
         let opened = decrypt_selecting(armored, &own, self.limit, |payload| {
             let covered = Covered::of(payload);
@@ -199,7 +223,12 @@ impl Reader {
             (SignatureState::Valid { .. }, _) | (_, None) => combined,
             (_, Some((content, signature))) => verify_detached(signature, content, &signers.certs),
         };
-        Ok(opened_mail(outer, covered.fields, &state, signers.known))
+        Ok(opened_mail(
+            outer,
+            covered.fields,
+            &state,
+            (signers.known, signers.proving.as_deref()),
+        ))
     }
 }
 

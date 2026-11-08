@@ -31,7 +31,7 @@ const TABLE: &[(&str, CapabilityRule)] = &[
     ("conversation.usage", Risk(R::ReadsOnly)),
     // A read mark can reach the other side as a receipt.
     ("conversation.markRead", Risk(R::ActsForPerson)),
-    ("conversation.pin", Risk(R::Changes)),
+    ("conversation.sticky", Risk(R::Changes)),
     // A folder can be a distribution list, or the Trash.
     ("conversation.move", Risk(R::ActsForPerson)),
     ("turn.stop", Risk(R::Changes)),

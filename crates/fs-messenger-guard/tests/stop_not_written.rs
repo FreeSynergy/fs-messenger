@@ -112,7 +112,7 @@ async fn when_the_store_stops_answering_everything_is_refused_and_comes_back_onl
 }
 
 #[tokio::test]
-async fn an_allow_once_that_cannot_be_used_up_in_the_state_is_refused() {
+async fn a_logged_write_on_the_state_is_refused_by_the_store() {
     // Over a real messenger: the question and the decision go the normal way.
     let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
@@ -123,16 +123,16 @@ async fn an_allow_once_that_cannot_be_used_up_in_the_state_is_refused() {
         .act(q.conversation, q.message, MessageAction::Decide(d))
         .await
         .unwrap();
-    // The store holds the object; now a logged write has given the id a history, so the unlogged
-    // write of the state fails for real. It reads, and it cannot be written.
+    // fs-objects 0.4 refuses a logged write on an id written unlogged, so the state can no longer be
+    // given a history by accident; the old way to make the unlogged write fail does not exist any more.
     let id: ObjectId = STATE_ID.parse().unwrap();
     let current = w.store.read_unlogged(id).await.unwrap().unwrap();
     use fs_objects::Store;
-    w.store.put(current, "someone").await.unwrap();
-    assert_eq!(
+    assert!(w.store.put(current, "someone").await.is_err());
+    assert!(matches!(
         w.check("message.delete", args("/m")).await,
-        Verdict::Refuse(Refusal::NotRecorded)
-    );
+        Verdict::Allow(_)
+    ));
 }
 
 #[tokio::test]

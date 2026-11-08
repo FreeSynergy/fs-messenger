@@ -37,6 +37,12 @@ impl Store for Flaky {
         }
         Store::put(&self.real, object, actor).await
     }
+    fn identity(&self) -> fs_objects::StoreId {
+        Store::identity(&self.real)
+    }
+    fn is_encrypted(&self) -> bool {
+        Store::is_encrypted(&self.real)
+    }
     async fn put_and_log(
         &self,
         o: StoredObject,

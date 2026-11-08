@@ -104,6 +104,7 @@ pub(super) fn known(cert: &PublicCert) -> crate::keys::PeerKey {
 pub(super) fn offer(cert: &PublicCert) -> crate::autocrypt::Offer {
     crate::autocrypt::Offer {
         cert: cert.clone(),
+        companion: None,
         proven_by_known_key: false,
     }
 }

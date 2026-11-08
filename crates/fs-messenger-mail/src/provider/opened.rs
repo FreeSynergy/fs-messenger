@@ -24,11 +24,15 @@ pub(super) fn opened_mail(
     outer: MailFields,
     inner: MailFields,
     state: &SignatureState,
-    known: bool,
+    (known, proving): (bool, Option<&str>),
 ) -> ReadMail {
     let signature = check_of(state, known, inner.from.is_some());
-    let verified = signature == SignatureCheck::Valid;
-    let believed = verified || inner.header_protected;
+    // Only the key in use proves an offer; a signature of the legacy key beside it verifies the mail
+    // and nothing more.
+    let verified = signature == SignatureCheck::Valid
+        && matches!(state, SignatureState::Valid { fingerprint } if Some(fingerprint.as_str()) == proving);
+    let signed_ok = signature == SignatureCheck::Valid;
+    let believed = signed_ok || inner.header_protected;
     let sender = if believed { inner.from.clone() } else { None };
     let sender = sender.or_else(|| outer.from.clone()).unwrap_or_default();
     // The rule of `autocrypt::rule`: only an offer the known key signed, in a part that declares its

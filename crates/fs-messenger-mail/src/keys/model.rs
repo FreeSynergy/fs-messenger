@@ -33,6 +33,32 @@ pub struct CandidateKey {
     pub last_offered: u64,
 }
 
+/// The v4 key held beside a v6 key: what an older program of the same person reads. Never the key in
+/// use for signing proofs; it is added and replaced only with a proof (`autocrypt::rule`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LegacyKey {
+    /// Fingerprint of the v4 key.
+    pub fingerprint: String,
+    /// The certificate, binary, base64.
+    pub cert: String,
+}
+
+impl LegacyKey {
+    /// Hold `cert` as the v4 key.
+    pub fn new(cert: &PublicCert) -> Result<Self, MailError> {
+        Ok(Self {
+            fingerprint: cert.fingerprint(),
+            cert: STANDARD.encode(cert.to_binary()?),
+        })
+    }
+
+    /// The certificate.
+    pub fn certificate(&self) -> Result<PublicCert, MailError> {
+        decode_cert(&self.cert)
+    }
+}
+
 /// What we hold about one peer.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,6 +77,9 @@ pub struct PeerKey {
     pub last_seen: u64,
     /// A different key somebody offered without proof. Never encrypted to; shown as a conflict.
     pub candidate: Option<CandidateKey>,
+    /// The peer's v4 key beside the key in use, if that one is v6.
+    #[serde(default)]
+    pub legacy: Option<LegacyKey>,
 }
 
 impl PeerKey {
@@ -69,6 +98,7 @@ impl PeerKey {
             first_seen: now,
             last_seen: now,
             candidate: None,
+            legacy: None,
         })
     }
 

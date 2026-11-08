@@ -35,7 +35,10 @@ async fn a_long_journal_folds_and_loses_nothing() {
     assert!(!map.contains_key("k0"));
 
     let q = Query::new().of_type("freesynergy.net:MatrixStoreSegment");
-    let segments = store.query(&q).await.unwrap();
+    let segments = store
+        .query_unlogged(&q, &["freesynergy.net:MatrixStoreSegment"])
+        .await
+        .unwrap();
     assert!(segments.len() < 900, "folded: {} objects", segments.len());
 
     // After the fold, a new handle reads the same and goes on numbering after it.

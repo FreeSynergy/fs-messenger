@@ -19,7 +19,8 @@ async fn without_arguments_the_digest_is_still_there_risk_unknown_and_allow_once
     let Verdict::Ask(q) = call(&none).await else {
         panic!()
     };
-    assert_eq!(q.call.risk, ToolCallRisk::Unknown);
+    // A read that names no object counts as marked (4d(2)): `readsSensitive` since contract 0.47.0.
+    assert_eq!(q.call.risk, ToolCallRisk::ReadsSensitive);
     assert_eq!(
         q.call.arguments_digest,
         arguments_digest(AI, None, "message.open", &none)

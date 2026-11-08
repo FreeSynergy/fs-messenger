@@ -34,6 +34,16 @@ impl PublicCert {
     pub fn fingerprint(&self) -> String {
         hex(self.0.fingerprint().as_bytes())
     }
+
+    /// Whether this is a v6 key (RFC 9580). Anything else is an older one.
+    pub fn is_v6(&self) -> bool {
+        self.0.version() == pgp::types::KeyVersion::V6
+    }
+
+    /// Whether this is a v4 key (RFC 4880).
+    pub fn is_v4(&self) -> bool {
+        self.0.version() == pgp::types::KeyVersion::V4
+    }
 }
 
 impl fmt::Debug for PublicCert {
