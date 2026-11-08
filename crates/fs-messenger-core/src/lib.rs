@@ -16,8 +16,10 @@
     clippy::module_name_repetitions
 )]
 
+mod cooldown;
 mod draft;
 mod error;
+pub mod export;
 mod gate;
 mod guard_hook;
 mod ingest;
@@ -26,8 +28,12 @@ mod listener;
 mod messenger;
 pub mod model;
 pub mod provider;
+mod receipts;
 mod repo;
+mod why_plain;
+pub mod words;
 
+pub use cooldown::{COOL_DOWN_SECS, Stage as CoolDown};
 pub use draft::{Draft, DraftInfo};
 pub use error::{Error, Result};
 pub use guard_hook::{DecisionProblem, EngineGuard, SenderLookup};
@@ -39,6 +45,8 @@ pub use provider::{
     FetchBatch, Outgoing, OutgoingAttachment, Provider, ProviderCursor, RawAttachment, RawMessage,
     RawToolCall, SendReceipt, TurnScope,
 };
+pub use receipts::{ReceiptChoice, receipts_both_ways};
 pub use repo::{
     GuardPort, MessengerConfig, MessengerRepo, PlacedCall, SettledCalls, TurnStop, TurnStopOutcome,
 };
+pub use why_plain::{Facts as EncryptionFacts, Remedy, WhyNot, why_not};
