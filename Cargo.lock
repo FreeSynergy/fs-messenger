@@ -1801,7 +1801,7 @@ dependencies = [
 
 [[package]]
 name = "fs-messenger-core"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1817,7 +1817,7 @@ dependencies = [
 
 [[package]]
 name = "fs-messenger-guard"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1838,7 +1838,7 @@ dependencies = [
 
 [[package]]
 name = "fs-messenger-mail"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "async-imap",
  "async-trait",
@@ -1871,7 +1871,7 @@ dependencies = [
 
 [[package]]
 name = "fs-messenger-matrix"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "assert_matches",
  "assert_matches2",

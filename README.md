@@ -8,7 +8,7 @@ What is different here: it is encrypted only. If no way to encrypt a message to 
 
 ## What it can do today
 
-Latest tag: `v0.0.1`.
+Latest tag: `v0.0.2`.
 
 - A message model for mail, chat and agents; conversations, paging that does not jump when new mail arrives, unread marks, drafts, search, pin, move, flag, forward.
 - Encrypted-only sending, with a clear refusal naming the recipients that cannot be reached.
