@@ -17,6 +17,7 @@
 mod api;
 mod arguments;
 mod clock;
+mod consent;
 mod destination;
 mod device;
 mod digest;
@@ -42,6 +43,7 @@ mod words;
 pub use api::{Gate, Guard};
 pub use arguments::{Arguments, ArgumentsError};
 pub use clock::{Clock, SystemClock};
+pub use consent::{Consent, History, Outcome as ConsentOutcome, Say};
 pub use destination::{Destination, DestinationLookup};
 pub use device::{DeviceVerifier, Ed25519Verifier};
 pub use digest::arguments_digest;
