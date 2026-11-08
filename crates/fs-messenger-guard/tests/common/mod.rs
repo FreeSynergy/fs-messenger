@@ -4,6 +4,7 @@
 pub mod destination;
 pub mod device;
 pub mod events;
+pub mod ideas;
 pub mod program;
 pub mod rigs;
 

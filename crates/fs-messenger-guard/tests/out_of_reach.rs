@@ -153,21 +153,7 @@ async fn every_messenger_path(
         .subscribe(EventFilter::default(), Arc::new(NoListener))
         .await;
     let _ = repo.stop(state).await;
-    // The accepted ideas of requirements.md, at the state's id as well.
-    let _ = repo.export_conversation(state).await;
-    let _ = repo.why_not_encrypted(state).await;
-    let _ = repo.receipt_choice().await;
-    let _ = repo
-        .set_receipt_choice(fs_messenger_core::ReceiptChoice::Shown)
-        .await;
-    let _ = repo
-        .show_receipt(fs_messenger_core::ReceiptChoice::Shown)
-        .await;
-    let _ = repo.hold(state, 0, None).await;
-    let _ = repo.held_stage(state).await;
-    let _ = repo.send_held_now(state, 0).await;
-    let _ = repo.recall_held(state).await;
-    let _ = repo.release_due(u64::MAX).await;
+    common::ideas::every_idea_path(repo, state).await;
     // The way in for whoever runs a provider.
     let raw = RawMessage::new(
         fs_messenger_core::ExternalId::new("uid", "x"),
