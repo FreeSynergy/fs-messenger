@@ -4,7 +4,7 @@
 //! asks it before it looks at the invitation or the table, so a new tool that hands out a key cannot
 //! be missed by not being listed.
 //!
-//! The rule, word for word: normalise the name first (Unicode UTS #39: NFKC, lower case, combining marks dropped, the skeleton of
+//! The rule, word for word: normalise the name first (Unicode UTS #39: NFKD, lower case, combining marks dropped, the skeleton of
 //! confusable characters, lower case again, so `ｔoken`, `tоken` with a Cyrillic o and `TOKEN` read the
 //! same); split it at every character that is not a letter or a digit (dot, hyphen, underscore,
 //! space); the name is secret if any part **contains** one of `secret`, `token`, `key`, `password`,
@@ -31,13 +31,13 @@ const WORDS: [&str; 13] = [
     "credential",
 ];
 
-/// The name as the rule compares it: NFKC, lower case, combining marks dropped (`PİN` lower-cases to
+/// The name as the rule compares it: NFKD, lower case, combining marks dropped (`PİN` lower-cases to
 /// `i` and a dot mark, which would split the word), confusables folded, lower case again.
 fn normalised(name: &str) -> String {
     use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
     use unicode_security::confusable_detection::skeleton;
     let folded: String = name
-        .nfkc()
+        .nfkd()
         .flat_map(char::to_lowercase)
         .filter(|c| !is_combining_mark(*c))
         .collect();
