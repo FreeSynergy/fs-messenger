@@ -1793,15 +1793,15 @@ dependencies = [
 
 [[package]]
 name = "fs-interfaces"
-version = "0.47.0"
-source = "git+https://github.com/FreeSynergy/fs-interfaces?tag=v0.47.0#015b94fa475850fb14aaa156c6b27279dacfdb34"
+version = "0.0.1"
+source = "git+https://github.com/FreeSynergy/fs-interfaces?tag=v0.0.1#9f2d3a0626d7382b478c754eb31834146188dfab"
 dependencies = [
  "capnp",
 ]
 
 [[package]]
 name = "fs-messenger-core"
-version = "0.5.0"
+version = "0.0.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1817,7 +1817,7 @@ dependencies = [
 
 [[package]]
 name = "fs-messenger-guard"
-version = "0.5.0"
+version = "0.0.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1838,7 +1838,7 @@ dependencies = [
 
 [[package]]
 name = "fs-messenger-mail"
-version = "0.5.0"
+version = "0.0.1"
 dependencies = [
  "async-imap",
  "async-trait",
@@ -1871,7 +1871,7 @@ dependencies = [
 
 [[package]]
 name = "fs-messenger-matrix"
-version = "0.5.0"
+version = "0.0.1"
 dependencies = [
  "assert_matches",
  "assert_matches2",
@@ -1902,8 +1902,8 @@ dependencies = [
 
 [[package]]
 name = "fs-objects"
-version = "0.6.0"
-source = "git+https://github.com/FreeSynergy/fs-objects?tag=v0.6.0#0bd5043bf98232d89f89d77ac2b7c172032fda6b"
+version = "0.0.1"
+source = "git+https://github.com/FreeSynergy/fs-objects?tag=v0.0.1#7cf0f05e3a9835b582aa2ac22014f2a1f1bff200"
 dependencies = [
  "async-trait",
  "base64 0.22.1",

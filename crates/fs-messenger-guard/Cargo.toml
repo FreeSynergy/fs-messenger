@@ -8,8 +8,8 @@ rust-version.workspace = true
 
 [dependencies]
 fs-messenger-core = { path = "../fs-messenger-core" }
-fs-objects = { git = "https://github.com/FreeSynergy/fs-objects", tag = "v0.6.0" }
-fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.47.0" }
+fs-objects = { git = "https://github.com/FreeSynergy/fs-objects", tag = "v0.0.1" }
+fs-interfaces = { git = "https://github.com/FreeSynergy/fs-interfaces", tag = "v0.0.1" }
 # Ed25519 in pure Rust, MIT. Not ed25519-dalek: that and curve25519-dalek are BSD-3-Clause.
 ed25519-compact = { version = "2.6", default-features = false, features = ["std"] }
 # MIT OR Apache-2.0. Digests and single-use keys.
