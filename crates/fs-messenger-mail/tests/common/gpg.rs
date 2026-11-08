@@ -63,5 +63,9 @@ impl Drop for Gpg {
             cmd.env("GNUPGHOME", self.0.path()).args(args.split(' '));
             let _ = cmd.output();
         }
+        // The agent does not always answer `--kill`; whatever still runs with this home goes (the
+        // directory name is unique). An agent left behind fills the user's inotify instances.
+        let home = self.0.path().to_string_lossy().into_owned();
+        let _ = Command::new("pkill").args(["-f", "--", &home]).output();
     }
 }
