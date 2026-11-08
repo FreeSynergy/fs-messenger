@@ -1900,14 +1900,15 @@ dependencies = [
 
 [[package]]
 name = "fs-objects"
-version = "0.3.0"
-source = "git+https://github.com/FreeSynergy/fs-objects?tag=v0.3.0#cf506699d9ca1517277c22ec2761dfa1c33cf2b7"
+version = "0.5.0"
+source = "git+https://github.com/FreeSynergy/fs-objects?tag=v0.5.0#b0a794ab702d8cf8660956950e1e8868e4c155c3"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "thiserror 2.0.21",
  "tokio",
  "turso",

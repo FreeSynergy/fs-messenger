@@ -39,7 +39,7 @@ impl MatrixProvider {
         options.filter.senders = Some(vec![own]);
         let page = self.account.bounded(room.messages(options)).await?;
         let jsons = page.chunk.iter().map(|e| e.raw().json().get());
-        if any_own_join(&self.account.user_id, jsons) {
+        if any_own_join(&self.account.user_id, room.room_id().as_str(), jsons) {
             return Ok(Checked::Found);
         }
         Ok(match page.end {

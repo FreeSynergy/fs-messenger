@@ -24,13 +24,13 @@ use crate::receive::{Section, any_own_join};
 type Timeline = v3::Timeline;
 
 /// Whether an own join is in this room's state or timeline.
-fn own_join_in(own: &str, state: &State, timeline: &Timeline) -> bool {
+fn own_join_in(own: &str, room: &str, state: &State, timeline: &Timeline) -> bool {
     let state = match state {
         State::Before(s) | State::After(s) => s.events.iter().map(|e| e.json().get()).collect(),
         _ => Vec::new(),
     };
     let events = timeline.events.iter().map(|e| e.json().get());
-    any_own_join(own, state.into_iter().chain(events))
+    any_own_join(own, room, state.into_iter().chain(events))
 }
 
 impl MatrixProvider {
@@ -69,7 +69,7 @@ impl MatrixProvider {
         ];
         for (section, listed) in sections {
             for (id, state, t) in listed {
-                let own_join = own_join_in(own, &state, &t);
+                let own_join = own_join_in(own, id.as_str(), &state, &t);
                 let events = self.timeline_events(&id, t.events).await?;
                 let room = RoomAnswer::new(
                     id,

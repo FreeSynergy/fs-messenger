@@ -79,16 +79,16 @@ fn state_jsons(state: &State) -> Vec<&str> {
     events.iter().map(|e| e.json().get()).collect()
 }
 
-fn own_join_in(own: &str, state: &State, timeline: &[TimelineEvent]) -> bool {
+fn own_join_in(own: &str, room: &str, state: &State, timeline: &[TimelineEvent]) -> bool {
     let events = timeline.iter().map(|e| e.raw().json().get());
-    any_own_join(own, state_jsons(state).into_iter().chain(events))
+    any_own_join(own, room, state_jsons(state).into_iter().chain(events))
 }
 
 /// The SDK's answer as ours. `own` is the account's Matrix id; `limit` the timeline limit.
 pub(crate) fn from_sdk(response: SyncResponse, own: &str, limit: usize) -> Answer {
     let mut rooms = Vec::new();
     for (id, update) in response.rooms.joined {
-        let own_join = own_join_in(own, &update.state, &update.timeline.events);
+        let own_join = own_join_in(own, id.as_str(), &update.state, &update.timeline.events);
         let t = update.timeline;
         let room = RoomAnswer::new(
             id,
@@ -102,7 +102,7 @@ pub(crate) fn from_sdk(response: SyncResponse, own: &str, limit: usize) -> Answe
         rooms.push(room);
     }
     for (id, update) in response.rooms.left {
-        let own_join = own_join_in(own, &update.state, &update.timeline.events);
+        let own_join = own_join_in(own, id.as_str(), &update.state, &update.timeline.events);
         let t = update.timeline;
         let room = RoomAnswer::new(
             id,
