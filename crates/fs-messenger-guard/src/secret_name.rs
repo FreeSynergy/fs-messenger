@@ -31,18 +31,29 @@ const WORDS: [&str; 13] = [
     "credential",
 ];
 
-/// The name as the rule compares it: NFKC, lower case, confusables folded, lower case again.
+/// The name as the rule compares it: NFKC, lower case, combining marks dropped (`PİN` lower-cases to
+/// `i` and a dot mark, which would split the word), confusables folded, lower case again.
 fn normalised(name: &str) -> String {
-    use unicode_normalization::UnicodeNormalization;
+    use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
     use unicode_security::confusable_detection::skeleton;
-    let folded: String = name.nfkc().flat_map(char::to_lowercase).collect();
+    let folded: String = name
+        .nfkc()
+        .flat_map(char::to_lowercase)
+        .filter(|c| !is_combining_mark(*c))
+        .collect();
     skeleton(&folded).flat_map(char::to_lowercase).collect()
+}
+
+/// The words, folded the same way (the skeleton changes letters: `m` becomes `rn`), once.
+fn folded_words() -> &'static [String] {
+    static FOLDED: std::sync::LazyLock<Vec<String>> =
+        std::sync::LazyLock::new(|| WORDS.iter().map(|word| normalised(word)).collect());
+    &FOLDED
 }
 
 /// Whether a tool name is one of a secret. Such a tool is for no AI.
 pub fn is_secret_name(name: &str) -> bool {
-    // The words go through the same folding: the skeleton changes letters (`m` becomes `rn`).
-    let words: Vec<String> = WORDS.iter().map(|word| normalised(word)).collect();
+    let words = folded_words();
     normalised(name)
         .split(|c: char| !c.is_alphanumeric())
         .any(|part| words.iter().any(|word| part.contains(word.as_str())))
@@ -82,7 +93,12 @@ mod tests {
 
     #[test]
     fn plain_names_stay_open() {
-        for name in ["message.send", "conversation.list", "draft.list"] {
+        for name in [
+            "message.send",
+            "conversation.list",
+            "draft.list",
+            "message.open",
+        ] {
             assert!(!is_secret_name(name), "{name}");
         }
     }
