@@ -51,12 +51,12 @@ async fn drain(
 #[tokio::test]
 async fn endless_pages_end_one_sync_and_the_next_goes_on() {
     let (syncs_seen, pages) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
-    let (counter, served) = (syncs_seen.clone(), pages.clone());
+    let (counter, page_count) = (syncs_seen.clone(), pages.clone());
     let server = Server::start(move |path| match path {
         p if p.ends_with("/login") => login(),
         p if p.contains("/sync") => syncs(&counter, &[], true),
         p if p.contains("/messages") => {
-            let i = served.fetch_add(1, Ordering::SeqCst);
+            let i = page_count.fetch_add(1, Ordering::SeqCst);
             let chunk = [plain(&format!("$m{i}"), "hi")];
             Reply::json(
                 200,

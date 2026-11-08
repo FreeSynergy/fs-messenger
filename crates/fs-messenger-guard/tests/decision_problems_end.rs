@@ -3,6 +3,7 @@
 mod common;
 
 use common::events::{drain, listen, next_call, refused_as, silence};
+use std::fmt::Write as _;
 
 use common::{AI, Device, FRIEND, World, args};
 use fs_messenger_core::{
@@ -75,7 +76,10 @@ async fn a_signer_who_was_not_asked_answers_not_asked_and_no_event_follows() {
     let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let friend = Device::new(FRIEND, 2);
-    let key: String = friend.public().iter().map(|b| format!("{b:02x}")).collect();
+    let key: String = friend.public().iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    });
     let add = w.owner.proof(
         &w.identity,
         Method::AddDevice,
@@ -178,7 +182,10 @@ async fn an_ai_as_the_person_asked_cannot_decide_even_with_a_key() {
     let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
     let ai = Device::new(AI, 9);
-    let key: String = ai.public().iter().map(|b| format!("{b:02x}")).collect();
+    let key: String = ai.public().iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    });
     w.tamper(|doc| {
         doc["calls"][0]["askedOf"] = serde_json::json!(AI);
         doc["devices"][AI] = serde_json::json!([{ "keyType": "ed25519", "publicKey": key }]);

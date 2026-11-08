@@ -10,7 +10,7 @@ use fs_messenger_matrix::store::{FsCryptoStore, FsJournal, FsStateStore};
 use fs_objects::traits::ActivityLog;
 use fs_objects::{ActivityFilter, TursoStore};
 use matrix_sdk_base::deserialized_responses::RawAnySyncOrStrippedState;
-use matrix_sdk_base::store::StateStoreDataKey;
+use matrix_sdk_base::store::{RoomLoadSettings, StateStoreDataKey};
 use matrix_sdk_base::{RoomInfo, RoomState, StateChanges, StateStore};
 use matrix_sdk_crypto::store::CryptoStore;
 use ruma::events::{GlobalAccountDataEventType, StateEventType};
@@ -79,7 +79,10 @@ async fn state_comes_back_and_goes_with_its_room() {
         .await
         .unwrap();
     assert_eq!(token.unwrap().into_sync_token().as_deref(), Some("token-1"));
-    let rooms = state.get_room_infos(&Default::default()).await.unwrap();
+    let rooms = state
+        .get_room_infos(&RoomLoadSettings::default())
+        .await
+        .unwrap();
     assert_eq!(rooms.len(), 2);
     let found = state
         .get_state_event(room, StateEventType::RoomTopic, "")
@@ -119,7 +122,7 @@ async fn state_comes_back_and_goes_with_its_room() {
     );
     assert_eq!(
         state
-            .get_room_infos(&Default::default())
+            .get_room_infos(&RoomLoadSettings::default())
             .await
             .unwrap()
             .len(),

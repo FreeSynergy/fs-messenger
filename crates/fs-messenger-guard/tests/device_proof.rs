@@ -4,8 +4,12 @@ mod common;
 
 use common::{Device, OWNER};
 use fs_messenger_guard::{CONTEXT, DeviceVerifier, Ed25519Verifier, Method, signed_bytes};
+use std::fmt::Write as _;
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    bytes.iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
 }
 
 fn unhex(text: &str) -> Vec<u8> {
@@ -75,7 +79,7 @@ fn the_signed_bytes_are_exactly_these() {
     .unwrap();
     let mut expected = vec![];
     let field = |out: &mut Vec<u8>, f: &[u8]| {
-        out.extend_from_slice(&(f.len() as u32).to_be_bytes());
+        out.extend_from_slice(&u32::try_from(f.len()).unwrap().to_be_bytes());
         out.extend_from_slice(f);
     };
     field(&mut expected, CONTEXT.as_bytes());

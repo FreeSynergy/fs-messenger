@@ -19,8 +19,8 @@ async fn stopped_after(w: &World) {
         w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
     );
-    assert!(w.engine.state().await.grants.is_empty());
-    assert!(w.engine.state().await.invited.is_empty());
+    assert!(w.engine.state().await.grants.is_empty(), "grants left");
+    assert!(w.engine.state().await.invited.is_empty(), "expected empty");
 }
 
 #[tokio::test]
@@ -143,7 +143,7 @@ async fn recovery_is_local_starts_stopped_and_kills_every_older_proof() {
         .await
         .unwrap();
     assert_eq!(w.engine.state().await.mode, GuardMode::Open);
-    assert!(w.engine.state().await.grants.is_empty());
+    assert!(w.engine.state().await.grants.is_empty(), "expected empty");
 }
 
 #[tokio::test]
@@ -160,7 +160,7 @@ async fn the_state_object_is_marked_sensitive() {
     let w = World::open().await;
     let id: ObjectId = STATE_ID.parse().unwrap();
     let object: StoredObject = w.store.read_unlogged(id).await.unwrap().unwrap();
-    assert!(!object.envelope.sensitive.is_empty());
+    assert!(!object.envelope.sensitive.is_empty(), "expected not empty");
     let _ = Envelope::new("x", "y");
 }
 

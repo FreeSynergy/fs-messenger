@@ -18,6 +18,7 @@ impl Clock for Manual {
     }
 }
 
+#[allow(clippy::unused_async)] // callers await it, as they do the other async setups
 async fn book(store: Arc<TursoStore>, at: i64) -> (ConsentBook, Arc<Manual>) {
     let clock = Arc::new(Manual(AtomicI64::new(at)));
     let store: Arc<dyn Store> = store;

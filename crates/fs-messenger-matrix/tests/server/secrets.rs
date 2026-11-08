@@ -68,6 +68,7 @@ async fn needles(alice: &Person, passphrase: &str, export: &Path) -> Vec<(&'stat
 
 #[tokio::test]
 #[ignore = "needs a homeserver; see tests/server/main.rs"]
+#[allow(clippy::too_many_lines)] // one scenario that pushes a secret through every channel in turn
 async fn no_secret_in_activity_hub_path_debug_error_log_or_file() {
     let log = captured();
     let alice = Person::new("alice").await;
@@ -152,7 +153,10 @@ async fn no_secret_in_activity_hub_path_debug_error_log_or_file() {
         unsynced_only: true,
         ..ActivityFilter::default()
     };
-    assert!(alice.keys.activities(&unsynced).await.unwrap().is_empty());
+    assert_eq!(
+        alice.keys.activities(&unsynced).await.unwrap(),
+        [] as [fs_objects::Activity; 0]
+    );
 
     // The raw files: encrypted, so none of it is readable, nor the room or the words around a key.
     drop(alice.provider);

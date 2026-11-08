@@ -32,7 +32,10 @@ async fn what_was_said_while_away_is_read_after_the_return() {
     let missed = format!("Missed-{}", token());
     http::plain_message(&view, &room, &missed).await;
     alice.sync().await; // sees the leave; the message is not hers to receive
-    assert!(alice.find(&missed).await.is_empty());
+    assert_eq!(
+        alice.find(&missed).await,
+        [] as [fs_messenger_core::Message; 0]
+    );
 
     invite(&view, &room, &alice).await;
     assert_eq!(alice.join_next_invite().await, room);

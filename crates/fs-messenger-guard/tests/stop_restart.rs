@@ -73,7 +73,7 @@ async fn an_unwritten_stop_survives_a_restart_with_nothing_coming_back() {
 
     let (engine, faulty, rest) = restart_on(r).await;
     assert_eq!(engine.state().await.mode, GuardMode::Stopped);
-    assert!(engine.state().await.grants.is_empty());
+    assert!(engine.state().await.grants.is_empty(), "expected empty");
     let input = fs_messenger_guard::Arguments::from_text(r#"{"path":"/"}"#).unwrap();
     let caller = fs_messenger_guard::Caller::new(AI);
     assert_eq!(

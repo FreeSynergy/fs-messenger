@@ -4,8 +4,12 @@ mod common;
 
 use common::{AI, Device, FRIEND, OWNER, World};
 use fs_messenger_guard::{Guard, GuardError, GuardProof, Method, Refusal, signed_bytes};
+use std::fmt::Write as _;
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    bytes.iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
 }
 
 #[tokio::test]

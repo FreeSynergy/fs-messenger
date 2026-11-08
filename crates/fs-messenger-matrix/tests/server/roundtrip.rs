@@ -55,7 +55,7 @@ async fn alice_to_bob_and_back_with_threading() {
         .parse()
         .unwrap();
     let opened = alice.repo.open(conversation).await.unwrap();
-    assert!(!opened.name.is_empty());
+    assert_ne!(opened.name, "");
     let mine = alice.find(&text).await.pop().unwrap();
     assert_eq!(
         mine.summary.envelope.context.as_deref(),

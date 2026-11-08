@@ -33,7 +33,7 @@ async fn stop_refuses_every_ai_takes_all_releases_and_settles_all_calls() {
 
     let state = w.engine.state().await;
     assert_eq!(state.mode, GuardMode::Stopped);
-    assert!(state.grants.is_empty());
+    assert!(state.grants.is_empty(), "expected empty");
     assert_eq!(state.stopped_by, OWNER);
     assert!(state.stopped_at.is_some());
     assert_eq!(
@@ -54,7 +54,7 @@ async fn stop_refuses_every_ai_takes_all_releases_and_settles_all_calls() {
         let shown = w.shown(q).await;
         assert_eq!(shown.state, ToolCallState::Settled);
         assert_eq!(shown.outcome, ToolCallOutcome::Cancelled);
-        assert!(shown.options.is_empty());
+        assert!(shown.options.is_empty(), "expected empty");
     }
 }
 
@@ -88,7 +88,7 @@ async fn a_restart_stays_stopped_with_the_releases_gone() {
     w.engine.stop(&w.stop_proof()).await.unwrap();
     let w = w.restart().await;
     assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);
-    assert!(w.engine.state().await.grants.is_empty());
+    assert!(w.engine.state().await.grants.is_empty(), "expected empty");
     assert_eq!(
         w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
@@ -106,7 +106,7 @@ async fn reopen_needs_a_proof_and_the_releases_stay_taken_also_a_tampered_one() 
     assert_eq!(w.engine.state().await.mode, GuardMode::Stopped);
 
     w.tamper(|doc| {
-        doc["grants"] = json!([{ "profile": AI, "risk": "readsOnly", "program": "message" }])
+        doc["grants"] = json!([{ "profile": AI, "risk": "readsOnly", "program": "message" }]);
     })
     .await;
     w.engine.reopen(&w.reopen_proof()).await.unwrap();

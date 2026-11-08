@@ -15,7 +15,7 @@ use support::server::{Reply, Server};
 const USER: &str = "@alice:x.test";
 const TOKEN: &str = "token-needle-of-this-test";
 
-fn login_answer(extra: serde_json::Value) -> Reply {
+fn login_answer(extra: &serde_json::Value) -> Reply {
     let mut body = json!({"user_id": USER, "access_token": TOKEN, "device_id": "DEV"});
     body.as_object_mut()
         .unwrap()
@@ -42,7 +42,7 @@ async fn a_login_answer_cannot_move_the_token_to_another_origin() {
     let thief = Server::start(|_| Reply::json(200, &json!({"next_batch": "stolen"}))).await;
     let well_known = json!({"well_known": {"m.homeserver": {"base_url": thief.url()}}});
     let server = Server::start(move |path| match path {
-        p if p.ends_with("/login") => login_answer(well_known.clone()),
+        p if p.ends_with("/login") => login_answer(&well_known),
         p if p.contains("/sync") => Reply::json(200, &json!({"next_batch": "s1"})),
         p => ordinary(p),
     })
@@ -71,7 +71,7 @@ async fn a_redirect_is_not_followed() {
     let thief = Server::start(|_| Reply::json(200, &json!({"next_batch": "stolen"}))).await;
     let target = thief.url();
     let server = Server::start(move |path| match path {
-        p if p.ends_with("/login") => login_answer(json!({})),
+        p if p.ends_with("/login") => login_answer(&json!({})),
         p if p.contains("/sync") => Reply::redirect(&format!("{target}/stolen")),
         p => ordinary(p),
     })
@@ -111,7 +111,7 @@ async fn a_server_that_never_answers_does_not_hang_the_provider() {
 /// Log in, then `/sync` answers `reply` every time. The fetch must end on its own, and soon.
 async fn fetch_ends_against(reply: fn() -> Reply) -> Duration {
     let server = Server::start(move |path| match path {
-        p if p.ends_with("/login") => login_answer(json!({})),
+        p if p.ends_with("/login") => login_answer(&json!({})),
         p if p.contains("/sync") => reply(),
         p => ordinary(p),
     })

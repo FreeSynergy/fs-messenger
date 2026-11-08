@@ -138,16 +138,15 @@ impl Person {
         let repo = MessengerRepo::open_turso(messages.clone(), config)
             .await
             .unwrap();
-        let account = match repo.accounts().await.unwrap().pop() {
-            Some(account) => account,
-            None => {
-                let setup = AccountSetup {
-                    address: user_id.clone(),
-                    kind: "matrix".into(),
-                    secret: String::new(),
-                };
-                repo.add_account(setup).await.unwrap()
-            }
+        let account = if let Some(account) = repo.accounts().await.unwrap().pop() {
+            account
+        } else {
+            let setup = AccountSetup {
+                address: user_id.clone(),
+                kind: "matrix".into(),
+                secret: String::new(),
+            };
+            repo.add_account(setup).await.unwrap()
         };
         repo.register_provider(account.id, provider.clone());
         let person = Self {

@@ -75,10 +75,10 @@ async fn only_transports_are_kinds_of_account_and_unknown_kinds_are_invalid() {
             kind: known.into(),
             secret: String::new(),
         };
-        if known != "MAIL" {
-            w.repo.add_account(setup).await.unwrap();
-        } else {
+        if known == "MAIL" {
             assert!(matches!(w.repo.add_account(setup).await, Ok(a) if a.kind == "mail"));
+        } else {
+            w.repo.add_account(setup).await.unwrap();
         }
     }
 }

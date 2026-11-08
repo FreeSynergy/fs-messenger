@@ -61,12 +61,12 @@ async fn an_empty_page_with_an_end_goes_on_to_the_next_page() {
 #[tokio::test]
 async fn endless_empty_pages_end_in_time_and_the_gap_stays_open() {
     let (counter, pages) = (AtomicUsize::new(0), Arc::new(AtomicUsize::new(0)));
-    let served = pages.clone();
+    let page_count = pages.clone();
     let server = Server::start(move |path| match path {
         p if p.ends_with("/login") => login(),
         p if p.contains("/sync") => syncs(&counter),
         p if p.contains("/messages") => {
-            let i = served.fetch_add(1, Ordering::SeqCst);
+            let i = page_count.fetch_add(1, Ordering::SeqCst);
             let end = format!("p{}", i + 1);
             Reply::json(200, &json!({"start":"x","end":end,"chunk":[]}))
         }

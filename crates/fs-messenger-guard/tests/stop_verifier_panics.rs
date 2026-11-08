@@ -74,13 +74,11 @@ async fn a_stop_whose_judge_panics_is_still_a_stop_after_a_restart() {
     drop((engine, enrolment));
 
     let (engine, _enrolment) = loop {
-        let repo = match fs_messenger_guard::TursoGuardRepository::open(store.clone()) {
-            Ok(real) => Faulty::wrap(real),
-            Err(_) => {
-                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-                continue;
-            }
+        let Ok(real) = fs_messenger_guard::TursoGuardRepository::open(store.clone()) else {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            continue;
         };
+        let repo = Faulty::wrap(real);
         break GuardEngine::open_with(
             config_in(dir.path()),
             repo,

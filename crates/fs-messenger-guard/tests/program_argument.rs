@@ -39,7 +39,7 @@ async fn only_the_empty_field_means_every_program_and_it_is_signed_so() {
         .owner
         .proof(&w.identity, Method::Revoke, &[AI.as_bytes(), b""]);
     w.engine.revoke_program(AI, "", &proof).await.unwrap();
-    assert!(w.engine.state().await.grants.is_empty());
+    assert!(w.engine.state().await.grants.is_empty(), "expected empty");
 }
 
 #[tokio::test]
@@ -50,7 +50,7 @@ async fn a_release_for_a_program_with_spaces_around_it_is_refused_not_trimmed() 
         matches!(refused, Err(GuardError::Refused(Refusal::BadName))),
         "{refused:?}"
     );
-    assert!(w.engine.state().await.grants.is_empty());
+    assert!(w.engine.state().await.grants.is_empty(), "expected empty");
 }
 
 /// F6(a): valid on construction means valid after trimming.

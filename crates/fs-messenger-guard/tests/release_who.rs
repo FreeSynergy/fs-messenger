@@ -5,6 +5,7 @@ mod common;
 use common::{AI, OTHER_AI, World, args};
 use fs_messenger_core::ToolCallRisk as R;
 use fs_messenger_guard::{AiGrant, Arguments, Caller, Gate, Guard, GuardError, Refusal, Verdict};
+use std::fmt::Write as _;
 
 #[tokio::test]
 async fn only_who_invited_it_or_the_owner_can_release_or_revoke() {
@@ -12,7 +13,10 @@ async fn only_who_invited_it_or_the_owner_can_release_or_revoke() {
     use fs_messenger_guard::Method;
     let w = World::with_ai().await;
     let friend = Device::new(FRIEND, 2);
-    let key: String = friend.public().iter().map(|b| format!("{b:02x}")).collect();
+    let key: String = friend.public().iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    });
     let add = w.owner.proof(
         &w.identity,
         Method::AddDevice,

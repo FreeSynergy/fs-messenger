@@ -5,8 +5,12 @@ mod common;
 use common::{AI, Device, FRIEND, OWNER, World, args};
 use fs_messenger_core::{MessageAction, Messenger, SenderKind, ToolCallOutcome, ToolCallRisk};
 use fs_messenger_guard::{AiGrant, Guard, GuardError, Method, Refusal, Verdict, id_key};
+use std::fmt::Write as _;
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    bytes.iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
 }
 
 #[tokio::test]
@@ -42,8 +46,8 @@ async fn uninvite_takes_it_all_and_needs_who_invited_or_the_owner() {
         .proof(&w.identity, Method::Uninvite, &[AI.as_bytes()]);
     w.engine.uninvite(AI, &proof).await.unwrap();
     let state = w.engine.state().await;
-    assert!(state.invited.is_empty());
-    assert!(state.grants.is_empty());
+    assert!(state.invited.is_empty(), "expected empty");
+    assert!(state.grants.is_empty(), "expected empty");
     assert_eq!(
         w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::NotInvited)
@@ -55,11 +59,12 @@ async fn uninvite_takes_it_all_and_needs_who_invited_or_the_owner() {
     );
     // It can be invited again; nothing comes back with that.
     w.invite(AI).await;
-    assert!(w.engine.state().await.grants.is_empty());
+    assert!(w.engine.state().await.grants.is_empty(), "expected empty");
 }
 
 #[tokio::test]
 async fn a_persons_identity_wins_over_someone_elses_invitation_of_it() {
+    const CAROL: &str = "https://local.invalid/users/carol";
     let w = World::open().await;
     let friend = Device::new(FRIEND, 2);
     let key = hex(&friend.public());
@@ -73,7 +78,6 @@ async fn a_persons_identity_wins_over_someone_elses_invitation_of_it() {
         .await
         .unwrap();
     // The friend invites Carol's profile.
-    const CAROL: &str = "https://local.invalid/users/carol";
     let invite = friend.proof(&w.identity, Method::Invite, &[CAROL.as_bytes()]);
     w.engine.invite(CAROL, &invite).await.unwrap();
 

@@ -34,7 +34,10 @@ async fn a_declined_world_readable_invitation_is_not_read() {
         alice.find(&spam).await.is_empty(),
         "content of a room never accepted was stored"
     );
-    assert!(alice.find("Later-").await.is_empty());
+    assert_eq!(
+        alice.find("Later-").await,
+        [] as [fs_messenger_core::Message; 0]
+    );
 }
 
 #[tokio::test]

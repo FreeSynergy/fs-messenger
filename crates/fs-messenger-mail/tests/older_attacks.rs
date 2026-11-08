@@ -134,7 +134,7 @@ async fn first_seen_and_rotation_hold_for_v4_keys() {
 #[tokio::test]
 async fn incoming_seipd_v1_with_mdc_opens_with_our_v4_key_and_a_tampered_one_does_not() {
     let me = person(US).await;
-    let (peer, _) = (generate_legacy_key(A).unwrap(), ());
+    let (peer, ()) = (generate_legacy_key(A).unwrap(), ());
     know(&me, A, &peer.public()).await;
     let (_, v4) = own_pair(&me).await;
     let named = signed_mail(&peer, &v4.public(), "", "", Method::Older);
@@ -159,7 +159,7 @@ async fn incoming_seipd_v1_with_mdc_opens_with_our_v4_key_and_a_tampered_one_doe
         (Encryption::None, true),
         "nothing of it is shown"
     );
-    assert!(got.body_text.is_empty());
+    assert_eq!(got.body_text, "");
 }
 
 /// One bit flipped in the middle of the binary message, armored again.

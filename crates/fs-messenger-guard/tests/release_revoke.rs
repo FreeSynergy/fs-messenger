@@ -25,7 +25,7 @@ async fn the_signature_covers_the_program() {
         matches!(refused, Err(GuardError::Refused(Refusal::BadProof))),
         "{refused:?}"
     );
-    assert!(w.engine.state().await.grants.is_empty());
+    assert!(w.engine.state().await.grants.is_empty(), "expected empty");
     w.engine.release(&grant(PROGRAM), &signed).await.unwrap();
     assert_eq!(w.engine.state().await.grants, [grant(PROGRAM)]);
 }
@@ -46,7 +46,7 @@ async fn a_release_signed_with_the_old_destination_field_is_refused() {
         matches!(refused, Err(GuardError::Refused(Refusal::BadProof))),
         "{refused:?}"
     );
-    assert!(w.engine.state().await.grants.is_empty());
+    assert!(w.engine.state().await.grants.is_empty(), "expected empty");
 }
 
 #[tokio::test]
@@ -62,7 +62,7 @@ async fn a_release_must_name_a_program() {
         matches!(refused, Err(GuardError::Refused(Refusal::Empty("program")))),
         "{refused:?}"
     );
-    assert!(w.engine.state().await.grants.is_empty());
+    assert!(w.engine.state().await.grants.is_empty(), "expected empty");
 }
 
 #[tokio::test]
@@ -144,6 +144,6 @@ async fn a_stop_empties_the_releases_and_a_reopen_does_not_bring_them_back() {
     w.release_default(R::ReadsOnly).await;
     w.engine.stop(&w.stop_proof()).await.unwrap();
     w.engine.reopen(&w.reopen_proof()).await.unwrap();
-    assert!(w.engine.state().await.grants.is_empty());
+    assert!(w.engine.state().await.grants.is_empty(), "expected empty");
     assert_eq!(w.read("message.open", args("/")).await, DENIED);
 }

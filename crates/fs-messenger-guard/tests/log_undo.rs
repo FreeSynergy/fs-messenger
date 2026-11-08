@@ -6,6 +6,7 @@ use common::{AI, OWNER, World, args};
 use fs_messenger_core::{MessageAction, Messenger, ToolCallOutcome, ToolCallRisk, ToolCallState};
 use fs_messenger_guard::{AiGrant, Guard, GuardMode, Method, Refusal, Verdict};
 use fs_objects::{ActivityFilter, ActivityKind, Store};
+use std::fmt::Write as _;
 
 const ENGINE: &str = "urn:freesynergy:messenger:guard";
 
@@ -123,7 +124,10 @@ async fn refusals_write_nothing_to_the_log() {
 }
 
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    bytes.iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
 }
 
 #[tokio::test]
@@ -162,10 +166,10 @@ async fn undo_cannot_restore_a_release() {
         .proof(&w.identity, Method::Revoke, &[AI.as_bytes(), b""]);
     w.engine.revoke(AI, &proof).await.unwrap();
     undo_everything(&w).await;
-    assert!(w.engine.state().await.grants.is_empty());
+    assert!(w.engine.state().await.grants.is_empty(), "expected empty");
     let w = w.restart().await;
     undo_everything(&w).await;
-    assert!(w.engine.state().await.grants.is_empty());
+    assert!(w.engine.state().await.grants.is_empty(), "expected empty");
     assert_eq!(
         w.read("message.open", args("/")).await,
         Verdict::Refuse(fs_messenger_guard::Refusal::NotReleased)

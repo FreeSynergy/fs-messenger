@@ -82,7 +82,7 @@ async fn an_invitation_without_an_own_join_reads_nothing() {
         !asked.is_empty() && asked.iter().all(|p| is_check(p)),
         "{asked:?}"
     );
-    assert!(ids(&two).is_empty());
+    assert_eq!(ids(&two), [] as [std::string::String; 0]);
     let cursor = cursor_json(&two).to_string();
     assert!(!cursor.contains("!a:x.test"), "{cursor}");
 }
@@ -154,5 +154,8 @@ async fn a_refused_check_is_named() {
     assert_eq!(cursor["given_up"][0]["room"], room_id("a"), "{cursor}");
     assert_eq!(cursor["given_up"][0]["why"], "check_refused", "{cursor}");
     assert_eq!(cursor.get("gaps"), None, "{cursor}");
-    assert!(from_the_start(&messages_for(&server, "a")).is_empty());
+    assert_eq!(
+        from_the_start(&messages_for(&server, "a")),
+        [] as [&std::string::String; 0]
+    );
 }

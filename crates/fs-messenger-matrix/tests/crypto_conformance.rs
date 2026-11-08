@@ -1,7 +1,8 @@
 //! The SDK's own conformance suite for crypto stores, over `FsCryptoStore`. Each `get_store` with
 //! `clear_data = false` builds a new store from the journal, so what the suite reads back after such a
 //! call has gone through an encrypted `TursoStore`.
-
+// The macro (matrix-sdk-crypto) emits its own `#[ignore]`s without a reason.
+#![allow(clippy::ignore_without_reason)]
 // The SDK's macro asks for features of its own crate, which this crate does not have.
 #![allow(unexpected_cfgs)]
 

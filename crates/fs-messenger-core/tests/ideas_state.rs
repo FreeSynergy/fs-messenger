@@ -47,11 +47,9 @@ async fn a_held_message_waits_goes_out_when_due_and_only_once() {
         }
     );
 
-    assert!(
-        repo.release_due(1_000 + COOL_DOWN_SECS - 1)
-            .await
-            .unwrap()
-            .is_empty()
+    assert_eq!(
+        repo.release_due(1_000 + COOL_DOWN_SECS - 1).await.unwrap(),
+        [] as [fs_objects::ObjectId; 0]
     );
     assert_eq!(provider.sent_count(), 0, "nothing before its time");
     assert_eq!(
@@ -89,7 +87,10 @@ async fn send_now_sends_at_once_and_a_recall_works_only_while_held() {
     let held_b = repo.hold(b, 0, Some(60)).await.unwrap();
     repo.recall_held(held_b).await.unwrap();
     assert_eq!(repo.held_stage(held_b).await.unwrap(), CoolDown::Recalled);
-    assert!(repo.release_due(10_000).await.unwrap().is_empty());
+    assert_eq!(
+        repo.release_due(10_000).await.unwrap(),
+        [] as [fs_objects::ObjectId; 0]
+    );
     assert_eq!(
         provider.sent_count(),
         1,

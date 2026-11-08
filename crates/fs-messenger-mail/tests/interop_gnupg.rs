@@ -162,10 +162,10 @@ async fn b_c_a_gpg_key_and_our_mail() {
     let answer = plan(&me).await;
     println!("B: {answer:?}");
     assert_eq!(answer.encryption, Encryption::Openpgp);
-    assert!(answer.missing_keys.is_empty());
+    assert_eq!(answer.missing_keys, [] as [std::string::String; 0]);
     // GnuPG opens it, for a visible and for a hidden recipient.
     let g_secret = g.run(&format!("--export-secret-keys {PEER}"), b"").1;
-    assert!(!g_secret.is_empty());
+    assert_ne!(g_secret, [] as [u8; 0]);
     let visible = send(&me, &[]).await.unwrap();
     // The older way signs with our v4 key; with it imported, GnuPG decrypts and checks the signature.
     let legacy = me.keys.own_legacy_key(US).await.unwrap().unwrap();

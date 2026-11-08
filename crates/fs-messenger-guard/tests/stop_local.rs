@@ -5,6 +5,7 @@ mod common;
 use common::{AI, Device, FRIEND, OWNER, World, args};
 use fs_messenger_core::{ToolCallOutcome, ToolCallRisk, ToolCallState};
 use fs_messenger_guard::{Guard, GuardError, GuardMode, Method, Refusal, Verdict};
+use std::fmt::Write as _;
 
 #[tokio::test]
 async fn a_person_without_a_working_key_can_stop_on_the_local_path() {
@@ -32,7 +33,7 @@ async fn a_person_without_a_working_key_can_stop_on_the_local_path() {
     assert_eq!(report.calls_cancelled, 1);
     let state = w.engine.state().await;
     assert_eq!(state.mode, GuardMode::Stopped);
-    assert!(state.grants.is_empty());
+    assert!(state.grants.is_empty(), "expected empty");
     assert_eq!(
         w.read("message.open", args("/")).await,
         Verdict::Refuse(Refusal::Stopped)
@@ -81,12 +82,10 @@ async fn the_local_stop_works_on_a_program_that_has_no_state_yet() {
 #[tokio::test]
 async fn the_owners_last_key_cannot_be_removed_and_enrolment_stays_shut() {
     let w = World::open().await;
-    let key: String = w
-        .owner
-        .public()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
+    let key: String = w.owner.public().iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    });
     let proof = w.owner.proof(
         &w.identity,
         Method::RemoveDevice,
@@ -111,7 +110,10 @@ async fn the_owners_last_key_cannot_be_removed_and_enrolment_stays_shut() {
 async fn another_persons_last_key_can_go() {
     let w = World::open().await;
     let friend = Device::new(FRIEND, 2);
-    let key: String = friend.public().iter().map(|b| format!("{b:02x}")).collect();
+    let key: String = friend.public().iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    });
     let add = w.owner.proof(
         &w.identity,
         Method::AddDevice,

@@ -8,6 +8,7 @@ use fs_messenger_core::{
 };
 use fs_messenger_guard::{Allowance, Guard, Method, Question, Verdict};
 use serde_json::json;
+use std::fmt::Write as _;
 async fn send(w: &World, q: &Question, d: ToolCallDecision) -> fs_messenger_core::Result<()> {
     w.repo
         .act(q.conversation, q.message, MessageAction::Decide(d))
@@ -59,7 +60,7 @@ async fn allow_once_allows_exactly_these_arguments_once() {
     );
     let shown = w.shown(&q).await;
     assert_eq!(shown.state, ToolCallState::Working);
-    assert!(shown.options.is_empty());
+    assert!(shown.options.is_empty(), "expected empty");
 }
 
 #[tokio::test]
@@ -176,7 +177,10 @@ async fn a_signer_other_than_the_person_asked_is_refused() {
 }
 
 fn hex_of(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    bytes.iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
 }
 
 #[tokio::test]

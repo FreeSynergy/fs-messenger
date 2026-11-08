@@ -67,7 +67,7 @@ async fn an_invitation_needs_a_signature_of_the_person_for_exactly_this_profile(
         refused,
         Err(GuardError::Refused(Refusal::BadProof))
     ));
-    assert!(w.engine.state().await.invited.is_empty());
+    assert!(w.engine.state().await.invited.is_empty(), "expected empty");
 }
 
 #[tokio::test]

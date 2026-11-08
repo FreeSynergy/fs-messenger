@@ -40,7 +40,7 @@ pub struct Hangs;
 #[async_trait]
 impl DestinationLookup for Hangs {
     async fn destination(&self, _: &str, _: &str) -> Destination {
-        std::future::pending().await
+        return std::future::pending().await;
     }
 }
 
@@ -82,7 +82,7 @@ impl DestinationLookup for Switch {
             .unwrap()
             .push((participant.into(), program.into()));
         if self.hang.load(Ordering::SeqCst) {
-            std::future::pending().await
+            return std::future::pending().await;
         }
         known("only this device")
     }

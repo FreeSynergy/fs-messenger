@@ -25,7 +25,7 @@ async fn without_arguments_the_digest_is_still_there_risk_unknown_and_allow_once
         q.call.arguments_digest,
         arguments_digest(AI, None, "message.open", &none)
     );
-    assert!(!q.call.arguments_digest.is_empty());
+    assert!(!q.call.arguments_digest.is_empty(), "expected not empty");
     let ids: Vec<_> = q.call.options.iter().map(|o| o.id.as_str()).collect();
     assert_eq!(ids, ["refuse", "allow-once"]);
     let d = w

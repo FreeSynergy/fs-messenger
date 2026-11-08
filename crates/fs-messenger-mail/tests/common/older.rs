@@ -53,7 +53,7 @@ pub async fn send(me: &Offline, to: &[&str], bcc: &[&str]) -> Result<Vec<u8>, Er
     Ok(sent.pop().expect("something was submitted").1)
 }
 
-/// A v4 key in the legacy forms (EdDSA, ECDH Curve25519) built by hand, with the Features given.
+/// A v4 key in the legacy forms (`EdDSA`, ECDH Curve25519) built by hand, with the Features given.
 pub fn legacy(address: &str, seipd_v1: bool, seipd_v2: bool) -> (SecretCert, SignedSecretKey) {
     let mut sub = SubkeyParamsBuilder::default();
     sub.version(KeyVersion::V4)

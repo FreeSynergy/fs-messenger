@@ -2,6 +2,7 @@
 
 mod common;
 
+use std::fmt::Write as _;
 use std::sync::Arc;
 
 use common::{AI, Device, FRIEND, OWNER, World};
@@ -11,7 +12,10 @@ use serde_json::json;
 async fn only_the_owner_may_pull_it_or_open_it_and_not_a_person_with_a_key_of_their_own() {
     let w = World::open().await;
     let friend = Device::new(FRIEND, 2);
-    let key: String = friend.public().iter().map(|b| format!("{b:02x}")).collect();
+    let key: String = friend.public().iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    });
     let add = w.owner.proof(
         &w.identity,
         Method::AddDevice,
@@ -52,7 +56,10 @@ async fn only_the_owner_may_pull_it_or_open_it_and_not_a_person_with_a_key_of_th
 async fn an_ai_can_neither_pull_it_nor_open_it_even_with_a_key_and_as_owner_by_a_tampered_record() {
     let w = World::open().await;
     let ai = Device::new(AI, 9);
-    let key: String = ai.public().iter().map(|b| format!("{b:02x}")).collect();
+    let key: String = ai.public().iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    });
     w.invite(AI).await;
     // Someone with the store in hand gives the AI a key.
     w.tamper(|doc| {
@@ -146,13 +153,13 @@ async fn it_works_with_no_messenger_at_all() {
 
 #[tokio::test]
 async fn a_group_stop_answers_unsupported() {
+    use fs_messenger_guard::{OwnerOnly, StopPermission};
     let w = World::open().await;
     let result = w.engine.stop_group("g", &w.stop_proof()).await;
     assert!(
         matches!(result, Err(GuardError::Unsupported(u)) if u.capability() == "guard.stop.group")
     );
     assert_eq!(w.engine.state().await.mode, GuardMode::Open);
-    use fs_messenger_guard::{OwnerOnly, StopPermission};
     assert!(OwnerOnly.may_stop_group("g", OWNER).is_err());
 }
 

@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 /// and a token never seen before.
 async fn hostile() -> (Server, Arc<AtomicUsize>) {
     let (syncs, pages) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
-    let served = pages.clone();
+    let page_count = pages.clone();
     let server = Server::start(move |path| match path {
         p if p.ends_with("/login") => login(),
         p if p.contains("/sync") => {
@@ -32,7 +32,7 @@ async fn hostile() -> (Server, Arc<AtomicUsize>) {
             )
         }
         p if p.contains("/messages") => {
-            let i = served.fetch_add(1, Ordering::SeqCst);
+            let i = page_count.fetch_add(1, Ordering::SeqCst);
             let chunk = [plain(&format!("$m{i}"), "hi")];
             let body = json!({"start":"x","end":format!("p{}", i + 1),"chunk":chunk});
             Reply::json(200, &body)

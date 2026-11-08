@@ -94,7 +94,7 @@ async fn a_reopen_after_a_stop_that_was_not_written_does_not_bring_the_releases_
         .reopen(&r.owner.proof(&r.identity, Method::Reopen, &[]))
         .await
         .unwrap();
-    assert!(r.engine.state().await.grants.is_empty());
+    assert!(r.engine.state().await.grants.is_empty(), "expected empty");
     assert!(!matches!(verdict(&r.engine).await, Verdict::Allow(_)));
 }
 
@@ -113,6 +113,7 @@ async fn when_the_store_stops_answering_everything_is_refused_and_comes_back_onl
 
 #[tokio::test]
 async fn a_logged_write_on_the_state_is_refused_by_the_store() {
+    use fs_objects::Store;
     // Over a real messenger: the question and the decision go the normal way.
     let w = World::working().await;
     let q = w.ask("message.delete", args("/m")).await;
@@ -127,7 +128,6 @@ async fn a_logged_write_on_the_state_is_refused_by_the_store() {
     // given a history by accident; the old way to make the unlogged write fail does not exist any more.
     let id: ObjectId = STATE_ID.parse().unwrap();
     let current = w.store.read_unlogged(id).await.unwrap().unwrap();
-    use fs_objects::Store;
     assert!(w.store.put(current, "someone").await.is_err());
     assert!(matches!(
         w.check("message.delete", args("/m")).await,

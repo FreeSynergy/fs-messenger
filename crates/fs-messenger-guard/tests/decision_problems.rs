@@ -114,5 +114,5 @@ async fn a_settled_call_answers_settled_and_its_end_follows() {
     let end = next_call(&mut rx, &q.call.id).await;
     assert_eq!(end.state, ToolCallState::Settled);
     assert_eq!(end.outcome, ToolCallOutcome::Refused);
-    assert!(end.options.is_empty());
+    assert!(end.options.is_empty(), "expected empty");
 }
