@@ -4,7 +4,7 @@
 //! asks it before it looks at the invitation or the table, so a new tool that hands out a key cannot
 //! be missed by not being listed.
 //!
-//! The rule, word for word: normalise the name first (Unicode UTS #39: NFKC, lower case, the skeleton of
+//! The rule, word for word: normalise the name first (Unicode UTS #39: NFKC, lower case, combining marks dropped, the skeleton of
 //! confusable characters, lower case again, so `ｔoken`, `tоken` with a Cyrillic o and `TOKEN` read the
 //! same); split it at every character that is not a letter or a digit (dot, hyphen, underscore,
 //! space); the name is secret if any part **contains** one of `secret`, `token`, `key`, `password`,
@@ -83,6 +83,8 @@ mod tests {
             "account.t\u{043e}ken", // Cyrillic o
             "account.\u{ff54}oken", // fullwidth t
             "account.TOKEN",
+            "wallet.P\u{0130}N",      // Turkish dotted capital I
+            "account.to\u{0301}ken",  // a combining accent inside the word
             "wallet.mn\u{0435}monic", // Cyrillic e
             "wallet.s\u{0435}ed",
             "vault.pa\u{0455}sword", // Cyrillic s

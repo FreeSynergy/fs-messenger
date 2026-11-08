@@ -3,7 +3,7 @@
 //! Pattern: Facade over the pure `GuardDoc::apply_decision`: on a copy, written whole or not
 //! at all. Nothing but a written decision changes anything; a refusal touches neither the state nor
 //! the log. What a message shows is written afterwards and decides nothing. On a stale or settled
-//! refusal listeners hear how the call stands, from memory only, with the destination shown as unknown (no lookup under the lock).
+//! refusal listeners hear how the call stands, from memory only, (an open question is looked up outside the lock, the rest shows the destination as unknown).
 
 use fs_messenger_core::{DecisionProblem, ToolCallDecision};
 use fs_objects::ObjectId;
@@ -46,9 +46,23 @@ impl GuardEngine {
             } else {
                 call.shown("", DESTINATION_UNKNOWN)
             };
-            let _ = port
-                .announce_call(call.conversation, call.message, shown)
-                .await;
+            // Back under the lock, for the announce only (no lookup): if the call changed while the
+            // destination was looked up, a card of the old state must not replace the new one.
+            let Ok(_ops) = self.lock_ops().await else {
+                return;
+            };
+            let View::Doc(now) = self.view().await else {
+                return;
+            };
+            let unchanged = now
+                .calls
+                .iter()
+                .any(|c| c.id == call.id && c.stage == call.stage && c.revision == call.revision);
+            if unchanged {
+                let _ = port
+                    .announce_call(call.conversation, call.message, shown)
+                    .await;
+            }
         }
     }
 
