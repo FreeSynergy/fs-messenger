@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use fs_objects::traits::{ObjectQuery, UnloggedObjects};
+use fs_objects::traits::UnloggedObjects;
 use fs_objects::{Envelope, Query, StoredObject, TursoStore};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
