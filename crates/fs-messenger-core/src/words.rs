@@ -1,4 +1,6 @@
 //! Words a person reads, apart from the code that decides (ADR 0057). Code never decides by comparing these.
+//!
+//! Pattern: none, allowed by section 2 (constants). Code never decides by comparing these.
 
 use crate::why_plain::{Remedy, WhyNot};
 
