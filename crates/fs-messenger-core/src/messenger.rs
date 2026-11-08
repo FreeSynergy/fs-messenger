@@ -77,9 +77,9 @@ pub trait Messenger: Send + Sync {
     async fn mark_read(&self, _conversation: ObjectId, _up_to: ObjectId) -> Result<()> {
         no("conversation.markRead")
     }
-    /// `conversation.pin`.
+    /// `conversation.sticky`.
     async fn pin(&self, _conversation: ObjectId, _pinned: bool) -> Result<()> {
-        no("conversation.pin")
+        no("conversation.sticky")
     }
     /// `conversation.move`: into this folder only; empty takes it out of all folders.
     async fn move_to(&self, _conversation: ObjectId, _folder: &str) -> Result<()> {

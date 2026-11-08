@@ -16,7 +16,7 @@ pub(super) fn report(guard_installed: bool) -> Capabilities {
         "conversation.open",
         "conversation.nextUnread",
         "conversation.markRead",
-        "conversation.pin",
+        "conversation.sticky",
         "conversation.move",
         "conversation.usage",
         "message.open",
