@@ -6,7 +6,7 @@ original (ADR 0020, 0030), stored through `fs-objects`. Frontends never see prot
 
 ## State
 
-Version 0.2.0 (was 0.1.1: `EngineGuard` and `SenderLookup` got new methods for the guard crate). Mirrors the `messenger.capnp` contract, version 0.3 (`CONTRACT_VERSION`), with the dependency on `fs-interfaces` v0.27.0 (consumers: 0 of 2). Generated types are not in the public API.
+Latest tag v0.4.0 (README/DESIGN header corrected 2026-11-08; earlier: 0.2.0 was 0.1.1: `EngineGuard` and `SenderLookup` got new methods for the guard crate). Mirrors the `messenger.capnp` contract, version 0.3 (`CONTRACT_VERSION`), with the dependency on `fs-interfaces` v0.27.0 (consumers: 0 of 2). Generated types are not in the public API.
 
 | Area | State |
 |---|---|
