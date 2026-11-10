@@ -10,17 +10,8 @@ mod table;
 mod types;
 
 pub use entry::{Delivery, Entry, In};
-pub use support::apply_support;
-pub use table::TABLE;
+pub use support::{apply_support, support_of};
+pub use table::table;
 pub use types::{
     DraftRecord, PROGRAM, command_label, commands_of, field_label, registry, type_label,
 };
-
-/// What the table says about command `name` of `data_type`: `Some((supported, reason))`, or `None` if there is no such command.
-#[must_use]
-pub fn support_of(data_type: &str, name: &str) -> Option<(bool, &'static str)> {
-    TABLE
-        .iter()
-        .find(|e| e.data_type == data_type && e.command_name() == Some(name))
-        .map(|e| (e.supported, e.reason))
-}

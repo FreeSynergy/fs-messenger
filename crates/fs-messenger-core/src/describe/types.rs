@@ -11,7 +11,7 @@ use fs_types::{
 
 use super::entry::{Delivery, Entry, In};
 use super::support::apply_support;
-use super::table::TABLE;
+use super::table::table;
 use crate::model::{Account, ConversationSummary, Message};
 
 /// The owner program (ADR 0050).
@@ -101,7 +101,7 @@ fn command_of(data_type: &str, entry: &Entry) -> Option<CommandDescription> {
 pub fn commands_of(data_type: &str) -> Vec<CommandDescription> {
     let mut seen: Vec<&str> = Vec::new();
     let mut out = Vec::new();
-    for e in TABLE.iter().filter(|e| e.data_type == data_type) {
+    for e in table().filter(|e| e.data_type == data_type) {
         if let Some(name) = e.command_name()
             && !seen.contains(&name)
         {

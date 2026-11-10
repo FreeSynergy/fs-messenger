@@ -1,0 +1,58 @@
+//! Choices, by their last part.
+//!
+//! Pattern: none (a table of English words; translation replaces it).
+
+pub(super) const CHOICES: &[(&str, &str)] = &[
+    ("yes", "Yes"),
+    ("no", "No"),
+    ("mail", "E-mail"),
+    ("chat", "Chat"),
+    ("comment", "Comment"),
+    ("unknown", "Not known"),
+    ("matrix", "Matrix"),
+    ("mimi", "MIMI"),
+    ("mls", "End-to-end (MLS)"),
+    ("openpgp", "End-to-end (OpenPGP)"),
+    ("megolm", "End-to-end (Megolm)"),
+    ("transport-only", "Protected on the way only"),
+    ("none", "Not encrypted"),
+    ("sending", "Sending"),
+    ("sent", "Sent"),
+    ("delivered", "Delivered"),
+    ("read", "Read"),
+    ("failed", "Failed"),
+    ("person", "A person"),
+    ("software", "Software"),
+    ("ai", "An AI"),
+    ("not-verified", "Not verified"),
+    ("not-signed", "Not signed"),
+    ("valid", "Valid"),
+    ("plain", "Plain text"),
+    ("markdown", "Markdown"),
+    ("shown", "Shown"),
+    ("hidden", "Hidden"),
+    (
+        "no-key-of-the-other-side",
+        "The key of the other side is not known yet.",
+    ),
+    ("account-cannot", "This account cannot encrypt end to end."),
+    (
+        "on-the-wire-only",
+        "Only the way is protected; the servers can read it.",
+    ),
+    ("not-known", "It is not known whether it is protected."),
+    (
+        "exchange-keys",
+        "Exchange keys: send a signed message or ask for the key.",
+    ),
+    (
+        "choose-other-channel",
+        "Use a channel or account that can encrypt.",
+    ),
+    ("turn-on", "Turn encryption on in this conversation."),
+    ("wait", "Nothing to do; the program is still waiting."),
+    ("held", "Held"),
+    ("sent-unread", "Sent, not read yet"),
+    ("sent-read", "Sent and read"),
+    ("recalled", "Taken back"),
+];

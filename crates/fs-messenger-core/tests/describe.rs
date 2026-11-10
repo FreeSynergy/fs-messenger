@@ -8,7 +8,7 @@ mod common;
 use std::collections::BTreeSet;
 
 use fs_messenger_core::Messenger;
-use fs_messenger_core::describe::{Delivery, TABLE, commands_of, registry, support_of};
+use fs_messenger_core::describe::{Delivery, commands_of, registry, support_of, table};
 use fs_types::{BasicType, DescribesType};
 
 /// The ids of the snapshot of `requirements.md` (tests/data), one per line.
@@ -46,7 +46,7 @@ fn live_ids() -> Option<BTreeSet<String>> {
 }
 
 fn table_ids() -> BTreeSet<&'static str> {
-    TABLE.iter().map(|e| e.capability).collect()
+    table().map(|e| e.capability).collect()
 }
 
 #[test]
@@ -110,7 +110,7 @@ fn all_four_types_register_and_validate() {
 
 #[test]
 fn every_command_of_the_table_is_in_the_description_supported_or_not() {
-    for e in TABLE {
+    for e in table() {
         if let Delivery::Command { name, .. } = e.delivery {
             let commands = commands_of(e.data_type);
             assert!(
@@ -125,8 +125,8 @@ fn every_command_of_the_table_is_in_the_description_supported_or_not() {
 
 #[test]
 fn rows_of_one_command_agree_on_kind_and_support() {
-    for a in TABLE {
-        for b in TABLE {
+    for a in table() {
+        for b in table() {
             if a.data_type == b.data_type
                 && a.command_name().is_some()
                 && a.command_name() == b.command_name()
@@ -149,7 +149,7 @@ fn rows_of_one_command_agree_on_kind_and_support() {
 
 #[test]
 fn an_unsupported_row_says_why_and_a_supported_one_does_not() {
-    for e in TABLE {
+    for e in table() {
         assert_eq!(e.supported, e.reason.is_empty(), "{}", e.capability);
     }
 }
@@ -157,7 +157,7 @@ fn an_unsupported_row_says_why_and_a_supported_one_does_not() {
 #[test]
 fn a_field_row_names_a_field_of_its_type() {
     let r = registry().unwrap();
-    for e in TABLE {
+    for e in table() {
         if let Delivery::Field(f) = e.delivery {
             assert!(
                 r.get(e.data_type).unwrap().find_field(f).is_some(),
@@ -205,7 +205,7 @@ async fn the_table_agrees_with_what_the_core_reports() {
     let missing: Vec<_> = report
         .entries()
         .iter()
-        .filter(|s| !TABLE.iter().any(|e| e.capability == s.capability))
+        .filter(|s| !table().any(|e| e.capability == s.capability))
         .map(|s| s.capability.as_str())
         .collect();
     assert!(
@@ -213,10 +213,7 @@ async fn the_table_agrees_with_what_the_core_reports() {
         "the core reports ids that the table lacks: {missing:?}"
     );
     for s in report.entries() {
-        let rows: Vec<_> = TABLE
-            .iter()
-            .filter(|e| e.capability == s.capability)
-            .collect();
+        let rows: Vec<_> = table().filter(|e| e.capability == s.capability).collect();
         if CORE_CAN_APP_CANNOT.contains(&s.capability.as_str()) {
             assert!(rows.iter().all(|r| !r.supported), "{}", s.capability);
         } else {

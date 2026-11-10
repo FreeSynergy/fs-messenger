@@ -9,6 +9,7 @@
 use fs_types::CommandDescription;
 
 use super::entry::Entry;
+use super::table::table;
 
 /// Mark `command` with what the table says about it.
 ///
@@ -18,4 +19,12 @@ use super::entry::Entry;
 #[must_use]
 pub fn apply_support(command: CommandDescription, _entry: &Entry) -> CommandDescription {
     command
+}
+
+/// What the table says about command `name` of `data_type`: `Some((supported, reason))`, or `None` if there is no such command.
+#[must_use]
+pub fn support_of(data_type: &str, name: &str) -> Option<(bool, &'static str)> {
+    table()
+        .find(|e| e.data_type == data_type && e.command_name() == Some(name))
+        .map(|e| (e.supported, e.reason))
 }
