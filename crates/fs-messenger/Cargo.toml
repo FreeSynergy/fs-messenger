@@ -1,0 +1,21 @@
+[package]
+name = "fs-messenger"
+description = "FreeSynergy.Messenger: one program for mail, chat and agents. Without arguments the window opens."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "fs-messenger"
+path = "src/main.rs"
+
+[features]
+default = ["gui"]
+# The window (Blinc). Without it the binary only prints its help: `cargo build --no-default-features`.
+gui = ["dep:fs-messenger-app"]
+
+[dependencies]
+fs-messenger-app = { path = "../fs-messenger-app", optional = true }

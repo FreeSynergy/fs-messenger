@@ -1,14 +1,22 @@
 [workspace]
 resolver = "2"
-members = ["crates/fs-messenger-core", "crates/fs-messenger-guard", "crates/fs-messenger-mail", "crates/fs-messenger-matrix"]
+members = ["crates/fs-messenger-core", "crates/fs-messenger-guard", "crates/fs-messenger-mail", "crates/fs-messenger-matrix", "crates/fs-messenger-app", "crates/fs-messenger"]
 
 [workspace.package]
 version = "0.0.2"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-rust-version = "1.85"
+authors = ["FreeSynergy <support@freesynergy.net>"]
+repository = "https://github.com/FreeSynergy/fs-messenger"
+rust-version = "1.89"
 
 # Dependencies optimised in debug builds: the invitation-flood test (1000 rooms against a mock server)
 # runs in about 0.5 s in release and ran past its 16 s limit unoptimised.
 [profile.dev.package."*"]
 opt-level = 2
+
+# Window resize crash (wgpu validation error when the window is enlarged); the fast variant of Thread B (restyle only the
+# nodes an incremental update replaced), as fs-tasks. Provisional: moves with the reference apps.
+[patch.crates-io]
+blinc_app = { git = "https://github.com/FreeSynergy/blinc-app-fix", rev = "5180d4eae80034d851d98464861f098d69eceaf0" }
+blinc_layout = { git = "https://github.com/FreeSynergy/blinc-layout-fix", rev = "cb17db8111f2037473e6e02b6784628ca0dca151" }

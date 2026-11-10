@@ -13,7 +13,10 @@ const YN: &[&str] = &["yes", "no"];
 const KINDS: &[&str] = &["mail", "matrix", "mimi"];
 // Choice keys are lower-case words (fs-types); the Backend maps them to the media types.
 const FORMATS: &[&str] = &["plain", "markdown"];
-const CHOICES: &[&str] = &["show", "hidden"];
+const WHY: &[&str] = &["no-key-of-the-other-side", "account-cannot", "on-the-wire-only", "not-known"];
+const REMEDY: &[&str] = &["exchange-keys", "choose-other-channel", "turn-on", "wait"];
+const STAGES: &[&str] = &["held", "sent-unread", "sent-read", "recalled"];
+const CHOICES: &[&str] = &["shown", "hidden"];
 
 const NO_PROVIDER: &str = "no provider can carry it yet (Provider has no method for it)";
 const NOT_BUILT: &str = "not built in this step (DESIGN.md, Not built)";
@@ -352,7 +355,8 @@ pub static TABLE: &[Entry] = &[
         "whyPlain",
         Other,
         &[CONVERSATION],
-        &[In::text("reason"), In::text("remedy")],
+        &[In::pick("reason", WHY),
+            In::pick("remedy", REMEDY)],
     ),
     missing(
         "turn.stop",
@@ -641,7 +645,7 @@ pub static TABLE: &[Entry] = &[
         "heldStage",
         Other,
         &[In::to("held", "Message").req()],
-        &[In::text("stage"), In::text("releaseAt")],
+        &[In::pick("stage", STAGES), In::text("releaseAt")],
     ),
     done(
         "message.hold",
@@ -946,9 +950,8 @@ pub static TABLE: &[Entry] = &[
         Change,
         &[
             DRAFT,
-            In::text("to").many(),
-            In::text("cc").many(),
-            In::text("bcc").many(),
+            // No recipients: the Draft contract sets to, cc and bcc together and cannot read cc and bcc back,
+            // so a partial change would clear them.
             In::text("subject"),
             In::long("text"),
             In::pick("mediaType", FORMATS),
