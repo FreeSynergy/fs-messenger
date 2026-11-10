@@ -50,10 +50,10 @@ pub async fn next_call(rx: &mut mpsc::UnboundedReceiver<Event>, id: &str) -> Too
             .await
             .expect("a toolCall event in time")
             .expect("the channel is open");
-        if let Event::ToolCall(change) = event {
-            if change.call.id == id {
-                return change.call;
-            }
+        if let Event::ToolCall(change) = event
+            && change.call.id == id
+        {
+            return change.call;
         }
     }
 }
