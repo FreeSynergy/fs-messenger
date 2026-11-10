@@ -31,6 +31,8 @@ Latest tag v0.4.0 (README/DESIGN header corrected 2026-11-08; earlier: 0.2.0 was
 | Size limits at ingest and in `record_tool_call`: see "Limits". Over the limit a stub stays (`Ingested::TooLarge`, `MessageSummary.too_large`, 0 = it is not), so the mail is visible, not gone (ADR 0030): aliases, links, sender, date, subject, size, no content. A connector that only holds a cut-off start says so with `RawMessage.too_large`: the core stubs it whatever the limit and never stores those bytes as the original | done, provisional |
 | Large bodies: over 64 KiB in a store object of their own, see "What a large body costs" | done, with a limit named there |
 | An undecrypted message: no ciphertext in preview, name or search; it cannot be forwarded; delivered again under a provider-issued id in readable form it is replaced under the same id, keeping what the person did | done |
+| Type description (`crates/fs-messenger-core/src/describe`): `DescribesType` for `Conversation` (AS2 Collection), `Message` (AS2 Note), `Account` (AS2 Actor) and `Draft`, commands from ONE table | done, see "Window and type description" |
+| Window: `fs-messenger-app` (Backend per data type, words, About) and the binary `fs-messenger` (default command: window), on `fs-admin-frontend` | done, runs on the existing core; see "Window and type description" and its Unsupported list |
 | Tests | 167 against real `TursoStore` (in memory, or temp files where encryption matters); the `Provider` doubles only feed core logic |
 | Guard tests | see `crates/fs-messenger-guard/DESIGN.md` |
 
@@ -54,6 +56,31 @@ Flag, read and unread state, pin, folder and delete are this device's own state:
 | Key discovery, key verification, devices, groups, presence, notifications, import/export, Cap'n Proto server, MCP, GUI, real connectors, Telegram, own mail server, ratings | not in this step |
 | Link to the library guide for unencrypted mail (ADR 0031) | a frontend's job; the core gives the mark |
 | AIs in conversations (ADR 0054, section "KIs in Unterhaltungen") | **not built**: a notice before an AI joins; all members must agree, else it stays out; a later member accepts it or stays out; consent withdrawn means the AI must leave; no history from before it joined; no exception for local AIs. Nothing here checks it yet |
+
+## Window and type description (Thread R, ADR 0065, 0066)
+
+The app is the window shell plus the generated Admin frontend and nothing else: no drawing code, no look. It runs the core **in process** on an encrypted store file (`messages.db` in `$XDG_DATA_HOME/freesynergy/messenger`, or `--store FILE`). The list of every type is the command `find` with an empty search (pages read to the end, at most 20).
+
+**The table** (`describe/table.rs`) holds every capability id of `requirements.md` (98) and every id the core reports, with data type, command (or the field that shows it), kind, input, `supported` and the reason. `describe()` returns ALL commands, supported or not. Tests: the table has every id of a snapshot of `requirements.md` (`tests/data/requirements-ids.txt`) and, when `fs-documentation` lies next to this repo, of the live file; it agrees with `Messenger::capabilities`; rows of one command agree on kind and support; every key has an English word. "Supported" here means: the core can do it AND the Backend carries it out. Five ids the core has are `false` because the generated frontend cannot carry them: `event.subscribe` (no stream in the Backend), `attachment.add` and `attachment.save` (no basic type for bytes), `toolcall.decide` and `turn.stop` (no guard installed in this app).
+
+**The switch.** `fs-types` v0.0.2 has no field `supported` on a command. `describe::apply_support` is the one function that will set it (`command.supported = entry.supported`); until then the Backend answers the table through `Backend::supported` (admin frontend rev 5809e89), and `run` refuses an unsupported command with `unsupported:<name>`. **Blocker:** `fs-types` v0.0.11 has the field (and `Edit` for `change`, and a `change` command with no input fields), but `fs-admin-frontend` on GitHub still depends on v0.0.2, so the two `TypeDescription` types differ and the app cannot use v0.0.11 yet. When the frontend is on v0.0.11: flip the tag in both Cargo files, fill `apply_support`, and rework `Draft.change` (input fields to `Edit`). Nothing else changes.
+
+**Account secret.** The core stores no secret (ADR 0024), and a secret is never a field or input of a description (a form would show it as plain text). `account.secret` is a row of the table, `false`.
+
+**Store key (provisional, ADR 0024).** The core opens on an encrypted store only and there is no key vault. The app makes a random 32-byte key file `<store>.key` (owner-only on Unix) next to the store at first start. This protects a copied store file, not a person who can read both files. The vault replaces it.
+
+**Record commands.** A message is addressed by id only in the description; the core needs the conversation too. The Backend learns it from the messages it has listed and keeps it in a map: a command on a message it has not listed is `NotFound`.
+
+### Unsupported (named, not faked)
+
+* Every row of the table with `supported = false` (about 80 capability ids: edit, react, groups, roles, moderation, calls, rules, sync, bridges, keys and devices, labels, snooze, schedule, ...); the reason is in the row and appears with the description once the field exists.
+* `Draft.change` cannot change recipients (`Draft` sets to, cc and bcc together and cannot read cc and bcc back, so a partial change would clear them). Bytes of attachments: no basic type.
+* `Backend::list` has no paging: a list reads at most 20 pages (1000 items by default) of one query.
+* Messages shown in the list carry the whole text: one core call per message (N+1, in process).
+* `event.subscribe`: the window does not update by itself; it reads again when a screen is entered.
+* Windows: the owner-only mode of the key file is not set (plain write into the user's data folder).
+* `fs-messenger-mail`, `-matrix`, `-guard` are not wired into the app: there is no provider, so sending is refused ("no provider"), as the core says. No server, no command line, no Cap'n Proto server: `Messenger.types @8` is in `messenger.capnp` (fs-interfaces) but nothing serves it yet.
+* Frontend shortcuts, Settings entry and Fullscreen: see `fs-admin-frontend` DESIGN.
 
 ## Structure and pattern map (ADR 0043)
 
@@ -87,6 +114,14 @@ Public contract: `Messenger`, `Draft`, `Provider`, `Ingest`, `Listener`, small v
 | `repo/search.rs`, `repo/capabilities.rs` | Builder | filter to query; capability report |
 | `repo/{keys,text}.rs` | Strategy (pure functions) | one canonical key and name rule |
 | `repo/paging.rs`, `model/page.rs` | Iterator | cursor pages |
+| `describe/table.rs`, `describe/entry.rs` | Registry | THE capability table: every capability id of `requirements.md` and of the core, with command or field, kind, input, `supported`, reason |
+| `describe/types.rs` | Registry entry (trait first) | `DescribesType` of `fs-types` for four types; commands are read from the table |
+| `describe/support.rs` | Adapter | `apply_support`, the one switch for the field `supported` |
+| `fs-messenger-app` `{accounts,conversations,messages,drafts}.rs` | Adapter + Command | one `fs_admin_frontend::Backend` per data type over `Messenger`; `run` picks the core call by command name |
+| `fs-messenger-app` `shared.rs` | Adapter | sync Backend over the async core (`Handle::block_on`), errors mapped in one place |
+| `fs-messenger-app` `convert.rs` | Adapter | model to records (pure functions) |
+| `fs-messenger-app` `words.rs` | Registry behind the `Say` strategy | English key table; translation replaces the table |
+| `fs-messenger-app` `store.rs`, `window.rs`, `app.rs` | Facade | open the encrypted store, build `admin_window`, start |
 | `model/*` | Value objects | contract names, fail-safe defaults |
 
 ## Store layout (provisional)

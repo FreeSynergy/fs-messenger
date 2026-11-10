@@ -1,0 +1,22 @@
+name: release
+on:
+  push: { tags: ["v*"] }
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+  packages: write
+jobs:
+  release:
+    uses: FreeSynergy/fs-release/.github/workflows/release.yml@main
+    with:
+      binaries: fs-messenger
+      cargo-package: fs-messenger
+      name: fs-messenger
+      kind: app
+      app-id: net.freesynergy.Messenger
+      macos: false
+      windows-targets: "x86_64"   # the app opens a local store file and uses no Unix sockets; as fs-streaming
+    secrets:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
