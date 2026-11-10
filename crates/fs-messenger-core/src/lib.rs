@@ -17,6 +17,7 @@
 )]
 
 mod cooldown;
+pub mod describe;
 mod draft;
 mod error;
 pub mod export;
