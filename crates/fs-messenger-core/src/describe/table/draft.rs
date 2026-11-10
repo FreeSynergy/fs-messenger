@@ -5,7 +5,7 @@
 use fs_types::CommandKind::{Change, Create, Delete, Find, Other};
 
 use super::super::entry::{Entry, In, done, missing};
-use super::common::*;
+use super::common::{DRAFT, FORMATS, NO_BYTES, NOT_BUILT};
 
 #[rustfmt::skip]
 pub(super) static ROWS: &[Entry] = &[
