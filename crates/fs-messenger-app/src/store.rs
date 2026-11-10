@@ -79,14 +79,13 @@ fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// # Errors
 /// The message for the person: no data folder, a key that cannot be had, a store that does not open.
 pub async fn open_repo(file: Option<&Path>) -> Result<MessengerRepo, String> {
-    let file = match file {
-        Some(f) => f.to_owned(),
-        None => {
-            let dir = default_dir()
-                .ok_or("no data folder: give --store or set $XDG_DATA_HOME or $HOME")?;
-            std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-            dir.join("messages.db")
-        }
+    let file = if let Some(f) = file {
+        f.to_owned()
+    } else {
+        let dir =
+            default_dir().ok_or("no data folder: give --store or set $XDG_DATA_HOME or $HOME")?;
+        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        dir.join("messages.db")
     };
     let key = read_or_make_key(&key_path(&file)).map_err(|e| e.to_string())?;
     let options = OpenOptions {

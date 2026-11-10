@@ -29,6 +29,9 @@ impl Shared {
     }
 
     /// Run one call of the core to its end.
+    ///
+    /// # Errors
+    /// The core's error as a [`BackendError`].
     pub fn block<T>(
         &self,
         call: impl Future<Output = Result<T, Error>>,
@@ -40,6 +43,9 @@ impl Shared {
     ///
     /// Answers `unsupported:<name>` only for a command that really must not run (the table says no); it is never how a
     /// frontend learns what to show.
+    ///
+    /// # Errors
+    /// `NotFound` for a command that does not exist, `Unavailable("unsupported:<name>")` for one the table marks `false`.
     pub fn gate(&self, data_type: &str, name: &str) -> Result<(), BackendError> {
         match describe::support_of(data_type, name) {
             None => Err(BackendError::NotFound),
