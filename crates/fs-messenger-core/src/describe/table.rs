@@ -13,7 +13,12 @@ const YN: &[&str] = &["yes", "no"];
 const KINDS: &[&str] = &["mail", "matrix", "mimi"];
 // Choice keys are lower-case words (fs-types); the Backend maps them to the media types.
 const FORMATS: &[&str] = &["plain", "markdown"];
-const WHY: &[&str] = &["no-key-of-the-other-side", "account-cannot", "on-the-wire-only", "not-known"];
+const WHY: &[&str] = &[
+    "no-key-of-the-other-side",
+    "account-cannot",
+    "on-the-wire-only",
+    "not-known",
+];
 const REMEDY: &[&str] = &["exchange-keys", "choose-other-channel", "turn-on", "wait"];
 const STAGES: &[&str] = &["held", "sent-unread", "sent-read", "recalled"];
 const CHOICES: &[&str] = &["shown", "hidden"];
@@ -355,8 +360,7 @@ pub static TABLE: &[Entry] = &[
         "whyPlain",
         Other,
         &[CONVERSATION],
-        &[In::pick("reason", WHY),
-            In::pick("remedy", REMEDY)],
+        &[In::pick("reason", WHY), In::pick("remedy", REMEDY)],
     ),
     missing(
         "turn.stop",
