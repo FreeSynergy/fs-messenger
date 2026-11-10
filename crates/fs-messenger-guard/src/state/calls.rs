@@ -98,15 +98,15 @@ impl GuardDoc {
         let held = self.matching(caller, &digest, now);
         // Only a read can be marked. A marked read is never covered by a release of its class.
         let marked = counts_as_marked(capability, sensitive);
-        if let Some(at) = held {
-            if self.calls[at].stage == CallStage::Approved {
-                // An approval is used only while the participant still has a release in the program,
-                // as seen now: one a version before releases per program left behind does not count.
-                return match self.approval_standing(&self.calls[at]) {
-                    Ok(()) => Evaluation::UseApproval(at),
-                    Err(refusal) => Evaluation::Refuse(refusal),
-                };
-            }
+        if let Some(at) = held
+            && self.calls[at].stage == CallStage::Approved
+        {
+            // An approval is used only while the participant still has a release in the program,
+            // as seen now: one a version before releases per program left behind does not count.
+            return match self.approval_standing(&self.calls[at]) {
+                Ok(()) => Evaluation::UseApproval(at),
+                Err(refusal) => Evaluation::Refuse(refusal),
+            };
         }
         let sensitive = marked;
         match self.standing(caller, capability, arguments.has_input(), sensitive) {
