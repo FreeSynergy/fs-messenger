@@ -55,11 +55,13 @@ impl In {
         f
     }
     /// A value is needed.
+    #[must_use]
     pub const fn req(mut self) -> Self {
         self.required = true;
         self
     }
     /// Several values are allowed.
+    #[must_use]
     pub const fn many(mut self) -> Self {
         self.multiple = true;
         self

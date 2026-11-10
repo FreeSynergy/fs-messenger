@@ -71,7 +71,7 @@ fn field_of(i: &In) -> FieldDescription {
     let mut f = FieldDescription::new(i.name, i.basic).label(&field_label(i.name));
     f.required = i.required;
     f.multiple = i.multiple;
-    f.target = i.target.to_owned();
+    i.target.clone_into(&mut f.target);
     f.choices = i.choices.iter().map(|c| (*c).to_owned()).collect();
     f
 }

@@ -154,12 +154,11 @@ impl GuardPort {
         mut call: ToolCall,
     ) -> Result<()> {
         let inner = self.inner()?;
-        if call.detail.is_empty() {
-            if let Ok(m) = inner.load_note(message).await {
-                if let Some(held) = m.tool_calls.iter().find(|c| c.id == call.id) {
-                    call.detail.clone_from(&held.detail);
-                }
-            }
+        if call.detail.is_empty()
+            && let Ok(m) = inner.load_note(message).await
+            && let Some(held) = m.tool_calls.iter().find(|c| c.id == call.id)
+        {
+            call.detail.clone_from(&held.detail);
         }
         // Nobody listening is no failure.
         let _ = inner.announcements.send(Event::ToolCall(ToolCallChange {
